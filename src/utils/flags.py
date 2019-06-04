@@ -106,8 +106,8 @@ class FLAGS(Borg):
         self.OPTIMIZER             = "Adam"
         self.REGULARIZE_WEIGHTS    = 0.0001
 
-        self.IMAGE_PRODUCER        = ""
-        self.LABEL_PRODUCER        = ""
+        self.IMAGE_PRODUCER        = "sbndwire"
+        self.LABEL_PRODUCER        = "sbnd_cosmicseg"
 
         self.SHAPE                 = []
 
