@@ -41,11 +41,18 @@ def main():
         # without having to rewrite the training interface each time.
         # It would look like this:
 
-        # from src.networks import uresnet
-        # net = uresnet.UResNet
-        # FLAGS.set_net(net)
-        # trainer.initialize()
-        # trainer.batch_process()
+        if not FLAGS.SPARSE:
+            if FLAGS.CONV_MODE == '3D':
+                from src.networks import uresnet
+                net = uresnet.UResNet
+            else:
+                from src.networks import uresnet_classic
+                net = uresnet_classic.UResNet
+
+        else:
+            from src.networks import sparseuresnet
+            net = sparseuresnet.UResNet
+
         pass
 
     if FLAGS.MODE == 'iotest':
