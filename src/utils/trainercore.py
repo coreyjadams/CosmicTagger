@@ -16,6 +16,7 @@ FLAGS = flags.FLAGS()
 
 import datetime
 
+import tensorflow as tf
 
 class trainercore(object):
     '''
@@ -32,6 +33,7 @@ class trainercore(object):
         self._cleanup         = []
 
     def __del__(self):
+        print(os)
         for f in self._cleanup:
             os.unlink(f.name)
             
@@ -126,34 +128,46 @@ class trainercore(object):
 
         io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
 
-        print (io_dims)
 
         self._dims = {}
         # Using the sparse IO techniques, we have to manually set the dimensions for the input.
-        if "downsample" in FLAGS.FILE:
-            if FLAGS.DATA_FORMAT == "channels_last":
-                self._dims['image'] = numpy.asarray([io_dims['image'][0],640, 1024, 3])
-                self._dims['label'] = numpy.asarray([io_dims['image'][0],640, 1024, 3])
-            else:
-                self._dims['image'] = numpy.asarray([io_dims['image'][0],3, 640, 1024])
-                self._dims['label'] = numpy.asarray([io_dims['image'][0],3, 640, 1024])
+
+        # Fortunately, everything we need is in the FLAGS object and io object:
+
+        local_minibatch_size = io_dims['image'][0]
+
+        if FLAGS.DATA_FORMAT == "channels_first":
+            shape = [local_minibatch_size,] + [3,] + FLAGS.SHAPE
         else:
-            if FLAGS.DATA_FORMAT == "channels_last":
-                self._dims['image'] = numpy.asarray([io_dims['image'][0],1280, 2048, 3])
-                self._dims['label'] = numpy.asarray([io_dims['image'][0],1280, 2048, 3])
-            else:
-                self._dims['image'] = numpy.asarray([io_dims['image'][0],3, 1280, 2048])
-                self._dims['label'] = numpy.asarray([io_dims['image'][0],3, 1280, 2048])
+            shape = [local_minibatch_size,] + FLAGS.SHAPE + [3,]
+
+        self._dims['image'] = numpy.asarray(shape)
+        self._dims['label'] = numpy.asarray(shape)
+
+        # We have to make placeholders for input objects:
+
+        inputs = dict()
+
+        inputs.update({
+            'image' :  tf.placeholder(tf.float32, self._dims['image'], name="input_image"),
+            'label' :  tf.placeholder(tf.int64,   self._dims['label'], name="input_label"),
+            'io_time' : tf.placeholder(tf.float32, (), name="io_fetch_time")
+        })
+
+        if FLAGS.BALANCE_LOSS:
+            inputs['weight'] = tf.placeholder(tf.float32, self._dims['label'], name="input_weight"),
 
 
 
-        # Add a summary object for the io compute time:
-        self._metrics['IO_Fetch_time'] = self._input['io_time']
-        # tf.summary.scalar("IO_Fetch_time", self._input['io_time'])
+        # Build the network object, forward pass only:
+
+        print(FLAGS._net)
+
+        self._logits = FLAGS._net._build_network(inputs)
 
         if FLAGS.MODE == "train":
             # Call the function to define the output
-            self._logits  = self._net._build_network(self._input)
+            self._logits  = FLAGS._net._build_network(self._input)
 
 
 

@@ -466,7 +466,7 @@ class UResNet(object):
 
 
                 if FLAGS.CONNECT_PRE_RES_BLOCKS_UP:
-                    if FLAGS.SUMMED_CONNECTIONS:
+                    if FLAGS.CONNECTIONS == "sum":
                         x[p] = x[p] + network_filters[p][-1]
                     else:
                         n_filters = x[p].get_shape().as_list()[-1]
@@ -518,7 +518,7 @@ class UResNet(object):
 
 
                 if not FLAGS.CONNECT_PRE_RES_BLOCKS_UP:
-                    if FLAGS.SUMMED_CONNECTIONS:
+                    if FLAGS.CONNECTIONS == "sum":
                         x[p] = x[p] + network_filters[p][-1]
                     else:
                         n_filters = x[p].get_shape().as_list()[-1]

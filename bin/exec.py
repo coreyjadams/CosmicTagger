@@ -44,14 +44,14 @@ def main():
         if not FLAGS.SPARSE:
             if FLAGS.CONV_MODE == '3D':
                 from src.networks import uresnet
-                net = uresnet.UResNet
+                net = uresnet.UResNet()
             else:
                 from src.networks import uresnet_classic
-                net = uresnet_classic.UResNet
+                net = uresnet_classic.UResNet()
 
         else:
             from src.networks import sparseuresnet
-            net = sparseuresnet.UResNet
+            net = sparseuresnet.UResNet()
 
 
         FLAGS.set_net(net)
