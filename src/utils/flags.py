@@ -309,7 +309,6 @@ class uresnet(FLAGS):
         self.RESIDUAL                    = True
 
         # Parameters controlling regularization
-        self.REGULARIZE_WEIGHTS          = 0.0001
         self.BALANCE_LOSS                = True
 
         self.OPTIMIZER                   = "Adam"
@@ -370,8 +369,6 @@ class uresnet(FLAGS):
         parser.add_argument('--bottleneck-size', type=int, default=self.BOTTLENECK_SIZE,
             help="Number of bottleneck filters to use to decrease larger kernel computation requirements [default: {}]".format(self.BOTTLENECK_SIZE))
 
-        parser.add_argument('-rw','--regularize-weights', type=float, default=self.REGULARIZE_WEIGHTS,
-            help="Regularization strength for all learned weights [default: {}]".format(self.REGULARIZE_WEIGHTS))
 
         parser.add_argument('-bl','--balance-loss', type=str2bool, default=self.BALANCE_LOSS,
             help="Turn on or off weight balancing across classes [default: {}]".format(self.BALANCE_LOSS))
