@@ -296,6 +296,10 @@ class net_config(FLAGS):
         self.USE_BIAS                    = True
         self.N_INITIAL_FILTERS           = 6
   
+        # Run with half precision:
+        self.INPUT_HALF_PRECISION        = False
+        self.MODEL_HALF_PRECISION        = False
+        self.LOSS_SCALE                  = 1.0
 
 
         FLAGS._set_defaults(self)
@@ -308,6 +312,19 @@ class net_config(FLAGS):
             help="Whether or not to use batch normalization in all mlp layers [default: {}]".format(self.BATCH_NORM))
         parser.add_argument('--n-initial-filters', type=int, default=self.N_INITIAL_FILTERS,
             help="Number of filters applied, per plane, for the initial convolution [default: {}]".format(self.N_INITIAL_FILTERS))
+       
+
+
+
+        parser.add_argument('--model-half-precision', type=str2bool, default=self.MODEL_HALF_PRECISION,
+            help="Use half precision for model weights and parameters [default: {}]".format(self.MODEL_HALF_PRECISION))
+
+        parser.add_argument('--input-half-precision', type=str2bool, default=self.INPUT_HALF_PRECISION,
+            help="Use half precision for input values and intermediate activations [default: {}]".format(self.INPUT_HALF_PRECISION))
+
+        parser.add_argument('--loss-scale', type=float, default=self.LOSS_SCALE,
+            help="Amount to scale the loss function before back prop [default: {}]".format(self.LOSS_SCALE))
+
        
         return parser
 
