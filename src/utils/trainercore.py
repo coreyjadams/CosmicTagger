@@ -144,7 +144,7 @@ class trainercore(object):
         if state is not None:
             self.load_state(state)
 
-   def set_compute_parameters(self):
+    def set_compute_parameters(self):
         # If using half precision on the model, convert it now:
         if FLAGS.MODEL_HALF_PRECISION:
             self._net.half()

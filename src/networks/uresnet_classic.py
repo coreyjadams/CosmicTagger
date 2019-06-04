@@ -325,7 +325,7 @@ class UNetCore(nn.Module):
 
 class UResNet(torch.nn.Module):
 
-    def __init__(self, x_spatial_size, y_spatial_size):
+    def __init__(self, shape):
         torch.nn.Module.__init__(self)
 
 
