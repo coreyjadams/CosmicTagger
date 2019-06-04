@@ -53,7 +53,10 @@ def main():
             from src.networks import sparseuresnet
             net = sparseuresnet.UResNet
 
-        pass
+
+        FLAGS.set_net(net)
+        trainer.initialize()
+        trainer.batch_process()
 
     if FLAGS.MODE == 'iotest':
         trainer.initialize(io_only=True)

@@ -106,10 +106,11 @@ class FLAGS(Borg):
         self.OPTIMIZER             = "Adam"
         self.REGULARIZE_WEIGHTS    = 0.0001
 
-        self.IMAGE_PRODUCER        = ""
-        self.LABEL_PRODUCER        = ""
+        self.IMAGE_PRODUCER        = "sbndwire"
+        self.LABEL_PRODUCER        = "sbnd_cosmicseg"
 
-        self.SHAPE                 = []
+        self.SHAPE                 = [1024, 640]
+        self.MAX_VOXELS            = 80000
 
 
     def _add_default_io_configuration(self, parser):
@@ -218,7 +219,8 @@ class FLAGS(Borg):
 
         parser.add_argument('--shape', default=self.SHAPE, type=int, nargs="+",
             help='Dense shape of the images [default: {}]'.format(self.SHAPE))
-
+        parser.add_argument('--max-voxels', default=self.MAX_VOXELS, type=int,
+            help='Maximum number of voxels used in sparse IO [default: {}]'.format(self.MAX_VOXELS))
 
         return parser
 
