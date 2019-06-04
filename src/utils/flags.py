@@ -335,6 +335,7 @@ class uresnet(FLAGS):
         self.BALANCE_LOSS                = True
         
 
+        self.DATA_FORMAT                 = "channels_last"
 
         # Relevant parameters for running on KNL:
         self.INTER_OP_PARALLELISM_THREADS    = 2
@@ -374,6 +375,10 @@ class uresnet(FLAGS):
         parser.add_argument('-bl','--balance-loss', type=str2bool, default=self.BALANCE_LOSS,
             help="Turn on or off weight balancing across classes [default: {}]".format(self.BALANCE_LOSS))
         
+
+        parser.add_argument('-df','--data-format', type=str, default=self.DATA_FORMAT,
+            help="Channels format in the tensor shape [default: {}]".format(self.DATA_FORMAT))
+
         parser.add_argument('--residual', type=str2bool, default=self.RESIDUAL,
             help="Use residual units instead of convolutions [default: {}]".format(self.RESIDUAL))
 

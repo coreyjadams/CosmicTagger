@@ -126,6 +126,8 @@ class trainercore(object):
 
         io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
 
+        print (io_dims)
+
         self._dims = {}
         # Using the sparse IO techniques, we have to manually set the dimensions for the input.
         if "downsample" in FLAGS.FILE:
@@ -143,9 +145,6 @@ class trainercore(object):
                 self._dims['image'] = numpy.asarray([io_dims['image'][0],3, 1280, 2048])
                 self._dims['label'] = numpy.asarray([io_dims['image'][0],3, 1280, 2048])
 
-
-        # Call the function to define the inputs
-        self._input   = self._initialize_input(self._dims)
 
 
         # Add a summary object for the io compute time:
