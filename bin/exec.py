@@ -17,7 +17,7 @@ from src.utils import flags
 def main():
 
     # If you extend the flags class, change this line! 
-    FLAGS = flags.net_config()
+    FLAGS = flags.uresnet()
     FLAGS.parse_args()
     # FLAGS.dump_config()
 

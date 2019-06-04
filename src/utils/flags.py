@@ -315,7 +315,7 @@ class uresnet(FLAGS):
         self.OPTIMIZER                   = "Adam"
 
         # Run this in sparse mode or not?
-        self.SPARSE                      = True
+        self.SPARSE                      = False
         self.CONV_MODE                   = '2D'
 
 
