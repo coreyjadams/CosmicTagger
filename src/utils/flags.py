@@ -221,6 +221,8 @@ class FLAGS(Borg):
             help='Dense shape of the images [default: {}]'.format(self.SHAPE))
         parser.add_argument('--max-voxels', default=self.MAX_VOXELS, type=int,
             help='Maximum number of voxels used in sparse IO [default: {}]'.format(self.MAX_VOXELS))
+        parser.add_argument('--verbosity', default=self.VERBOSITY, type=int,
+            help='Verbosity of python calls [default: {}]'.format(self.VERBOSITY))
 
         return parser
 
