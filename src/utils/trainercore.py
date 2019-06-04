@@ -115,17 +115,95 @@ class trainercore(object):
 
     def init_network(self):
 
-        raise NotImplementedError("You must implement this function")
+        # This function builds the compute graph.
+        # Optionally, it can build a 'subset' graph if this mode is
+
+        # Net construction:
+        start = time.time()
+        sys.stdout.write("Begin constructing network\n")
+
+        # Make sure all required dimensions are present:
+
+        io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
+
+        self._dims = {}
+        # Using the sparse IO techniques, we have to manually set the dimensions for the input.
+        if "downsample" in FLAGS.FILE:
+            if FLAGS.DATA_FORMAT == "channels_last":
+                self._dims['image'] = numpy.asarray([io_dims['image'][0],640, 1024, 3])
+                self._dims['label'] = numpy.asarray([io_dims['image'][0],640, 1024, 3])
+            else:
+                self._dims['image'] = numpy.asarray([io_dims['image'][0],3, 640, 1024])
+                self._dims['label'] = numpy.asarray([io_dims['image'][0],3, 640, 1024])
+        else:
+            if FLAGS.DATA_FORMAT == "channels_last":
+                self._dims['image'] = numpy.asarray([io_dims['image'][0],1280, 2048, 3])
+                self._dims['label'] = numpy.asarray([io_dims['image'][0],1280, 2048, 3])
+            else:
+                self._dims['image'] = numpy.asarray([io_dims['image'][0],3, 1280, 2048])
+                self._dims['label'] = numpy.asarray([io_dims['image'][0],3, 1280, 2048])
+
+
+        # Call the function to define the inputs
+        self._input   = self._initialize_input(self._dims)
+
+
+        # Add a summary object for the io compute time:
+        self._metrics['IO_Fetch_time'] = self._input['io_time']
+        # tf.summary.scalar("IO_Fetch_time", self._input['io_time'])
+
+        if FLAGS.MODE == "train":
+            # Call the function to define the output
+            self._logits  = self._net._build_network(self._input)
+
+
+
+            # Here, if the data format is channels_first, we have to reorder the logits tensors
+            # To put channels last.  Otherwise it does not work with the softmax tensors.
+
+            if FLAGS.DATA_FORMAT != "channels_last":
+                # Split the channel dims apart:
+                for i, logit in enumerate(self._logits):
+                    n_splits = logit.get_shape().as_list()[1]
+                    
+                    # Split the tensor apart:
+                    split = [tf.squeeze(l, 1) for l in tf.split(logit, n_splits, 1)]
+                    
+                    # Stack them back together with the right shape:
+                    self._logits[i] = tf.stack(split, -1)
+
+            # Apply a softmax and argmax:
+            self._outputs = self._create_softmax(self._logits)
+
+
+            self._accuracy = self._calculate_accuracy(inputs=self._input, outputs=self._outputs)
+
+            # Create the loss function
+            self._loss    = self._calculate_loss(inputs=self._input, logits=self._logits)
+
+        end = time.time()
+        sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(end-start))
 
     def print_network_info(self):
-        raise NotImplementedError("You must implement this function")
+        n_trainable_parameters = 0
+        for var in tf.trainable_variables():
+            n_trainable_parameters += numpy.prod(var.get_shape())
+        tf.logging.info("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
 
 
     def load_model_from_file(self):
         raise NotImplementedError("You must implement this function")
 
     def set_compute_parameters(self):
-        raise NotImplementedError("You must implement this function")
+
+        self._config = tf.ConfigProto()
+
+        if FLAGS.COMPUTE_MODE == "CPU":
+            self._config.inter_op_parallelism_threads = FLAGS.INTER_OP_PARALLELISM_THREADS
+            self._config.intra_op_parallelism_threads = FLAGS.INTRA_OP_PARALLELISM_THREADS
+        if FLAGS.COMPUTE_MODE == "GPU":
+            self._config.gpu_options.allow_growth = True
+            # self._config.gpu_options.visible_device_list = str(hvd.local_rank())
 
 
     def initialize(self, io_only=False):
@@ -156,6 +234,19 @@ class trainercore(object):
         self.set_compute_parameters()
 
 
+
+        if FLAGS.MODE == "train":
+            self._sess = tf.train.MonitoredTrainingSession(config=self._config, 
+                hooks                 = hooks,
+                checkpoint_dir        = FLAGS.LOG_DIRECTORY,
+                log_step_count_steps  = FLAGS.LOGGING_ITERATION,
+                save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
+
+        elif FLAGS.MODE == "prof":
+            self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = None,
+                checkpoint_dir        = None,
+                log_step_count_steps  = None,
+                save_checkpoint_steps = None)
 
 
 
