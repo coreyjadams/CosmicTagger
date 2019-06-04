@@ -371,9 +371,6 @@ class uresnet(FLAGS):
         parser.add_argument('--bottleneck-size', type=int, default=self.BOTTLENECK_SIZE,
             help="Number of bottleneck filters to use to decrease larger kernel computation requirements [default: {}]".format(self.BOTTLENECK_SIZE))
 
-        parser.add_argument('-o', '--optimizer', default=self.OPTIMIZER, type=str,
-            help="Optimizer to use, must be lars, rmsprop, adam [default: {}]".format(self.OPTIMIZER))
-
         parser.add_argument('-rw','--regularize-weights', type=float, default=self.REGULARIZE_WEIGHTS,
             help="Regularization strength for all learned weights [default: {}]".format(self.REGULARIZE_WEIGHTS))
 
