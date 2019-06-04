@@ -11,7 +11,7 @@ from larcv import larcv_interface
 
 from . import flags
 from . import data_transforms
-from . import io_templates
+from ..io import io_templates
 FLAGS = flags.FLAGS()
 
 import datetime
@@ -43,9 +43,17 @@ class trainercore(object):
 
         # Use the templates to generate a configuration string, which we store into a temporary file
         if FLAGS.TRAINING:
-            config = io_templates.train_io(input_file=FLAGS.FILE, max_voxels=max_voxels)
+            config = io_templates.train_io(
+                input_file=FLAGS.FILE, 
+                data_producer= FLAGS.IMAGE_PRODUCER,
+                label_producer= FLAGS.LABEL_PRODUCER, 
+                max_voxels=max_voxels)
         else:
-            config = io_templates.ana_io(input_file=FLAGS.FILE, max_voxels=max_voxels)
+            config = io_templates.ana_io(
+                input_file=FLAGS.FILE, 
+                data_producer= FLAGS.IMAGE_PRODUCER,
+                label_producer= FLAGS.LABEL_PRODUCER, 
+                max_voxels=max_voxels)
 
 
         # Generate a named temp file:
@@ -232,9 +240,8 @@ class trainercore(object):
                 continue
             minibatch_data[key] = numpy.reshape(minibatch_data[key], minibatch_dims[key])
 
-        dense_shape = [self._x_spatial_size, self._y_spatial_size]
-        minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=dense_shape)
-        minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=dense_shape)
+        minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
+        minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
 
 
 
