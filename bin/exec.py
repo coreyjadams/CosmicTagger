@@ -17,7 +17,7 @@ from src.utils import flags
 def main():
 
     # If you extend the flags class, change this line! 
-    FLAGS = flags.FLAGS()
+    FLAGS = flags.net_config()
     FLAGS.parse_args()
     # FLAGS.dump_config()
 
@@ -46,6 +46,7 @@ def main():
         # FLAGS.set_net(net)
         # trainer.initialize()
         # trainer.batch_process()
+        pass
 
     if FLAGS.MODE == 'iotest':
         trainer.initialize(io_only=True)
