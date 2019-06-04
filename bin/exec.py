@@ -17,7 +17,7 @@ from src.utils import flags
 def main():
 
     # If you extend the flags class, change this line! 
-    FLAGS = flags.net_config()
+    FLAGS = flags.uresnet()
     FLAGS.parse_args()
     # FLAGS.dump_config()
 
@@ -41,12 +41,22 @@ def main():
         # without having to rewrite the training interface each time.
         # It would look like this:
 
-        # from src.networks import uresnet
-        # net = uresnet.UResNet
-        # FLAGS.set_net(net)
-        # trainer.initialize()
-        # trainer.batch_process()
-        pass
+        if not FLAGS.SPARSE:
+            if FLAGS.CONV_MODE == '3D':
+                from src.networks import uresnet
+                net = uresnet.UResNet
+            else:
+                from src.networks import uresnet_classic
+                net = uresnet_classic.UResNet
+
+        else:
+            from src.networks import sparseuresnet
+            net = sparseuresnet.UResNet
+
+
+        FLAGS.set_net(net)
+        trainer.initialize()
+        trainer.batch_process()
 
     if FLAGS.MODE == 'iotest':
         trainer.initialize(io_only=True)

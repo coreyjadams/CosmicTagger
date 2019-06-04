@@ -106,8 +106,8 @@ class FLAGS(Borg):
         self.OPTIMIZER             = "Adam"
         self.REGULARIZE_WEIGHTS    = 0.0001
 
-        self.IMAGE_PRODUCER        = ""
-        self.LABEL_PRODUCER        = ""
+        self.IMAGE_PRODUCER        = "sbndwire"
+        self.LABEL_PRODUCER        = "sbnd_cosmicseg"
 
         self.SHAPE                 = []
 
@@ -309,13 +309,12 @@ class uresnet(FLAGS):
         self.RESIDUAL                    = True
 
         # Parameters controlling regularization
-        self.REGULARIZE_WEIGHTS          = 0.0001
         self.BALANCE_LOSS                = True
 
         self.OPTIMIZER                   = "Adam"
 
         # Run this in sparse mode or not?
-        self.SPARSE                      = True
+        self.SPARSE                      = False
         self.CONV_MODE                   = '2D'
 
 
@@ -371,11 +370,6 @@ class uresnet(FLAGS):
         parser.add_argument('--bottleneck-size', type=int, default=self.BOTTLENECK_SIZE,
             help="Number of bottleneck filters to use to decrease larger kernel computation requirements [default: {}]".format(self.BOTTLENECK_SIZE))
 
-        parser.add_argument('-o', '--optimizer', default=self.OPTIMIZER, type=str,
-            help="Optimizer to use, must be lars, rmsprop, adam [default: {}]".format(self.OPTIMIZER))
-
-        parser.add_argument('-rw','--regularize-weights', type=float, default=self.REGULARIZE_WEIGHTS,
-            help="Regularization strength for all learned weights [default: {}]".format(self.REGULARIZE_WEIGHTS))
 
         parser.add_argument('-bl','--balance-loss', type=str2bool, default=self.BALANCE_LOSS,
             help="Turn on or off weight balancing across classes [default: {}]".format(self.BALANCE_LOSS))
