@@ -198,25 +198,13 @@ class trainercore(object):
 
         self._global_step = 0
 
-
-        self.restore_model()
-
         self.set_compute_parameters()
 
+        # Create a session:
+        self._sess = tf.Session(config=self._config)
+        self.restore_model()
 
 
-        if FLAGS.MODE == "train":
-            self._sess = tf.train.MonitoredTrainingSession(config=self._config, 
-                hooks                 = hooks,
-                checkpoint_dir        = FLAGS.LOG_DIRECTORY,
-                log_step_count_steps  = FLAGS.LOGGING_ITERATION,
-                save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
-
-        elif FLAGS.MODE == "prof":
-            self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = None,
-                checkpoint_dir        = None,
-                log_step_count_steps  = None,
-                save_checkpoint_steps = None)
 
 
 
