@@ -323,19 +323,19 @@ class trainercore(object):
         if 'RMS' in FLAGS.OPTIMIZER.upper():
             # Use RMS prop:
             tf.logging.info("Selected optimizer is RMS Prop")
-            opt = tf.train.RMSPropOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.train.RMSPropOptimizer(FLAGS.LEARNING_RATE)
         elif 'LARS' in FLAGS.OPTIMIZER.upper():
             tf.logging.info("Selected optimizer is LARS")
-            opt = tf.contrib.opt.LARSOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.contrib.opt.LARSOptimizer(FLAGS.LEARNING_RATE)
         else:
             # default is Adam:
             tf.logging.info("Using default Adam optimizer")
-            opt = tf.train.AdamOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.train.AdamOptimizer(FLAGS.LEARNING_RATE)
 
         self._global_step = tf.train.get_or_create_global_step()
 
 
-        self._train_op = opt.minimize(self._loss, self._global_step)
+        self._train_op = self._opt.minimize(self._loss, self._global_step)
 
 
     def _calculate_loss(self, labels, logits, weight):
