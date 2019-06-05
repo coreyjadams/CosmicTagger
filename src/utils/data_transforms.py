@@ -18,11 +18,21 @@ where N_features is 2 or 3 depending on whether or not values are included
 
 ''' 
 
+from . import flags
+FLAGS = flags.FLAGS()
+
 def larcvsparse_to_dense_2d(input_array, dense_shape):
 
     batch_size = input_array.shape[0]
     n_planes   = input_array.shape[1]
-    output_array = numpy.zeros((batch_size, n_planes, dense_shape[0], dense_shape[1]), dtype=numpy.float32)
+
+    if FLAGS.DATA_FORMAT == "channels_first":
+
+        output_array = numpy.zeros((batch_size, n_planes, dense_shape[0], dense_shape[1]), dtype=numpy.float32)
+
+    else:
+        output_array = numpy.zeros((batch_size, dense_shape[0], dense_shape[1], n_planes), dtype=numpy.float32)
+
 
 
     x_coords = input_array[:,:,:,1]
@@ -38,8 +48,11 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
 
 
     # Fill in the output tensor
+    if FLAGS.DATA_FORMAT == "channels_first":
 
-    output_array[batch_index, plane_index, x_index, y_index] = values    
+        output_array[batch_index, plane_index, x_index, y_index] = values    
+    else:
+        output_array[batch_index, x_index, y_index, plane_index] = values    
 
     return output_array
 

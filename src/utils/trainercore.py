@@ -29,7 +29,7 @@ class trainercore(object):
         self._larcv_interface = larcv_interface.larcv_interface()
         self._iteration       = 0
         self._global_step     = -1
-
+        self._val_writer      = None
 
         self._cleanup         = []
 
@@ -199,6 +199,8 @@ class trainercore(object):
                 labels = self._input['label'], 
                 logits = self._logits, 
                 weight = self._input['weight'])
+            
+            self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
 
         end = time.time()
         sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(end-start))
@@ -207,7 +209,7 @@ class trainercore(object):
         n_trainable_parameters = 0
         for var in tf.trainable_variables():
             n_trainable_parameters += numpy.prod(var.get_shape())
-        tf.logging.info("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
+        sys.stdout.write("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
 
 
     def set_compute_parameters(self):
@@ -234,14 +236,16 @@ class trainercore(object):
         if io_only:
             return
 
+        graph = tf.get_default_graph()
         self.init_network()
 
         self.print_network_info()
 
         self.init_optimizer()
 
-        self.init_saver()
-
+        # Additionally, in training mode if there is aux data use it for validation:
+        if FLAGS.AUX_FILE is not None:
+            self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
 
         # Take all of the metrics and turn them into summaries:
         for key in self._metrics:
@@ -249,15 +253,70 @@ class trainercore(object):
 
         self._summary_basic = tf.summary.merge_all()
 
-        self._global_step = 0
 
         self.set_compute_parameters()
 
+        hooks = self.get_standard_hooks()
+
+        if FLAGS.CHECKPOINT_DIRECTORY is not None:
+            checkpoint_dir = FLAGS.CHECKPOINT_DIRECTORY
+        else:
+            checkpoint_dir = FLAGS.LOG_DIRECTORY
+
+
         # Create a session:
-        self._sess = tf.Session(config=self._config)
-        self.restore_model()
+        self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = hooks,
+            checkpoint_dir        = checkpoint_dir,
+            log_step_count_steps  = FLAGS.LOGGING_ITERATION,
+            save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
 
 
+
+    def get_standard_hooks(self):
+
+        hooks = []
+
+        loss_is_nan_hook = tf.train.NanTensorHook(
+            self._loss,
+            fail_on_nan_loss=True,
+        )
+        hooks.append(loss_is_nan_hook)
+
+        # Create a hook to manage the summary saving:
+        summary_saver_hook = tf.train.SummarySaverHook(
+            save_steps = FLAGS.SUMMARY_ITERATION,
+            output_dir = FLAGS.LOG_DIRECTORY,
+            summary_op = self._summary_basic
+            )
+        hooks.append(summary_saver_hook)
+
+        summary_saver_hook_image = tf.train.SummarySaverHook(
+            save_steps = 10*FLAGS.SUMMARY_ITERATION,
+            output_dir = FLAGS.LOG_DIRECTORY,
+            summary_op = self._summary_images
+            )
+        hooks.append(summary_saver_hook_image)
+
+        # if FLAGS.PROFILE_ITERATION != -1:
+        #     # Create a profiling hook for tracing:
+        #     profile_hook = tf.train.ProfilerHook(
+        #         save_steps    = FLAGS.PROFILE_ITERATION,
+        #         output_dir    = FLAGS.LOG_DIRECTORY,
+        #         show_dataflow = True,
+        #         show_memory   = True
+        #     )
+        #     hooks.append(profile_hook)
+
+        logging_hook = tf.train.LoggingTensorHook(
+            tensors       = { 'global_step' : self._global_step,
+                              'accuracy'    : self._accuracy,
+                              'loss'        : self._loss},
+            every_n_iter  = FLAGS.LOGGING_ITERATION,
+            )
+        hooks.append(logging_hook)
+
+
+        return hooks
 
     def init_optimizer(self):
 
@@ -279,150 +338,22 @@ class trainercore(object):
         self._train_op = opt.minimize(self._loss, self._global_step)
 
 
-    def init_saver(self):
-
-        if FLAGS.CHECKPOINT_DIRECTORY == None:
-            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
-        else:
-            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
-
-        try:
-            os.mkdir(file_path)
-        except FileExistsError:
-            pass
-        except:
-            tf.log.error("Could not make file path")
-
-        # Create a saver for snapshots of the network:
-        self._saver = tf.train.Saver()
-        self._saver_dir = file_path
-
-        # Create a file writer for training metrics:
-        self._main_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/train/")
-
-        # Additionally, in training mode if there is aux data use it for validation:
-        if FLAGS.AUX_FILE is not None:
-            self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
-
-        self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
-
-
-
-    def restore_model(self):
-        ''' This function attempts to restore the model from file
-        '''
-        _, checkpoint_file_path = self.get_model_filepath()
-
-        if not os.path.isfile(checkpoint_file_path):
-            return None
-        # Parse the checkpoint file and use that to get the latest file path
-
-        with open(checkpoint_file_path, 'r') as _ckp:
-            for line in _ckp.readlines():
-                if line.startswith("latest: "):
-                    chkp_file = line.replace("latest: ", "").rstrip('\n')
-                    chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
-                    print("Restoring weights from ", chkp_file)
-                    break
-
-        return self.restore_from_file(chkp_file)
-
-    def restore_from_file(self, checkpoint_file):
-        # Take a checkpoint file and open it and restore it
-        self._saver.restore(self._sess, checkpoint_file)
-
-    def init_saver(self):
-        
-        if FLAGS.CHECKPOINT_DIRECTORY == None:
-            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
-        else:
-            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
-
-        try:
-            os.mkdir(file_path)
-        except FileExistsError:
-            pass
-        except:
-            tf.log.error("Could not make file path")
-
-    def save_model(self):
-        '''Save the model to file
-        
-        '''
-        path, checkpoint_file_path = self.get_model_filepath()
-
-        # Make sure the path actually exists:
-        if not os.path.isdir(os.path.dirname(current_file_path)):
-            os.makedirs(os.path.dirname(current_file_path))
-
-        self._saver.save(self._sess, current_file_path)
-
-        # Parse the checkpoint file to see what the last checkpoints were:
-
-        # Keep only the last 5 checkpoints
-        n_keep = 5
-
-
-        past_checkpoint_files = {}
-        try:
-            with open(checkpoint_file_path, 'r') as _chkpt:
-                for line in _chkpt.readlines():
-                    line = line.rstrip('\n')
-                    vals = line.split(":")
-                    if vals[0] != 'latest':
-                        past_checkpoint_files.update({int(vals[0]) : vals[1].replace(' ', '')})
-        except:
-            pass
-        
-
-        # Remove the oldest checkpoints while the number is greater than n_keep
-        while len(past_checkpoint_files) >= n_keep:
-            min_index = min(past_checkpoint_files.keys())
-            file_to_remove = os.path.dirname(checkpoint_file_path) + "/" + past_checkpoint_files[min_index]
-            os.remove(file_to_remove)
-            past_checkpoint_files.pop(min_index)
-
-
-
-        # Update the checkpoint file
-        with open(checkpoint_file_path, 'w') as _chkpt:
-            _chkpt.write('latest: {}\n'.format(os.path.basename(current_file_path)))
-            _chkpt.write('{}: {}\n'.format(self._global_step, os.path.basename(current_file_path)))
-            for key in past_checkpoint_files:
-                _chkpt.write('{}: {}\n'.format(key, past_checkpoint_files[key]))
-
-
-
-    def get_model_filepath(self):
-        '''Helper function to build the filepath of a model for saving and restoring:
-        
-        '''
-
-        # Find the base path of the log directory
-        if FLAGS.CHECKPOINT_DIRECTORY == None:
-            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
-        else:
-            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
-
-
-        name = file_path + 'model-{}.ckpt'.format(self._global_step)
-        checkpoint_file_path = file_path + "checkpoint"
-
-        return name, checkpoint_file_path
-
-
-
     def _calculate_loss(self, labels, logits, weight):
         ''' Calculate the loss.
 
         returns a single scalar for the optimizer to use.
-        '''
+        '''        
+
+        if FLAGS.DATA_FORMAT == "channels_last":
+            channels_dim = -1 
+        else:
+            channels_dim = 1
 
         with tf.name_scope('cross_entropy'):
 
             # Calculate the loss, per plane, unreduced:
-            split_labels = [tf.squeeze(l, axis=-1) for l in tf.split(labels,len(logits) ,-1)]
-            split_weights = [tf.squeeze(l, axis=-1) for l in tf.split(weight,len(logits) ,-1)]
+            split_labels = [tf.squeeze(l, axis=channels_dim) for l in tf.split(labels,len(logits) ,channels_dim)]
+            split_weights = [tf.squeeze(l, axis=channels_dim) for l in tf.split(weight,len(logits) ,channels_dim)]
             loss = [None]*len(logits)
             for p in range(len(logits)):
                 loss[p] = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -467,14 +398,17 @@ class trainercore(object):
         '''
 
         # Compare how often the input label and the output prediction agree:
-
+        if FLAGS.DATA_FORMAT == "channels_last":
+            channels_dim = -1 
+        else:
+            channels_dim = 1
 
         with tf.name_scope('accuracy'):
             total_accuracy   = [None]*len(logits['prediction'])
             non_bkg_accuracy = [None]*len(logits['prediction'])
             neut_accuracy    = [None]*len(logits['prediction'])
             
-            split_labels = [tf.squeeze(l, axis=-1) for l in tf.split(labels,len(logits['prediction']) ,-1)]
+            split_labels = [tf.squeeze(l, axis=channels_dim) for l in tf.split(labels,len(logits['prediction']) , channels_dim)]
 
             for p in range(len(logits['prediction'])):
 
@@ -577,7 +511,7 @@ class trainercore(object):
         minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
         minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
 
-
+        minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
 
         return minibatch_data
 
@@ -621,19 +555,55 @@ class trainercore(object):
     def on_epoch_end(self):
         pass
 
+    def val_step(self, gs):
 
-    def forward_pass(self, minibatch_data):
-        raise NotImplementedError("You must implement this function")
+        if gs == 0: return
 
-    def train_step(self):
-        raise NotImplementedError("You must implement this function")
+        if self._val_writer is None:
+            return
 
+        if gs % FLAGS.AUX_ITERATION == 0:
+            start = time.time()
+            minibatch_data = self.fetch_next_batch('aux')
+            io_end = time.time()
+
+            minibatch_data['io_time'] = io_end - start
+
+            if gs % 10*FLAGS.AUX_ITERATION == 0:
+                val_images, val_summary = self._sess.run([self._summary_images, self._summary_basic],
+                    feed_dict = self.feed_dict(inputs=minibatch_data))
+                self._val_writer.add_summary(val_images, gs)
+            else:
+                val_summary = self._sess.run(self._summary_basic, 
+                    feed_dict = self.feed_dict(inputs=minibatch_data))
+
+            self._val_writer.add_summary(val_summary, gs)
 
         return
 
-    def val_step(self):
-        raise NotImplementedError("You must implement this function")
 
+    def train_step(self):
+
+
+        start = time.time()
+
+        minibatch_data = self.fetch_next_batch()
+
+        io_end = time.time()
+
+        # print("Got data from file")
+
+        # Reshape labels by dict entry, if needed, or all at once:
+        # minibatch_data['label'] = numpy.reshape(minibatch_data['label'], minibatch_dims['label'])
+
+        minibatch_data['io_time'] = io_end - start
+
+        fd = self.feed_dict(minibatch_data)
+
+        gs, _  = self._sess.run([self._global_step, self._train_op], 
+                       feed_dict = self.feed_dict(inputs = minibatch_data))
+
+        return gs
 
  
     def stop(self):
@@ -651,32 +621,40 @@ class trainercore(object):
 
         raise NotImplementedError("You must implement this function")
 
+    def feed_dict(self, inputs):
+        '''Build the feed dict
 
-    def batch_process(self):
+        Take input images, labels and match
+        to the correct feed dict tensorrs
 
-        # At the begining of batch process, figure out the epoch size:
-        self._epoch_size = self._larcv_interface.size('primary')
+        This is probably overridden in the subclass, but here you see the idea
 
-        # This is the 'master' function, so it controls a lot
+        Arguments:
+            images {dict} -- Dictionary containing the input tensors
 
+        Returns:
+            [dict] -- Feed dictionary for a tf session run call
+
+        '''
+        fd = dict()
+
+        for key in inputs:
+            if inputs[key] is not None:
+                fd.update({self._input[key] : inputs[key]})
+
+        return fd
+
+
+    def batch_process(self, timing=False):
 
         # Run iterations
         for i in range(FLAGS.ITERATIONS):
             if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
                 print('Finished training (iteration %d)' % self._iteration)
-                self.checkpoint()
                 break
 
+            start=time.time()
 
-            if FLAGS.TRAINING:
-                self.val_step()
-                self.train_step()
-                self.checkpoint()
-            else:
-                self.ana_step()
+            gs = self.train_step()
+            self.val_step(gs)
 
-
-        if self._main_writer is not None:
-            self._main_writer.close()
-        if self._val_writer is not None:
-            self._val_writer.close()
