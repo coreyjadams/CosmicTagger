@@ -303,7 +303,49 @@ class trainercore(object):
         '''Save the model to file
         
         '''
-        raise NotImplementedError("You must implement this function")
+        path, checkpoint_file_path = self.get_model_filepath()
+
+        # Make sure the path actually exists:
+        if not os.path.isdir(os.path.dirname(current_file_path)):
+            os.makedirs(os.path.dirname(current_file_path))
+
+        self._saver.save(self._sess, current_file_path)
+
+        # Parse the checkpoint file to see what the last checkpoints were:
+
+        # Keep only the last 5 checkpoints
+        n_keep = 5
+
+
+        past_checkpoint_files = {}
+        try:
+            with open(checkpoint_file_path, 'r') as _chkpt:
+                for line in _chkpt.readlines():
+                    line = line.rstrip('\n')
+                    vals = line.split(":")
+                    if vals[0] != 'latest':
+                        past_checkpoint_files.update({int(vals[0]) : vals[1].replace(' ', '')})
+        except:
+            pass
+        
+
+        # Remove the oldest checkpoints while the number is greater than n_keep
+        while len(past_checkpoint_files) >= n_keep:
+            min_index = min(past_checkpoint_files.keys())
+            file_to_remove = os.path.dirname(checkpoint_file_path) + "/" + past_checkpoint_files[min_index]
+            os.remove(file_to_remove)
+            past_checkpoint_files.pop(min_index)
+
+
+
+        # Update the checkpoint file
+        with open(checkpoint_file_path, 'w') as _chkpt:
+            _chkpt.write('latest: {}\n'.format(os.path.basename(current_file_path)))
+            _chkpt.write('{}: {}\n'.format(self._global_step, os.path.basename(current_file_path)))
+            for key in past_checkpoint_files:
+                _chkpt.write('{}: {}\n'.format(key, past_checkpoint_files[key]))
+
+
 
     def get_model_filepath(self):
         '''Helper function to build the filepath of a model for saving and restoring:
