@@ -128,7 +128,6 @@ class trainercore(object):
 
         io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
 
-
         self._dims = {}
         # Using the sparse IO techniques, we have to manually set the dimensions for the input.
 
@@ -158,7 +157,6 @@ class trainercore(object):
             inputs['weight'] = tf.placeholder(tf.float32, self._dims['label'], name="input_weight"),
 
 
-
         # Build the network object, forward pass only:
 
         print(FLAGS._net)
@@ -168,22 +166,6 @@ class trainercore(object):
         if FLAGS.MODE == "train":
             # Call the function to define the output
             self._logits  = FLAGS._net._build_network(self._input)
-
-
-
-            # Here, if the data format is channels_first, we have to reorder the logits tensors
-            # To put channels last.  Otherwise it does not work with the softmax tensors.
-
-            if FLAGS.DATA_FORMAT != "channels_last":
-                # Split the channel dims apart:
-                for i, logit in enumerate(self._logits):
-                    n_splits = logit.get_shape().as_list()[1]
-                    
-                    # Split the tensor apart:
-                    split = [tf.squeeze(l, 1) for l in tf.split(logit, n_splits, 1)]
-                    
-                    # Stack them back together with the right shape:
-                    self._logits[i] = tf.stack(split, -1)
 
             # Apply a softmax and argmax:
             self._outputs = self._create_softmax(self._logits)
@@ -239,6 +221,13 @@ class trainercore(object):
 
         self.init_saver()
 
+
+        # Take all of the metrics and turn them into summaries:
+        for key in self._metrics:
+            tf.summary.scalar(key, self._metrics[key])
+
+        self._summary_basic = tf.summary.merge_all()
+
         self._global_step = 0
 
 
@@ -264,20 +253,74 @@ class trainercore(object):
 
 
     def init_optimizer(self):
-        raise NotImplementedError("You must implement this function")
+
+        if 'RMS' in FLAGS.OPTIMIZER.upper():
+            # Use RMS prop:
+            tf.logging.info("Selected optimizer is RMS Prop")
+            opt = tf.train.RMSPropOptimizer(FLAGS.LEARNING_RATE)
+        elif 'LARS' in FLAGS.OPTIMIZER.upper():
+            tf.logging.info("Selected optimizer is LARS")
+            opt = tf.contrib.opt.LARSOptimizer(FLAGS.LEARNING_RATE)
+        else:
+            # default is Adam:
+            tf.logging.info("Using default Adam optimizer")
+            opt = tf.train.AdamOptimizer(FLAGS.LEARNING_RATE)
+
+        self._global_step = tf.train.get_or_create_global_step()
+
+
+        self._train_op = opt.minimize(self._loss, self._global_step)
 
 
 
     def init_saver(self):
-        raise NotImplementedError("You must implement this function")
+
+        if FLAGS.CHECKPOINT_DIRECTORY == None:
+            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
+        else:
+            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
+
+        try:
+            os.mkdir(file_path)
+        except:
+            tf.log.error("Could not make file path")
+
+        # Create a saver for snapshots of the network:
+        self._saver = tf.train.Saver()
+        self._saver_dir = file_path
+
+        # Create a file writer for training metrics:
+        self._main_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/train/")
+
+        # Additionally, in training mode if there is aux data use it for validation:
+        if FLAGS.AUX_FILE is not None:
+            self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
+
+        self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
 
 
 
     def restore_model(self):
         ''' This function attempts to restore the model from file
         '''
-        raise NotImplementedError("You must implement this function")
+        _, checkpoint_file_path = self.get_model_filepath()
 
+        if not os.path.isfile(checkpoint_file_path):
+            return None
+        # Parse the checkpoint file and use that to get the latest file path
+
+        with open(checkpoint_file_path, 'r') as _ckp:
+            for line in _ckp.readlines():
+                if line.startswith("latest: "):
+                    chkp_file = line.replace("latest: ", "").rstrip('\n')
+                    chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
+                    print("Restoring weights from ", chkp_file)
+                    break
+
+        return self.restore_from_file(chkp_file)
+
+    def restore_from_file(self. checkpoint_file):
+        # Take a checkpoint file and open it and restore it
 
     def load_state(self, state):
 
@@ -288,15 +331,66 @@ class trainercore(object):
         '''Save the model to file
         
         '''
-        raise NotImplementedError("You must implement this function")
+        path, checkpoint_file_path = self.get_model_filepath()
+
+        # Make sure the path actually exists:
+        if not os.path.isdir(os.path.dirname(current_file_path)):
+            os.makedirs(os.path.dirname(current_file_path))
+
+        self._saver.save(self._sess, current_file_path)
+
+        # Parse the checkpoint file to see what the last checkpoints were:
+
+        # Keep only the last 5 checkpoints
+        n_keep = 5
+
+
+        past_checkpoint_files = {}
+        try:
+            with open(checkpoint_file_path, 'r') as _chkpt:
+                for line in _chkpt.readlines():
+                    line = line.rstrip('\n')
+                    vals = line.split(":")
+                    if vals[0] != 'latest':
+                        past_checkpoint_files.update({int(vals[0]) : vals[1].replace(' ', '')})
+        except:
+            pass
+        
+
+        # Remove the oldest checkpoints while the number is greater than n_keep
+        while len(past_checkpoint_files) >= n_keep:
+            min_index = min(past_checkpoint_files.keys())
+            file_to_remove = os.path.dirname(checkpoint_file_path) + "/" + past_checkpoint_files[min_index]
+            os.remove(file_to_remove)
+            past_checkpoint_files.pop(min_index)
+
+
+
+        # Update the checkpoint file
+        with open(checkpoint_file_path, 'w') as _chkpt:
+            _chkpt.write('latest: {}\n'.format(os.path.basename(current_file_path)))
+            _chkpt.write('{}: {}\n'.format(self._global_step, os.path.basename(current_file_path)))
+            for key in past_checkpoint_files:
+                _chkpt.write('{}: {}\n'.format(key, past_checkpoint_files[key]))
+
+
 
     def get_model_filepath(self):
         '''Helper function to build the filepath of a model for saving and restoring:
         
-        
         '''
-        raise NotImplementedError("You must implement this function")
 
+        # Find the base path of the log directory
+        if FLAGS.CHECKPOINT_DIRECTORY == None:
+            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
+        else:
+            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
+
+
+        name = file_path + 'model-{}.ckpt'.format(self._global_step)
+        checkpoint_file_path = file_path + "checkpoint"
+
+        return name, checkpoint_file_path
 
 
 
@@ -329,6 +423,8 @@ class trainercore(object):
 
 
     def summary(self, metrics,saver=""):
+        
+
         raise NotImplementedError("You must implement this function")
 
 
