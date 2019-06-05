@@ -126,23 +126,6 @@ class trainercore(object):
 
         io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
 
-        self._dims = {}
-        # Using the sparse IO techniques, we have to manually set the dimensions for the input.
-        if "downsample" in FLAGS.FILE:
-            if FLAGS.DATA_FORMAT == "channels_last":
-                self._dims['image'] = numpy.asarray([io_dims['image'][0],640, 1024, 3])
-                self._dims['label'] = numpy.asarray([io_dims['image'][0],640, 1024, 3])
-            else:
-                self._dims['image'] = numpy.asarray([io_dims['image'][0],3, 640, 1024])
-                self._dims['label'] = numpy.asarray([io_dims['image'][0],3, 640, 1024])
-        else:
-            if FLAGS.DATA_FORMAT == "channels_last":
-                self._dims['image'] = numpy.asarray([io_dims['image'][0],1280, 2048, 3])
-                self._dims['label'] = numpy.asarray([io_dims['image'][0],1280, 2048, 3])
-            else:
-                self._dims['image'] = numpy.asarray([io_dims['image'][0],3, 1280, 2048])
-                self._dims['label'] = numpy.asarray([io_dims['image'][0],3, 1280, 2048])
-
 
         # Call the function to define the inputs
         self._input   = self._initialize_input(self._dims)
@@ -155,22 +138,6 @@ class trainercore(object):
         if FLAGS.MODE == "train":
             # Call the function to define the output
             self._logits  = self._net._build_network(self._input)
-
-
-
-            # Here, if the data format is channels_first, we have to reorder the logits tensors
-            # To put channels last.  Otherwise it does not work with the softmax tensors.
-
-            if FLAGS.DATA_FORMAT != "channels_last":
-                # Split the channel dims apart:
-                for i, logit in enumerate(self._logits):
-                    n_splits = logit.get_shape().as_list()[1]
-                    
-                    # Split the tensor apart:
-                    split = [tf.squeeze(l, 1) for l in tf.split(logit, n_splits, 1)]
-                    
-                    # Stack them back together with the right shape:
-                    self._logits[i] = tf.stack(split, -1)
 
             # Apply a softmax and argmax:
             self._outputs = self._create_softmax(self._logits)
@@ -226,6 +193,13 @@ class trainercore(object):
 
         self.init_saver()
 
+
+        # Take all of the metrics and turn them into summaries:
+        for key in self._metrics:
+            tf.summary.scalar(key, self._metrics[key])
+
+        self._summary_basic = tf.summary.merge_all()
+
         self._global_step = 0
 
 
@@ -251,12 +225,50 @@ class trainercore(object):
 
 
     def init_optimizer(self):
-        raise NotImplementedError("You must implement this function")
+
+        if 'RMS' in FLAGS.OPTIMIZER.upper():
+            # Use RMS prop:
+            tf.logging.info("Selected optimizer is RMS Prop")
+            opt = tf.train.RMSPropOptimizer(FLAGS.LEARNING_RATE)
+        elif 'LARS' in FLAGS.OPTIMIZER.upper():
+            tf.logging.info("Selected optimizer is LARS")
+            opt = tf.contrib.opt.LARSOptimizer(FLAGS.LEARNING_RATE)
+        else:
+            # default is Adam:
+            tf.logging.info("Using default Adam optimizer")
+            opt = tf.train.AdamOptimizer(FLAGS.LEARNING_RATE)
+
+        self._global_step = tf.train.get_or_create_global_step()
+
+
+        self._train_op = opt.minimize(self._loss, self._global_step)
 
 
 
     def init_saver(self):
-        raise NotImplementedError("You must implement this function")
+
+        if FLAGS.CHECKPOINT_DIRECTORY == None:
+            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
+        else:
+            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
+
+        try:
+            os.mkdir(file_path)
+        except:
+            tf.log.error("Could not make file path")
+
+        # Create a saver for snapshots of the network:
+        self._saver = tf.train.Saver()
+        self._saver_dir = file_path
+
+        # Create a file writer for training metrics:
+        self._main_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/train/")
+
+        # Additionally, in training mode if there is aux data use it for validation:
+        if FLAGS.AUX_FILE is not None:
+            self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
+
+        self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
 
 
 
@@ -341,6 +353,8 @@ class trainercore(object):
 
 
     def summary(self, metrics,saver=""):
+        
+
         raise NotImplementedError("You must implement this function")
 
 
