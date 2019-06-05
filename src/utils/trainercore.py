@@ -291,7 +291,7 @@ class trainercore(object):
 
         return self.restore_from_file(chkp_file)
 
-    def restore_from_file(self. checkpoint_file):
+    def restore_from_file(self, checkpoint_file):
         # Take a checkpoint file and open it and restore it
         self._saver.restore(self._sess, checkpoint_file)
 
