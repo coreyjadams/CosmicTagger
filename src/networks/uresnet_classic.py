@@ -436,8 +436,7 @@ class UResNet(object):
                 #     p=p, i=i, s=x[p].get_shape()))
 
                 # How many filters to return from upsampling?
-                n_filters = network_filters[p][-1].get_shape().as_list()[-1]
-
+                n_filters = network_filters[p][-1].get_shape().as_list()[channels_dim]
 
                 name = "upsample"
                 reuse = False
@@ -464,12 +463,12 @@ class UResNet(object):
                         regularize = FLAGS.REGULARIZE_WEIGHTS,
                         reuse      = reuse)
 
-
                 if FLAGS.CONNECT_PRE_RES_BLOCKS_UP:
                     if FLAGS.CONNECTIONS == "sum":
                         x[p] = x[p] + network_filters[p][-1]
                     else:
-                        n_filters = x[p].get_shape().as_list()[-1]
+                        n_filters = x[p].get_shape().as_list()[channels_dim]
+
                         x[p] = tf.concat([x[p], network_filters[p][-1]],
                                           axis=-1, name='up_concat_plane{0}_{1}'.format(p,i))
                         # Reshape with a bottleneck:
