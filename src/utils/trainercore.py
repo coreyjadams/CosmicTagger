@@ -157,10 +157,6 @@ class trainercore(object):
             n_trainable_parameters += numpy.prod(var.get_shape())
         tf.logging.info("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
 
-
-    def load_model_from_file(self):
-        raise NotImplementedError("You must implement this function")
-
     def set_compute_parameters(self):
 
         self._config = tf.ConfigProto()
@@ -203,7 +199,7 @@ class trainercore(object):
         self._global_step = 0
 
 
-        self.load_model_from_file()
+        self.restore_model()
 
         self.set_compute_parameters()
 
