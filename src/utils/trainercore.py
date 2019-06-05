@@ -30,6 +30,7 @@ class trainercore(object):
         self._iteration       = 0
         self._global_step     = -1
 
+
         self._cleanup         = []
 
     def __del__(self):
@@ -145,36 +146,59 @@ class trainercore(object):
 
         # We have to make placeholders for input objects:
 
-        inputs = dict()
+        self._input = dict()
 
-        inputs.update({
+        self._input.update({
             'image' :  tf.placeholder(tf.float32, self._dims['image'], name="input_image"),
             'label' :  tf.placeholder(tf.int64,   self._dims['label'], name="input_label"),
             'io_time' : tf.placeholder(tf.float32, (), name="io_fetch_time")
         })
 
         if FLAGS.BALANCE_LOSS:
-            inputs['weight'] = tf.placeholder(tf.float32, self._dims['label'], name="input_weight"),
+            self._input['weight'] = tf.placeholder(tf.float32, self._dims['label'], name="input_weight"),
 
 
         # Build the network object, forward pass only:
 
-        print(FLAGS._net)
+        self._metrics = {}
 
-        self._logits = FLAGS._net._build_network(inputs)
+        self._logits = FLAGS._net._build_network(self._input)
+
 
         if FLAGS.MODE == "train":
-            # Call the function to define the output
-            self._logits  = FLAGS._net._build_network(self._input)
+
+
+            # Here, if the data format is channels_first, we have to reorder the logits tensors
+            # To put channels last.  Otherwise it does not work with the softmax tensors.
+
+            if FLAGS.DATA_FORMAT != "channels_last":
+                # Split the channel dims apart:
+                for i, logit in enumerate(self._logits):
+                    n_splits = logit.get_shape().as_list()[1]
+                    
+                    # Split the tensor apart:
+                    split = [tf.squeeze(l, 1) for l in tf.split(logit, n_splits, 1)]
+                    
+                    # Stack them back together with the right shape:
+                    self._logits[i] = tf.stack(split, -1)
 
             # Apply a softmax and argmax:
-            self._outputs = self._create_softmax(self._logits)
+            self._output = dict()
+
+            # Take the logits (which are one per plane) and create a softmax and prediction (one per plane)
+
+            self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
+            self._output['prediction'] = [ tf.argmax(x, axis=-1) for x in self._logits]
 
 
-            self._accuracy = self._calculate_accuracy(inputs=self._input, outputs=self._outputs)
+
+            self._accuracy = self._calculate_accuracy(logits=self._output, labels=self._input['label'])
 
             # Create the loss function
-            self._loss    = self._calculate_loss(inputs=self._input, logits=self._logits)
+            self._loss = self._calculate_loss(
+                labels = self._input['label'], 
+                logits = self._logits, 
+                weight = self._input['weight'])
 
         end = time.time()
         sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(end-start))
@@ -186,8 +210,13 @@ class trainercore(object):
         tf.logging.info("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
 
 
-    def load_model_from_file(self):
-        raise NotImplementedError("You must implement this function")
+    def load_model_from_file(self, session):
+
+        # Try to restore a model from file.
+
+        # First, 
+        self._saver.restore(session, self._saver_dir)
+
 
     def set_compute_parameters(self):
 
@@ -198,7 +227,7 @@ class trainercore(object):
             self._config.intra_op_parallelism_threads = FLAGS.INTRA_OP_PARALLELISM_THREADS
         if FLAGS.COMPUTE_MODE == "GPU":
             self._config.gpu_options.allow_growth = True
-            # self._config.gpu_options.visible_device_list = str(hvd.local_rank())
+            self._config.gpu_options.visible_device_list = str(hvd.local_rank())
 
 
     def initialize(self, io_only=False):
@@ -230,25 +259,28 @@ class trainercore(object):
 
         self._global_step = 0
 
-
-        self.load_model_from_file()
-
         self.set_compute_parameters()
 
+        # Create a session:
+        self._sess = tf.Session(config=self._config)
 
 
-        if FLAGS.MODE == "train":
-            self._sess = tf.train.MonitoredTrainingSession(config=self._config, 
-                hooks                 = hooks,
-                checkpoint_dir        = FLAGS.LOG_DIRECTORY,
-                log_step_count_steps  = FLAGS.LOGGING_ITERATION,
-                save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
+        self.load_model_from_file(self._sess)
 
-        elif FLAGS.MODE == "prof":
-            self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = None,
-                checkpoint_dir        = None,
-                log_step_count_steps  = None,
-                save_checkpoint_steps = None)
+
+
+        # if FLAGS.MODE == "train":
+        #     self._sess = tf.train.MonitoredTrainingSession(config=self._config, 
+        #         hooks                 = hooks,
+        #         checkpoint_dir        = FLAGS.LOG_DIRECTORY,
+        #         log_step_count_steps  = FLAGS.LOGGING_ITERATION,
+        #         save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
+
+        # elif FLAGS.MODE == "prof":
+        #     self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = None,
+        #         checkpoint_dir        = None,
+        #         log_step_count_steps  = None,
+        #         save_checkpoint_steps = None)
 
 
 
@@ -270,7 +302,6 @@ class trainercore(object):
 
 
         self._train_op = opt.minimize(self._loss, self._global_step)
-
 
 
     def init_saver(self):
@@ -322,10 +353,17 @@ class trainercore(object):
     def restore_from_file(self. checkpoint_file):
         # Take a checkpoint file and open it and restore it
 
-    def load_state(self, state):
+    def init_saver(self):
+        
+        if FLAGS.CHECKPOINT_DIRECTORY == None:
+            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
+        else:
+            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
 
-        raise NotImplementedError("You must implement this function")
-
+        try:
+            os.mkdir(file_path)
+        except:
+            tf.log.error("Could not make file path")
 
     def save_model(self):
         '''Save the model to file
@@ -399,7 +437,46 @@ class trainercore(object):
 
         returns a single scalar for the optimizer to use.
         '''
-        raise NotImplementedError("You must implement this function")
+
+        with tf.name_scope('cross_entropy'):
+
+            # Calculate the loss, per plane, unreduced:
+            split_labels = [tf.squeeze(l, axis=-1) for l in tf.split(labels,len(logits) ,-1)]
+            split_weights = [tf.squeeze(l, axis=-1) for l in tf.split(weight,len(logits) ,-1)]
+            loss = [None]*len(logits)
+            for p in range(len(logits)):
+                loss[p] = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels = split_labels[p], 
+                    logits = logits[p]
+                )
+
+                # multiple (elementwise) the weights for the loss function:
+                if FLAGS.BALANCE_LOSS:
+                    loss[p] = tf.multiply(loss[p], split_weights[p])
+                    # Because we have a weighting function, this is a summed reduction:
+                    loss[p] = tf.reduce_sum(loss[p])
+                else:
+                    loss[p] = tf.reduce_mean(loss[p])                
+
+                self._metrics["cross_entropy/Loss_plane_{}".format(p)] = loss[p]
+                # tf.summary.scalar("Loss_plane_{}".format(p),loss[p])
+
+            # We do use the *mean* across planes:
+            total_loss = tf.reduce_mean(loss)
+
+            # # If desired, add weight regularization loss:
+            # if FLAGS.REGULARIZE_WEIGHTS != 0.0: 
+            #     reg_loss = tf.reduce_mean(tf.losses.get_regularization_losses())
+            #     tf.summary.scalar("Regularization_loss",reg_loss)
+            #     total_loss += reg_loss
+
+
+            # Total summary:
+            self._metrics["cross_entropy/Total_Loss"] = total_loss
+            # tf.summary.scalar("Total_Loss",total_loss)
+
+            return total_loss
+
 
     def _calculate_accuracy(self, logits, labels):
         ''' Calculate the accuracy.
@@ -408,8 +485,63 @@ class trainercore(object):
             This is to ensure equivalent metrics are computed for sparse and dense networks.
 
         '''
-        raise NotImplementedError("You must implement this function")
 
+        # Compare how often the input label and the output prediction agree:
+
+
+        with tf.name_scope('accuracy'):
+            total_accuracy   = [None]*len(logits['prediction'])
+            non_bkg_accuracy = [None]*len(logits['prediction'])
+            neut_accuracy    = [None]*len(logits['prediction'])
+            
+            split_labels = [tf.squeeze(l, axis=-1) for l in tf.split(labels,len(logits['prediction']) ,-1)]
+
+            for p in range(len(logits['prediction'])):
+
+                total_accuracy[p] = tf.reduce_mean(
+                        tf.cast(tf.equal(logits['prediction'][p], split_labels[p]), tf.float32)
+                    )
+                # Find the non zero split_labels:
+                non_zero_indices = tf.not_equal(split_labels[p], tf.constant(0, split_labels[p].dtype))
+
+                # Find the neutrino indices:
+                neutrino_indices = tf.equal(split_labels[p], tf.constant(1, split_labels[p].dtype))
+
+                non_zero_logits = tf.boolean_mask(logits['prediction'][p], non_zero_indices)
+                non_zero_labels = tf.boolean_mask(split_labels[p], non_zero_indices)
+
+                neutrino_logits = tf.boolean_mask(logits['prediction'][p], neutrino_indices)
+                neutrino_labels = tf.boolean_mask(split_labels[p], neutrino_indices)
+
+                non_bkg_accuracy[p] = tf.reduce_mean(tf.cast(tf.equal(non_zero_logits, non_zero_labels), tf.float32))
+                neut_accuracy[p]    = tf.reduce_mean(tf.cast(tf.equal(neutrino_logits, neutrino_labels), tf.float32))
+
+                # Add the accuracies to the summary:
+                self._metrics["accuracy/Total_Accuracy_plane{0}".format(p)] = total_accuracy[p]
+                # tf.summary.scalar("Total_Accuracy_plane{0}".format(p),
+                #     total_accuracy[p])
+                self._metrics["accuracy/Non_Background_Accuracy_plane{0}".format(p)] = non_bkg_accuracy[p]
+                # tf.summary.scalar("Non_Background_Accuracy_plane{0}".format(p),
+                #     non_bkg_accuracy[p])
+                self._metrics["accuracy/Neutrino_Accuracy_plane{0}".format(p)] = neut_accuracy[p]
+                # tf.summary.scalar("Neutrino_Accuracy_plane{0}".format(p),
+                #     neut_accuracy[p])
+
+            #Compute the total accuracy and non background accuracy for all planes:
+            all_accuracy            = tf.reduce_mean(total_accuracy)
+            all_non_bkg_accuracy    = tf.reduce_mean(non_bkg_accuracy)
+            all_neut_accuracy       = tf.reduce_mean(neut_accuracy)
+
+            # Add the accuracies to the summary:
+            self._metrics["accuracy/All_Plane_Total_Accuracy"] = all_accuracy
+            # tf.summary.scalar("All_Plane_Total_Accuracy", all_accuracy)
+            self._metrics["accuracy/All_Plane_Non_Background_Accuracy"] = all_non_bkg_accuracy
+            # tf.summary.scalar("All_Plane_Non_Background_Accuracy", all_non_bkg_accuracy)
+            self._metrics["accuracy/All_Plane_Neutrino_Accuracy"] = all_neut_accuracy
+            # tf.summary.scalar("All_Plane_Neutrino_Accuracy", all_neut_accuracy)
+
+
+        return all_non_bkg_accuracy
 
     def _compute_metrics(self, logits, labels, loss):
 
@@ -428,6 +560,28 @@ class trainercore(object):
         raise NotImplementedError("You must implement this function")
 
 
+    def _create_summary_images(self, labels, prediction):
+        ''' Create images of the labels and prediction to show training progress
+        '''
+        with tf.variable_scope('summary_images/'):
+
+            images = []
+
+            # Labels is an unsplit tensor, prediction is a split tensor
+            split_labels = [ tf.cast(l, tf.float32) for l in tf.split(labels,len(prediction) , -1)]
+            for p in range(len(split_labels)):
+                images.append(
+                    tf.summary.image('label_plane_{}'.format(p),
+                                 split_labels[p],
+                                 max_outputs=1)
+                    )
+                images.append(
+                    tf.summary.image('pred_plane_{}'.format(p),
+                                 tf.expand_dims(tf.cast(prediction[p], tf.float32), -1),
+                                 max_outputs=1)
+                    )
+
+        return tf.summary.merge(images)
 
     def fetch_next_batch(self, mode='primary', metadata=False):
 
@@ -447,6 +601,36 @@ class trainercore(object):
 
         return minibatch_data
 
+
+    def compute_weights(self, labels, boost_labels = None):
+        '''
+        This is NOT a tensorflow implementation, but a numpy implementation.
+        Running on CPUs this might not make a difference.  Running on GPUs
+        it might be good to move this to a GPU, but I suspect it's not needed.
+        '''
+        # Take the labels, and compute the per-label weight
+
+
+        # Prepare output weights:
+        weights = numpy.zeros(labels.shape)
+
+        i = 0
+        for batch in labels:
+            # First, figure out what the labels are and how many of each:
+            values, counts = numpy.unique(batch, return_counts=True)
+
+            n_pixels = numpy.sum(counts)
+            for value, count in zip(values, counts):
+                weight = 1.0*(n_pixels - count) / n_pixels
+                if boost_labels is not None and value in boost_labels.keys():
+                    weight *= boost_labels[value]
+                mask = labels[i] == value
+                weights[i, mask] += weight
+            weights[i] *= 1. / numpy.sum(weights[i])
+            i += 1
+
+        # Normalize the weights to sum to 1 for each event:
+        return weights
 
     def increment_global_step(self):
         raise NotImplementedError("You must implement this function")
@@ -512,7 +696,7 @@ class trainercore(object):
                 self.ana_step()
 
 
-        if self._saver is not None:
-            self._saver.close()
-        if self._aux_saver is not None:
-            self._aux_saver.close()
+        if self._main_writer is not None:
+            self._main_writer.close()
+        if self._val_writer is not None:
+            self._val_writer.close()
