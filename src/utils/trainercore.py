@@ -210,14 +210,6 @@ class trainercore(object):
         tf.logging.info("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
 
 
-    def load_model_from_file(self, session):
-
-        # Try to restore a model from file.
-
-        # First, 
-        self._saver.restore(session, self._saver_dir)
-
-
     def set_compute_parameters(self):
 
         self._config = tf.ConfigProto()
@@ -263,24 +255,7 @@ class trainercore(object):
 
         # Create a session:
         self._sess = tf.Session(config=self._config)
-
-
-        self.load_model_from_file(self._sess)
-
-
-
-        # if FLAGS.MODE == "train":
-        #     self._sess = tf.train.MonitoredTrainingSession(config=self._config, 
-        #         hooks                 = hooks,
-        #         checkpoint_dir        = FLAGS.LOG_DIRECTORY,
-        #         log_step_count_steps  = FLAGS.LOGGING_ITERATION,
-        #         save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
-
-        # elif FLAGS.MODE == "prof":
-        #     self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = None,
-        #         checkpoint_dir        = None,
-        #         log_step_count_steps  = None,
-        #         save_checkpoint_steps = None)
+        self.restore_model()
 
 
 
@@ -313,6 +288,8 @@ class trainercore(object):
 
         try:
             os.mkdir(file_path)
+        except FileExistsError:
+            pass
         except:
             tf.log.error("Could not make file path")
 
