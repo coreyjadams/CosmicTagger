@@ -263,8 +263,24 @@ class trainercore(object):
     def restore_model(self):
         ''' This function attempts to restore the model from file
         '''
-        raise NotImplementedError("You must implement this function")
+        _, checkpoint_file_path = self.get_model_filepath()
 
+        if not os.path.isfile(checkpoint_file_path):
+            return None
+        # Parse the checkpoint file and use that to get the latest file path
+
+        with open(checkpoint_file_path, 'r') as _ckp:
+            for line in _ckp.readlines():
+                if line.startswith("latest: "):
+                    chkp_file = line.replace("latest: ", "").rstrip('\n')
+                    chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
+                    print("Restoring weights from ", chkp_file)
+                    break
+
+        return self.restore_from_file(chkp_file)
+
+    def restore_from_file(self. checkpoint_file):
+        # Take a checkpoint file and open it and restore it
 
     def load_state(self, state):
 
@@ -280,10 +296,19 @@ class trainercore(object):
     def get_model_filepath(self):
         '''Helper function to build the filepath of a model for saving and restoring:
         
-        
         '''
-        raise NotImplementedError("You must implement this function")
 
+        # Find the base path of the log directory
+        if FLAGS.CHECKPOINT_DIRECTORY == None:
+            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
+        else:
+            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
+
+
+        name = file_path + 'model-{}.ckpt'.format(self._global_step)
+        checkpoint_file_path = file_path + "checkpoint"
+
+        return name, checkpoint_file_path
 
 
 
