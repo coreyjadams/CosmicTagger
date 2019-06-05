@@ -363,6 +363,8 @@ class trainercore(object):
 
         try:
             os.mkdir(file_path)
+        except FileExistsError:
+            pass
         except:
             tf.log.error("Could not make file path")
 
