@@ -75,6 +75,8 @@ def main():
             # time.sleep(0.5)
             start = time.time()
 
+            trainer._larcv_interface.next('primary')
+
         total_time = time.time() - total_start_time
         print("Time to read {} batches of {} images each: {}".format(
             FLAGS.ITERATIONS, 

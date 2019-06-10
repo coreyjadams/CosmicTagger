@@ -39,6 +39,7 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
     y_coords = input_array[:,:,:,0]
     val_coords = input_array[:,:,:,2]
 
+
     # Find the non_zero indexes of the input:
     batch_index, plane_index, voxel_index = numpy.where(val_coords != -999)
 
@@ -47,12 +48,14 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
     y_index = numpy.int32(y_coords[batch_index, plane_index, voxel_index])
 
 
+
+    # Tensorflow expects format as either [batch, height, width, channel]
+    # or [batch, channel, height, width]
     # Fill in the output tensor
     if FLAGS.DATA_FORMAT == "channels_first":
-
-        output_array[batch_index, plane_index, x_index, y_index] = values    
+        output_array[batch_index, plane_index, y_index, x_index] = values    
     else:
-        output_array[batch_index, x_index, y_index, plane_index] = values    
+        output_array[batch_index, y_index, x_index, plane_index] = values    
 
     return output_array
 

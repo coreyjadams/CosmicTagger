@@ -15,6 +15,9 @@ from ..io import io_templates
 FLAGS = flags.FLAGS()
 
 import datetime
+import logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
+logging.getLogger("tensorflow").setLevel(logging.WARNING)
 
 import tensorflow as tf
 
@@ -34,7 +37,6 @@ class trainercore(object):
         self._cleanup         = []
 
     def __del__(self):
-        print(os)
         for f in self._cleanup:
             os.unlink(f.name)
             
@@ -42,7 +44,10 @@ class trainercore(object):
 
 
         # This is a dummy placeholder, you must check this yourself:
-        max_voxels = 1000
+        if 640 in FLAGS.SHAPE:
+            max_voxels = 35000
+        else:
+            max_voxels = 70000
 
         # Use the templates to generate a configuration string, which we store into a temporary file
         if FLAGS.TRAINING:
@@ -88,7 +93,11 @@ class trainercore(object):
         if FLAGS.AUX_FILE is not None:
 
             if FLAGS.TRAINING:
-                config = io_templates.test_io(input_file=FLAGS.AUX_FILE, max_voxels=max_voxels)
+                config = io_templates.test_io(
+                    input_file=FLAGS.AUX_FILE, 
+                    data_producer= FLAGS.IMAGE_PRODUCER,
+                    label_producer= FLAGS.LABEL_PRODUCER,
+                    max_voxels=max_voxels)
 
                 # Generate a named temp file:
                 aux_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
@@ -135,6 +144,7 @@ class trainercore(object):
         # Fortunately, everything we need is in the FLAGS object and io object:
 
         local_minibatch_size = io_dims['image'][0]
+
 
         if FLAGS.DATA_FORMAT == "channels_first":
             shape = [local_minibatch_size,] + [3,] + FLAGS.SHAPE
@@ -221,7 +231,6 @@ class trainercore(object):
             self._config.intra_op_parallelism_threads = FLAGS.INTRA_OP_PARALLELISM_THREADS
         if FLAGS.COMPUTE_MODE == "GPU":
             self._config.gpu_options.allow_growth = True
-            self._config.gpu_options.visible_device_list = str(hvd.local_rank())
 
 
     def initialize(self, io_only=False):
@@ -477,12 +486,18 @@ class trainercore(object):
     def _create_summary_images(self, labels, prediction):
         ''' Create images of the labels and prediction to show training progress
         '''
+        if FLAGS.DATA_FORMAT == "channels_last":
+            channels_dim = -1 
+        else:
+            channels_dim = 1
+
         with tf.variable_scope('summary_images/'):
+
 
             images = []
 
             # Labels is an unsplit tensor, prediction is a split tensor
-            split_labels = [ tf.cast(l, tf.float32) for l in tf.split(labels,len(prediction) , -1)]
+            split_labels = [ tf.cast(l, tf.float32) for l in tf.split(labels,len(prediction) , channels_dim)]
             for p in range(len(split_labels)):
                 images.append(
                     tf.summary.image('label_plane_{}'.format(p),
@@ -491,7 +506,7 @@ class trainercore(object):
                     )
                 images.append(
                     tf.summary.image('pred_plane_{}'.format(p),
-                                 tf.expand_dims(tf.cast(prediction[p], tf.float32), -1),
+                                 tf.expand_dims(tf.cast(prediction[p], tf.float32), channels_dim),
                                  max_outputs=1)
                     )
 
@@ -568,15 +583,17 @@ class trainercore(object):
             io_end = time.time()
 
             minibatch_data['io_time'] = io_end - start
-
+            print("Fetched batch")
             if gs % 10*FLAGS.AUX_ITERATION == 0:
+                print ("Running images")
                 val_images, val_summary = self._sess.run([self._summary_images, self._summary_basic],
                     feed_dict = self.feed_dict(inputs=minibatch_data))
                 self._val_writer.add_summary(val_images, gs)
             else:
+                print ("Running BASIC")
                 val_summary = self._sess.run(self._summary_basic, 
                     feed_dict = self.feed_dict(inputs=minibatch_data))
-
+            print("Ran validation")
             self._val_writer.add_summary(val_summary, gs)
 
         return
@@ -602,6 +619,9 @@ class trainercore(object):
 
         gs, _  = self._sess.run([self._global_step, self._train_op], 
                        feed_dict = self.feed_dict(inputs = minibatch_data))
+
+        if not FLAGS.DISTRIBUTED:
+            self._larcv_interface.next('primary')
 
         return gs
 
@@ -645,7 +665,7 @@ class trainercore(object):
         return fd
 
 
-    def batch_process(self, timing=False):
+    def batch_process(self, verbose=True):
 
         # Run iterations
         for i in range(FLAGS.ITERATIONS):
@@ -653,7 +673,13 @@ class trainercore(object):
                 print('Finished training (iteration %d)' % self._iteration)
                 break
 
-            start=time.time()
+            if verbose:
+                try:
+                    print ("Step {}, Current images per second: ".format(i), FLAGS.MINIBATCH_SIZE / (time.time() - self._snapshot))
+                except:
+                    pass
+                    
+                self._snapshot = time.time()
 
             gs = self.train_step()
             self.val_step(gs)

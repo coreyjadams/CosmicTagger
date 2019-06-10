@@ -5,6 +5,9 @@ from collections import OrderedDict
 
 import numpy
 
+import logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
+logging.getLogger("tensorflow").setLevel(logging.WARNING)
 import tensorflow as tf
 
 for i, p in enumerate(sys.path):
@@ -14,11 +17,13 @@ for i, p in enumerate(sys.path):
 import horovod.tensorflow as hvd
 hvd.init()
 
+os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+
 from larcv.distributed_larcv_interface import larcv_interface
 
-from .uresnet import uresnet
 from .trainercore import trainercore
-from .flags import FLAGS
+from . import flags
+FLAGS = flags.FLAGS()
 
 class distributed_trainer(trainercore):
     '''
@@ -45,15 +50,28 @@ class distributed_trainer(trainercore):
 
         self._metrics = OrderedDict()
 
+        self._cleanup         = []
 
-        self._initialize()
 
+    def set_compute_parameters(self):
+
+        self._config = tf.ConfigProto()
+
+
+        if FLAGS.COMPUTE_MODE == "CPU":
+            self._config.inter_op_parallelism_threads = FLAGS.INTER_OP_PARALLELISM_THREADS
+            self._config.intra_op_parallelism_threads = FLAGS.INTRA_OP_PARALLELISM_THREADS
+        if FLAGS.COMPUTE_MODE == "GPU":
+            self._config.gpu_options.allow_growth = True
+            # This is managed with the env variable at the top:
+            # self._config.gpu_options.visible_device_list = str(hvd.local_rank())
 
 
     def initialize(self, io_only=False):
 
 
         tf.logging.info("HVD rank: {}".format(hvd.rank()))
+        self.set_compute_parameters()
 
         self._initialize_io()
 
@@ -69,12 +87,20 @@ class distributed_trainer(trainercore):
         graph = tf.get_default_graph()
         self.init_network()
 
-        self.print_network_info()
+        if hvd.rank() == 0:
+            self.print_network_info()
 
         self.init_optimizer()
 
 
-        self.set_compute_parameters()
+        # Only compute summaries on the root node:
+        # if hvd.rank() == 0:
+        # Merge the summary
+        self._summary_basic = tf.summary.merge_all()
+
+        # Store the predicted pixels into a tf summary:
+        self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
+
 
 
         with tf.variable_scope("hvd"):
@@ -83,24 +109,16 @@ class distributed_trainer(trainercore):
 
 
             # # All reduce metrics:
-            for key in self._metrics:
-                self._metrics[key] = hvd.allreduce(self._metrics[key])
+            # for key in self._metrics:
+            #     self._metrics[key] = hvd.allreduce(self._metrics[key])
 
-            # Create a set of summary objects:
-            for key in self._metrics:
-                tf.summary.scalar(key, self._metrics[key])
+            # # Create a set of summary objects:
+            # for key in self._metrics:
+            #     tf.summary.scalar(key, self._metrics[key])
 
             # In the distributed case, we may want a learning rate behavior:
             self._lr = self.generate_learning_rate(FLAGS.LEARNING_RATE, self._global_step)
 
-
-            # Only compute summaries on the root node:
-            if hvd.rank() == 0:
-                # Merge the summary
-                self._summary_basic = tf.summary.merge_all()
-
-                # Store the predicted pixels into a tf summary:
-                self._summary_images = self._create_summary_images(self._input['label'], self._outputs['prediction'])
 
 
             # Wrap the optimizer it in horovod:
@@ -113,20 +131,20 @@ class distributed_trainer(trainercore):
             # Take all of the metrics and turn them into summaries:
 
             # Additionally, in training mode if there is aux data use it for validation:
-            if hvd.rank() == 0 and FLAGS.AUX_FILE is not None:
-                self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
+        if hvd.rank() == 0 and FLAGS.AUX_FILE is not None:
+            self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
 
         hooks = self.get_distributed_hooks()
 
 
-
+        print(self._config)
 
         if hvd.rank() == 0:
             if FLAGS.CHECKPOINT_ITERATION > 0:
                 checkpoint_it = FLAGS.CHECKPOINT_ITERATION
             else:
                 checkpoint_it = None
-            self._sess = tf.train.MonitoredTrainingSession(config=config, hooks = hooks,
+            self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = hooks,
                 checkpoint_dir        = FLAGS.LOG_DIRECTORY,
                 log_step_count_steps  = FLAGS.LOGGING_ITERATION,
                 save_summaries_steps  = None,
@@ -136,7 +154,7 @@ class distributed_trainer(trainercore):
             )
 
         else:
-            self._sess = tf.train.MonitoredTrainingSession(config=config, hooks = hooks,
+            self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = hooks,
                 checkpoint_dir = None,
                 save_summaries_steps = None,
                 save_summaries_secs = None,
@@ -256,4 +274,16 @@ class distributed_trainer(trainercore):
 
         return this_learning_rate
 
+    def val_step(self, gs):
+        if hvd.rank() != 0:
+            return
+        else:
+            trainercore.val_step(self, gs)
+
+    def batch_process(self):
+
+        if hvd.rank() == 0:
+            trainercore.batch_process(self, verbose=True)
+        else:
+            trainercore.batch_process(self, verbose=False)
 

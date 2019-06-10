@@ -100,7 +100,7 @@ class FLAGS(Borg):
         self.AUX_FILE              = None
         self.AUX_IO_VERBOSITY      = 3
         self.AUX_MINIBATCH_SIZE    = self.MINIBATCH_SIZE
-        self.AUX_ITERATION         = 10*self.SUMMARY_ITERATION
+        self.AUX_ITERATION         = 7*self.SUMMARY_ITERATION
 
 
         self.OPTIMIZER             = "Adam"
@@ -109,7 +109,7 @@ class FLAGS(Borg):
         self.IMAGE_PRODUCER        = "sbndwire"
         self.LABEL_PRODUCER        = "sbnd_cosmicseg"
 
-        self.SHAPE                 = [1024, 640]
+        self.SHAPE                 = [640, 1024]
         self.MAX_VOXELS            = 80000
 
 
