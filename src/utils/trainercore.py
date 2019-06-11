@@ -655,9 +655,9 @@ class trainercore(object):
             if verbose: print("Completed Log")
 
 
-            self._main_writer.add_summary(ops["summary"], global_step = ops["global_step"])
+            self._aux_writer.add_summary(ops["summary"], global_step = ops["global_step"])
             if self._iteration != 0 and self._iteration % 25*FLAGS.SUMMARY_ITERATION == 0:
-                self._main_writer.add_summary(ops["summary"], global_step = ops["global_step"])
+                self._aux_writer.add_summary(ops["summary"], global_step = ops["global_step"])
 
 
             # Create some extra summary information:
@@ -666,7 +666,7 @@ class trainercore(object):
                     tf.Summary.Value(tag="io_fetch_time", simple_value=metrics['io_fetch_time']),
                 ])
 
-            self._main_writer.add_summary(extra_summary, global_step=ops["global_step"])
+            self._aux_writer.add_summary(extra_summary, global_step=ops["global_step"])
 
             if verbose: print("Summarized")
 
