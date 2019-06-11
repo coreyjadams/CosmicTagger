@@ -210,7 +210,8 @@ class trainercore(object):
                 logits = self._logits, 
                 weight = self._input['weight'])
             
-            self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
+
+        self._log_keys = ["cross_entropy/Total_Loss", "accuracy/All_Plane_Neutrino_Accuracy"]
 
         end = time.time()
         sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(end-start))
@@ -252,80 +253,86 @@ class trainercore(object):
 
         self.init_optimizer()
 
-        # Additionally, in training mode if there is aux data use it for validation:
-        if FLAGS.AUX_FILE is not None:
-            self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
+        self.init_saver()
 
         # Take all of the metrics and turn them into summaries:
         for key in self._metrics:
             tf.summary.scalar(key, self._metrics[key])
 
         self._summary_basic = tf.summary.merge_all()
+        self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
 
 
         self.set_compute_parameters()
 
-        hooks = self.get_standard_hooks()
+        # hooks = self.get_standard_hooks()
 
         if FLAGS.CHECKPOINT_DIRECTORY is not None:
             checkpoint_dir = FLAGS.CHECKPOINT_DIRECTORY
         else:
             checkpoint_dir = FLAGS.LOG_DIRECTORY
 
+        # Add the graph to the log file:
+        self._main_writer.add_graph(graph)
 
-        # Create a session:
-        self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = hooks,
-            checkpoint_dir        = checkpoint_dir,
-            log_step_count_steps  = FLAGS.LOGGING_ITERATION,
-            save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
+        self._sess = tf.Session(config = self._config)
 
+        self._sess.run(tf.global_variables_initializer())
 
-
-    def get_standard_hooks(self):
-
-        hooks = []
-
-        loss_is_nan_hook = tf.train.NanTensorHook(
-            self._loss,
-            fail_on_nan_loss=True,
-        )
-        hooks.append(loss_is_nan_hook)
-
-        # Create a hook to manage the summary saving:
-        summary_saver_hook = tf.train.SummarySaverHook(
-            save_steps = FLAGS.SUMMARY_ITERATION,
-            output_dir = FLAGS.LOG_DIRECTORY,
-            summary_op = self._summary_basic
-            )
-        hooks.append(summary_saver_hook)
-
-        summary_saver_hook_image = tf.train.SummarySaverHook(
-            save_steps = 10*FLAGS.SUMMARY_ITERATION,
-            output_dir = FLAGS.LOG_DIRECTORY,
-            summary_op = self._summary_images
-            )
-        hooks.append(summary_saver_hook_image)
-
-        # if FLAGS.PROFILE_ITERATION != -1:
-        #     # Create a profiling hook for tracing:
-        #     profile_hook = tf.train.ProfilerHook(
-        #         save_steps    = FLAGS.PROFILE_ITERATION,
-        #         output_dir    = FLAGS.LOG_DIRECTORY,
-        #         show_dataflow = True,
-        #         show_memory   = True
-        #     )
-        #     hooks.append(profile_hook)
-
-        logging_hook = tf.train.LoggingTensorHook(
-            tensors       = { 'global_step' : self._global_step,
-                              'accuracy'    : self._accuracy,
-                              'loss'        : self._loss},
-            every_n_iter  = FLAGS.LOGGING_ITERATION,
-            )
-        hooks.append(logging_hook)
+        # # Create a session:
+        # self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = hooks,
+        #     checkpoint_dir        = checkpoint_dir,
+        #     log_step_count_steps  = FLAGS.LOGGING_ITERATION,
+        #     save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
 
 
-        return hooks
+
+
+
+    def get_model_filepath(self):
+        '''Helper function to build the filepath of a model for saving and restoring:
+        
+        '''
+
+        # Find the base path of the log directory
+        if FLAGS.CHECKPOINT_DIRECTORY == None:
+            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
+        else:
+            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
+
+
+        name = file_path + 'model-{}.ckpt'.format(self._global_step)
+        checkpoint_file_path = file_path + "checkpoint"
+
+        return name, checkpoint_file_path
+
+
+    def init_saver(self):
+
+        if FLAGS.CHECKPOINT_DIRECTORY == None:
+            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
+        else:
+            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
+
+        try:
+            os.makedirs(file_path)
+        except FileExistsError:
+            pass
+        except:
+            tf.log.error("Could not make file path")
+
+        # Create a saver for snapshots of the network:
+        self._saver = tf.train.Saver()
+        self._saver_dir = file_path
+
+        # Create a file writer for training metrics:
+        self._main_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/train/")
+
+        # Additionally, in training mode if there is aux data use it for validation:
+        if FLAGS.AUX_FILE is not None:
+            self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
+
+
 
     def init_optimizer(self):
 
@@ -372,7 +379,10 @@ class trainercore(object):
 
                 # multiple (elementwise) the weights for the loss function:
                 if FLAGS.BALANCE_LOSS:
+                    # print(loss[p].get_shape())
+                    # print(split_weights[p].get_shape())
                     loss[p] = tf.multiply(loss[p], split_weights[p])
+                    # print(loss[p].get_shape())
                     # Because we have a weighting function, this is a summed reduction:
                     loss[p] = tf.reduce_sum(loss[p])
                 else:
@@ -416,6 +426,8 @@ class trainercore(object):
             total_accuracy   = [None]*len(logits['prediction'])
             non_bkg_accuracy = [None]*len(logits['prediction'])
             neut_accuracy    = [None]*len(logits['prediction'])
+            neut_iou         = [None]*len(logits['prediction'])
+            cosmic_iou       = [None]*len(logits['prediction'])
             
             split_labels = [tf.squeeze(l, axis=channels_dim) for l in tf.split(labels,len(logits['prediction']) , channels_dim)]
 
@@ -430,57 +442,83 @@ class trainercore(object):
                 # Find the neutrino indices:
                 neutrino_indices = tf.equal(split_labels[p], tf.constant(1, split_labels[p].dtype))
 
+                # Find the cosmic indices:
+                cosmic_indices = tf.equal(split_labels[p], tf.constant(2, split_labels[p].dtype))
+
                 non_zero_logits = tf.boolean_mask(logits['prediction'][p], non_zero_indices)
                 non_zero_labels = tf.boolean_mask(split_labels[p], non_zero_indices)
 
                 neutrino_logits = tf.boolean_mask(logits['prediction'][p], neutrino_indices)
                 neutrino_labels = tf.boolean_mask(split_labels[p], neutrino_indices)
 
+                predicted_neutrino_indices = tf.equal(logits['prediction'][p], 
+                    tf.constant(1, split_labels[p].dtype))
+                predicted_cosmic_indices = tf.equal(logits['prediction'][p], 
+                    tf.constant(2, split_labels[p].dtype))
+
+
+                neutrino_intersection = tf.math.logical_and(predicted_neutrino_indices, neutrino_indices)
+                neutrino_union = tf.math.logical_or(predicted_neutrino_indices, neutrino_indices)
+
+                neut_iou[p] = tf.reduce_sum(tf.cast(neutrino_intersection, tf.float32)) / \
+                  tf.reduce_sum(tf.cast(neutrino_union, tf.float32))
+
+                cosmic_intersection = tf.math.logical_and(predicted_cosmic_indices, cosmic_indices)
+                cosmic_union = tf.math.logical_or(predicted_cosmic_indices, cosmic_indices)
+
+                cosmic_iou[p] = tf.reduce_sum(tf.cast(cosmic_intersection, tf.float32)) / \
+                  tf.reduce_sum(tf.cast(cosmic_union, tf.float32))
+
+
                 non_bkg_accuracy[p] = tf.reduce_mean(tf.cast(tf.equal(non_zero_logits, non_zero_labels), tf.float32))
                 neut_accuracy[p]    = tf.reduce_mean(tf.cast(tf.equal(neutrino_logits, neutrino_labels), tf.float32))
 
                 # Add the accuracies to the summary:
-                self._metrics["accuracy/Total_Accuracy_plane{0}".format(p)] = total_accuracy[p]
-                # tf.summary.scalar("Total_Accuracy_plane{0}".format(p),
-                #     total_accuracy[p])
-                self._metrics["accuracy/Non_Background_Accuracy_plane{0}".format(p)] = non_bkg_accuracy[p]
-                # tf.summary.scalar("Non_Background_Accuracy_plane{0}".format(p),
-                #     non_bkg_accuracy[p])
-                self._metrics["accuracy/Neutrino_Accuracy_plane{0}".format(p)] = neut_accuracy[p]
-                # tf.summary.scalar("Neutrino_Accuracy_plane{0}".format(p),
-                #     neut_accuracy[p])
+                self._metrics["split_accuracy/plane{0}/Total_Accuracy".format(p)] = total_accuracy[p]
+                self._metrics["split_accuracy/plane{0}/Non_Background_Accuracy".format(p)] = non_bkg_accuracy[p]
+                self._metrics["split_accuracy/plane{0}/Neutrino_Accuracy".format(p)] = neut_accuracy[p]
+                self._metrics["split_accuracy/plane{0}/Neutrino_IoU".format(p)] = neut_iou[p]
+                self._metrics["split_accuracy/plane{0}/Cosmic_IoU".format(p)] = neut_iou[p]
 
             #Compute the total accuracy and non background accuracy for all planes:
             all_accuracy            = tf.reduce_mean(total_accuracy)
             all_non_bkg_accuracy    = tf.reduce_mean(non_bkg_accuracy)
             all_neut_accuracy       = tf.reduce_mean(neut_accuracy)
+            all_neut_iou            = tf.reduce_mean(neut_iou)
+            all_cosmic_iou          = tf.reduce_mean(neut_iou)
 
             # Add the accuracies to the summary:
             self._metrics["accuracy/All_Plane_Total_Accuracy"] = all_accuracy
-            # tf.summary.scalar("All_Plane_Total_Accuracy", all_accuracy)
             self._metrics["accuracy/All_Plane_Non_Background_Accuracy"] = all_non_bkg_accuracy
-            # tf.summary.scalar("All_Plane_Non_Background_Accuracy", all_non_bkg_accuracy)
             self._metrics["accuracy/All_Plane_Neutrino_Accuracy"] = all_neut_accuracy
-            # tf.summary.scalar("All_Plane_Neutrino_Accuracy", all_neut_accuracy)
+            self._metrics["accuracy/All_Plane_Neutrino_IoU"] = all_neut_iou
+            self._metrics["accuracy/All_Plane_Cosmic_IoU"] = all_cosmic_iou
 
 
         return all_non_bkg_accuracy
 
-    def _compute_metrics(self, logits, labels, loss):
-
-        raise NotImplementedError("You must implement this function")
-        
 
 
-    def log(self, metrics, saver=''):
+    def log(self, metrics, kind, step):
 
-        raise NotImplementedError("You must implement this function")
+        log_string = ""
+
+        log_string += "{} Global Step {}: ".format(kind, step)
 
 
-    def summary(self, metrics,saver=""):
-        
+        for key in metrics:
+            if key in self._log_keys and key != "global_step":
+                log_string += "{}: {:.3}, ".format(key, metrics[key])
 
-        raise NotImplementedError("You must implement this function")
+        if kind == "Train":
+            log_string += "Img/s: {:.2} ".format(metrics["images_per_second"])
+            log_string += "IO: {:.2} ".format(metrics["io_fetch_time"])
+        else:
+            log_string.rstrip(", ")
+
+        print(log_string)
+
+        return
 
 
     def _create_summary_images(self, labels, prediction):
@@ -561,9 +599,6 @@ class trainercore(object):
         # Normalize the weights to sum to 1 for each event:
         return weights
 
-    def increment_global_step(self):
-        raise NotImplementedError("You must implement this function")
-
     def on_step_end(self):
         pass
 
@@ -578,52 +613,156 @@ class trainercore(object):
             return
 
         if gs % FLAGS.AUX_ITERATION == 0:
-            start = time.time()
-            minibatch_data = self.fetch_next_batch('aux')
-            io_end = time.time()
 
-            minibatch_data['io_time'] = io_end - start
-            print("Fetched batch")
-            if gs % 10*FLAGS.AUX_ITERATION == 0:
-                print ("Running images")
-                val_images, val_summary = self._sess.run([self._summary_images, self._summary_basic],
-                    feed_dict = self.feed_dict(inputs=minibatch_data))
-                self._val_writer.add_summary(val_images, gs)
-            else:
-                print ("Running BASIC")
-                val_summary = self._sess.run(self._summary_basic, 
-                    feed_dict = self.feed_dict(inputs=minibatch_data))
-            print("Ran validation")
-            self._val_writer.add_summary(val_summary, gs)
+            global_start_time = datetime.datetime.now()
 
+            # Fetch the next batch of data with larcv
+            io_start_time = datetime.datetime.now()
+            minibatch_data = self.fetch_next_batch()
+            io_end_time = datetime.datetime.now()
+
+            # For tensorflow, we have to build up an ops list to submit to the
+            # session to run.
+
+            # These are ops that always run:
+            ops = {}
+            ops['global_step'] = self._global_step
+            ops['summary'] = self._summary_basic
+
+            ops['metrics'] = self._metrics
+
+            if self._iteration != 0 and self._iteration % 25*FLAGS.SUMMARY_ITERATION == 0:
+                ops['summary_images'] = self._summary_images
+
+
+            ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
+
+            metrics = ops["metrics"]
+
+            verbose = False
+
+
+
+
+            metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
+
+            if verbose: print("Calculated metrics")
+
+            # Report metrics on the terminal:
+            self.log(ops["metrics"], kind="Test", step=ops["global_step"]) 
+
+
+            if verbose: print("Completed Log")
+
+
+            self._main_writer.add_summary(ops["summary"], global_step = ops["global_step"])
+            if self._iteration != 0 and self._iteration % 25*FLAGS.SUMMARY_ITERATION == 0:
+                self._main_writer.add_summary(ops["summary"], global_step = ops["global_step"])
+
+
+            # Create some extra summary information:
+            extra_summary = tf.Summary(
+                value=[
+                    tf.Summary.Value(tag="io_fetch_time", simple_value=metrics['io_fetch_time']),
+                ])
+
+            self._main_writer.add_summary(extra_summary, global_step=ops["global_step"])
+
+            if verbose: print("Summarized")
+
+            global_end_time = datetime.datetime.now()
+
+            # Compute global step per second:
+            self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
+
+            # Lastly, call next on the IO:
+            self._larcv_interface.next('primary')
+
+            return ops["global_step"]
         return
 
 
     def train_step(self):
 
 
-        start = time.time()
+        global_start_time = datetime.datetime.now()
 
+        # Fetch the next batch of data with larcv
+        io_start_time = datetime.datetime.now()
         minibatch_data = self.fetch_next_batch()
+        io_end_time = datetime.datetime.now()
 
-        io_end = time.time()
+        # For tensorflow, we have to build up an ops list to submit to the
+        # session to run.
 
-        # print("Got data from file")
+        # These are ops that always run:
+        ops = {}
+        ops['train_step']  = self._train_op
+        ops['global_step'] = self._global_step
+        ops['summary'] = self._summary_basic
 
-        # Reshape labels by dict entry, if needed, or all at once:
-        # minibatch_data['label'] = numpy.reshape(minibatch_data['label'], minibatch_dims['label'])
+        ops['metrics'] = self._metrics
 
-        minibatch_data['io_time'] = io_end - start
+        if self._iteration != 0 and self._iteration % 25*FLAGS.SUMMARY_ITERATION == 0:
+            ops['summary_images'] = self._summary_images
 
-        fd = self.feed_dict(minibatch_data)
 
-        gs, _  = self._sess.run([self._global_step, self._train_op], 
-                       feed_dict = self.feed_dict(inputs = minibatch_data))
+        ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 
-        if not FLAGS.DISTRIBUTED:
-            self._larcv_interface.next('primary')
+        metrics = ops["metrics"]
 
-        return gs
+        verbose = False
+
+        # Add the global step / second to the tensorboard log:
+        try:
+            metrics['global_step_per_sec'] = 1./self._seconds_per_global_step
+            metrics['images_per_second'] = FLAGS.MINIBATCH_SIZE / self._seconds_per_global_step
+        except AttributeError:
+            metrics['global_step_per_sec'] = 0.0
+            metrics['images_per_second'] = 0.0
+
+
+
+        metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
+
+        if verbose: print("Calculated metrics")
+
+        # Report metrics on the terminal:
+        self.log(ops["metrics"], kind="Train", step=ops["global_step"]) 
+
+
+        if verbose: print("Completed Log")
+
+
+        self._main_writer.add_summary(ops["summary"], global_step = ops["global_step"])
+        if self._iteration != 0 and self._iteration % 25*FLAGS.SUMMARY_ITERATION == 0:
+            self._main_writer.add_summary(ops["summary_images"], global_step = ops["global_step"])
+
+
+        # Create some extra summary information:
+        extra_summary = tf.Summary(
+            value=[
+                tf.Summary.Value(tag="io_fetch_time", simple_value=metrics['io_fetch_time']),
+                tf.Summary.Value(tag="global_step_per_sec", simple_value=metrics['global_step_per_sec']),
+                tf.Summary.Value(tag="images_per_second", simple_value=metrics['images_per_second']),
+            ])
+
+        self._main_writer.add_summary(extra_summary, global_step=ops["global_step"])
+
+        if verbose: print("Summarized")
+
+        global_end_time = datetime.datetime.now()
+
+        # Compute global step per second:
+        self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
+
+        # Lastly, call next on the IO:
+        self._larcv_interface.next('primary')
+
+        return ops["global_step"]
+
+
+
 
  
     def stop(self):
@@ -668,18 +807,10 @@ class trainercore(object):
     def batch_process(self, verbose=True):
 
         # Run iterations
-        for i in range(FLAGS.ITERATIONS):
+        for self._iteration in range(FLAGS.ITERATIONS):
             if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
                 print('Finished training (iteration %d)' % self._iteration)
                 break
-
-            if verbose:
-                try:
-                    print ("Step {}, Current images per second: ".format(i), FLAGS.MINIBATCH_SIZE / (time.time() - self._snapshot))
-                except:
-                    pass
-                    
-                self._snapshot = time.time()
 
             gs = self.train_step()
             self.val_step(gs)
