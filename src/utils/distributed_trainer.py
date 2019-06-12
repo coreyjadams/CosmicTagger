@@ -70,18 +70,19 @@ class distributed_trainer(trainercore):
     def initialize(self, io_only=False):
 
 
+
         tf.logging.info("HVD rank: {}".format(hvd.rank()))
         self.set_compute_parameters()
 
         self._initialize_io()
 
-
-
         if io_only:
             return
 
+
         if hvd.rank() == 0:
-            tf.logging.info(FLAGS.get_config())
+            print(FLAGS.dump_config())
+
 
 
         graph = tf.get_default_graph()
@@ -90,16 +91,39 @@ class distributed_trainer(trainercore):
         if hvd.rank() == 0:
             self.print_network_info()
 
+
+
         self.init_optimizer()
 
+        self.init_saver()
 
-        # Only compute summaries on the root node:
-        # if hvd.rank() == 0:
-        # Merge the summary
+        # Take all of the metrics and turn them into summaries:
+        for key in self._metrics:
+            tf.summary.scalar(key, self._metrics[key])
+
         self._summary_basic = tf.summary.merge_all()
-
-        # Store the predicted pixels into a tf summary:
         self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
+
+
+
+        # Add the graph to the log file:
+        if hvd.rank() == 0:
+            self._main_writer.add_graph(graph)
+
+
+        # Create a session:
+        self._sess = tf.Session(config = self._config)
+
+        # Try to restore a model?
+        restored = self.restore_model()
+
+        if not restored:
+            self._sess.run(tf.global_variables_initializer())
+
+
+
+
+        # NEED TO BROADCAST GLOBAL VARIABLES
 
 
 
@@ -160,73 +184,8 @@ class distributed_trainer(trainercore):
                 save_summaries_secs = None,
             )
 
-    def get_distributed_hooks(self):
-
-        if hvd.rank() == 0:
-
-            checkpoint_dir = FLAGS.LOG_DIRECTORY
-
-            hooks = [hvd.BroadcastGlobalVariablesHook(0)]
-
-            # reduce_metrics_hook = ReduceMetricsHook(
-            #     metrics=self._metrics
-            # )
-            # hooks.append(reduce_metrics_hook)
-
-
-            loss_is_nan_hook = tf.train.NanTensorHook(
-                self._loss,
-                fail_on_nan_loss=True,
-            )
-            hooks.append(loss_is_nan_hook)
-
-            # Create a hook to manage the summary saving:
-            summary_saver_hook = tf.train.SummarySaverHook(
-                save_steps = FLAGS.SUMMARY_ITERATION,
-                output_dir = FLAGS.LOG_DIRECTORY,
-                summary_op = self._summary_basic
-                )
-            hooks.append(summary_saver_hook)
-
-            summary_saver_hook_image = tf.train.SummarySaverHook(
-                save_steps = 10*FLAGS.SUMMARY_ITERATION,
-                output_dir = FLAGS.LOG_DIRECTORY,
-                summary_op = self._summary_images
-                )
-            hooks.append(summary_saver_hook_image)
-
-            
-            # if FLAGS.PROFILE_ITERATION != -1:
-            #     # Create a profiling hook for tracing:
-            #     profile_hook = tf.train.ProfilerHook(
-            #         save_steps    = FLAGS.PROFILE_ITERATION,
-            #         output_dir    = FLAGS.LOG_DIRECTORY,
-            #         show_dataflow = True,
-            #         show_memory   = True
-            #     )
-            #     hooks.append(profile_hook)
-
-            logging_hook = tf.train.LoggingTensorHook(
-                tensors       = { 'global_step' : self._global_step,
-                                  'accuracy'    : self._metrics['accuracy/All_Plane_Neutrino_Accuracy'], 
-                                  'loss'        : self._metrics['cross_entropy/Total_Loss']},
-                every_n_iter  = FLAGS.LOGGING_ITERATION,
-                )
-            hooks.append(logging_hook)
-
-
-
-        else:            
-            hooks = [
-                hvd.BroadcastGlobalVariablesHook(0),
-            ]
-
-            # reduce_metrics_hook = ReduceMetricsHook(
-            #     metrics=self._metrics
-            # )
-            # hooks.append(reduce_metrics_hook)
-
-        return hooks
+    def restore_model(self):
+        # Restore model has to restore on one rank and broadcast to other ranks
 
 
     def generate_learning_rate(self, 
@@ -274,12 +233,25 @@ class distributed_trainer(trainercore):
 
         return this_learning_rate
 
-    def val_step(self, gs):
+
+    def save_model(self, gs):
         if hvd.rank() != 0:
             return
         else:
-            trainercore.val_step(self, gs)
+            trainercore.save_model(self, gs)
 
+    def write_summaries(self, writer, summary, global_step):
+        if hvd.rank() != 0:
+            return
+        else
+            trainercore.write_summaries(self, writer, summary, global_step)
+
+    def log(self, metrics, kind, step):
+        if hvd.rank() != 0:
+            return
+        else
+            trainercore.log(self, metrics, kind, step)
+   
     def batch_process(self):
 
         if hvd.rank() == 0:

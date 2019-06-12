@@ -38,7 +38,10 @@ class trainercore(object):
 
     def __del__(self):
         for f in self._cleanup:
-            os.unlink(f.name)
+            try:
+                os.unlink(f.name)
+            except AttributeError:
+                pass
             
     def _initialize_io(self):
 
@@ -265,19 +268,16 @@ class trainercore(object):
 
         self.set_compute_parameters()
 
-        # hooks = self.get_standard_hooks()
-
-        if FLAGS.CHECKPOINT_DIRECTORY is not None:
-            checkpoint_dir = FLAGS.CHECKPOINT_DIRECTORY
-        else:
-            checkpoint_dir = FLAGS.LOG_DIRECTORY
-
         # Add the graph to the log file:
         self._main_writer.add_graph(graph)
 
         self._sess = tf.Session(config = self._config)
 
-        self._sess.run(tf.global_variables_initializer())
+        # Try to restore a model?
+        restored = self.restore_model()
+
+        if not restored:
+            self._sess.run(tf.global_variables_initializer())
 
         # # Create a session:
         # self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = hooks,
@@ -286,10 +286,67 @@ class trainercore(object):
         #     save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
 
 
+    def restore_model(self):
+        ''' This function attempts to restore the model from file
+        '''
+
+        if FLAGS.CHECKPOINT_DIRECTORY == None:
+            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
+        else:
+            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
 
 
+        path = tf.train.latest_checkpoint(file_path)
 
-    def get_model_filepath(self):
+        if path is None:
+            print("No checkpoint found, starting from scratch")
+            return False
+        # Parse the checkpoint file and use that to get the latest file path
+        print("Restoring checkpoint from ", path)
+        self._saver.restore(self._sess, path)
+
+        return True
+
+        # with open(checkpoint_file_path, 'r') as _ckp:
+        #     for line in _ckp.readlines():
+        #         if line.startswith("latest: "):
+        #             chkp_file = line.replace("latest: ", "").rstrip('\n')
+        #             chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
+        #             print("Restoring weights from ", chkp_file)
+        #             break
+
+        # state = torch.load(chkp_file)
+        # return state
+
+
+    def checkpoint(self, global_step):
+
+        if global_step % FLAGS.CHECKPOINT_ITERATION == 0 and global_step != 0:
+            # Save a checkpoint, but don't do it on the first pass
+            self.save_model(global_step)
+
+
+    def save_model(self, global_step):
+        '''Save the model to file
+        
+        '''
+
+        # name, checkpoint_file_path = self.get_model_filepath(global_step)
+        # Find the base path of the log directory
+        if FLAGS.CHECKPOINT_DIRECTORY == None:
+            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
+        else:
+            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
+
+
+        # # Make sure the path actually exists:
+        # if not os.path.isdir(os.path.dirname(file_path)):
+        #     os.makedirs(os.path.dirname(file_path))
+
+        saved_path = self._saver.save(self._sess, file_path + "model_{}.ckpt".format(global_step))
+
+
+    def get_model_filepath(self, global_step):
         '''Helper function to build the filepath of a model for saving and restoring:
         
         '''
@@ -301,7 +358,7 @@ class trainercore(object):
             file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
 
 
-        name = file_path + 'model-{}.ckpt'.format(self._global_step)
+        name = file_path + 'model-{}.ckpt'.format(global_step)
         checkpoint_file_path = file_path + "checkpoint"
 
         return name, checkpoint_file_path
@@ -605,6 +662,12 @@ class trainercore(object):
     def on_epoch_end(self):
         pass
 
+    def write_summaries(self, writer, summary, global_step):
+        # This function is isolated here to allow the distributed version
+        # to intercept these calls and only write summaries from one rank
+
+        writer.add_summary(summary, global_step)
+
     def val_step(self, gs):
 
         if gs == 0: return
@@ -631,7 +694,8 @@ class trainercore(object):
 
             ops['metrics'] = self._metrics
 
-            if self._iteration != 0 and self._iteration % 25*FLAGS.SUMMARY_ITERATION == 0:
+            if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
+                print("Running summary images for validation")
                 ops['summary_images'] = self._summary_images
 
 
@@ -654,19 +718,10 @@ class trainercore(object):
 
             if verbose: print("Completed Log")
 
+            self.write_summaries(self._val_writer, ops["summary"], ops["global_step"])
+            if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
+                self.write_summaries(self._val_writer, ops["summary_images"], ops["global_step"])
 
-            self._aux_writer.add_summary(ops["summary"], global_step = ops["global_step"])
-            if self._iteration != 0 and self._iteration % 25*FLAGS.SUMMARY_ITERATION == 0:
-                self._aux_writer.add_summary(ops["summary"], global_step = ops["global_step"])
-
-
-            # Create some extra summary information:
-            extra_summary = tf.Summary(
-                value=[
-                    tf.Summary.Value(tag="io_fetch_time", simple_value=metrics['io_fetch_time']),
-                ])
-
-            self._aux_writer.add_summary(extra_summary, global_step=ops["global_step"])
 
             if verbose: print("Summarized")
 
@@ -703,7 +758,7 @@ class trainercore(object):
 
         ops['metrics'] = self._metrics
 
-        if self._iteration != 0 and self._iteration % 25*FLAGS.SUMMARY_ITERATION == 0:
+        if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
             ops['summary_images'] = self._summary_images
 
 
@@ -733,10 +788,9 @@ class trainercore(object):
 
         if verbose: print("Completed Log")
 
-
-        self._main_writer.add_summary(ops["summary"], global_step = ops["global_step"])
-        if self._iteration != 0 and self._iteration % 25*FLAGS.SUMMARY_ITERATION == 0:
-            self._main_writer.add_summary(ops["summary_images"], global_step = ops["global_step"])
+        self.write_summaries(self._main_writer, ops["summary"], ops["global_step"])
+        if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
+            self.write_summaries(self._main_writer, ops["summary_images"], ops["global_step"])
 
 
         # Create some extra summary information:
@@ -747,7 +801,7 @@ class trainercore(object):
                 tf.Summary.Value(tag="images_per_second", simple_value=metrics['images_per_second']),
             ])
 
-        self._main_writer.add_summary(extra_summary, global_step=ops["global_step"])
+        self.write_summaries(self._main_writer, extra_summary, ops["global_step"])
 
         if verbose: print("Summarized")
 
@@ -768,12 +822,6 @@ class trainercore(object):
     def stop(self):
         # Mostly, this is just turning off the io:
         self._larcv_interface.stop()
-
-    def checkpoint(self):
-
-        if self._global_step % FLAGS.CHECKPOINT_ITERATION == 0 and self._global_step != 0:
-            # Save a checkpoint, but don't do it on the first pass
-            self.save_model()
 
 
     def ana_step(self):
@@ -814,4 +862,4 @@ class trainercore(object):
 
             gs = self.train_step()
             self.val_step(gs)
-
+            self.checkpoint(gs)

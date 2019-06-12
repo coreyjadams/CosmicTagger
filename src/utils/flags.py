@@ -100,7 +100,7 @@ class FLAGS(Borg):
         self.AUX_FILE              = None
         self.AUX_IO_VERBOSITY      = 3
         self.AUX_MINIBATCH_SIZE    = self.MINIBATCH_SIZE
-        self.AUX_ITERATION         = 7*self.SUMMARY_ITERATION
+        self.AUX_ITERATION         = self.SUMMARY_ITERATION
 
 
         self.OPTIMIZER             = "Adam"
