@@ -5,9 +5,8 @@ from collections import OrderedDict
 
 import numpy
 
-import logging
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
-logging.getLogger("tensorflow").setLevel(logging.WARNING)
+from .trainercore import trainercore
+
 import tensorflow as tf
 
 for i, p in enumerate(sys.path):
@@ -17,11 +16,12 @@ for i, p in enumerate(sys.path):
 import horovod.tensorflow as hvd
 hvd.init()
 
+
+
 os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
 from larcv.distributed_larcv_interface import larcv_interface
 
-from .trainercore import trainercore
 from . import flags
 FLAGS = flags.FLAGS()
 
@@ -117,29 +117,33 @@ class distributed_trainer(trainercore):
         # Try to restore a model?
         restored = self.restore_model()
 
-        if not restored and hvd.rank() == 0:
+        if hvd.rank() == 0:
+            if not restored:
+                self._sess.run(tf.global_variables_initializer())
+        else:
+            # Run the initializer on other ranks, else the bcast op won't work
             self._sess.run(tf.global_variables_initializer())
-
         # Rank 0 has either restored, or has initialized.  Broadcast it:
-
-        bcast = hvd.broadcast_global_variables(0)
-
-        print(bcast)
+        g_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
 
 
 
-        # NEED TO BROADCAST GLOBAL VARIABLES
+        bcast = hvd.broadcast_variables(g_vars, 0)
+
+
+        # print(bcast)
+        self._sess.run(bcast)
+
 
 
 
         with tf.variable_scope("hvd"):
 
-            # self._global_step = tf.train.get_or_create_global_step()
 
 
             # # All reduce metrics:
-            # for key in self._metrics:
-            #     self._metrics[key] = hvd.allreduce(self._metrics[key])
+            for key in self._metrics:
+                self._metrics[key] = hvd.allreduce(self._metrics[key])
 
             # # Create a set of summary objects:
             # for key in self._metrics:
@@ -166,8 +170,9 @@ class distributed_trainer(trainercore):
         # Restore model has to restore on one rank and broadcast to other ranks
         if hvd.rank() == 0:
             restored = trainercore.restore_model(self)
-
-        return restored
+            return restored
+        else:
+            return None        
 
 
 
@@ -217,6 +222,19 @@ class distributed_trainer(trainercore):
         return this_learning_rate
 
 
+    # def metrics(self, metrics):
+    #     # Here, we can allreduce the metrics.
+
+    #     if hvd.rank() == 0:
+    #         print metrics
+
+    #     for key in metrics:
+    #         metrics[key] = hvd_keras.allreduce(metrics[key])
+
+    #     if hvd.rank() == 0:
+    #         print metrics
+
+
     def save_model(self, gs):
         if hvd.rank() != 0:
             return
@@ -226,13 +244,13 @@ class distributed_trainer(trainercore):
     def write_summaries(self, writer, summary, global_step):
         if hvd.rank() != 0:
             return
-        else
+        else:
             trainercore.write_summaries(self, writer, summary, global_step)
 
     def log(self, metrics, kind, step):
         if hvd.rank() != 0:
             return
-        else
+        else:
             trainercore.log(self, metrics, kind, step)
    
     def batch_process(self):

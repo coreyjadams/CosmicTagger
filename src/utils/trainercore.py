@@ -15,9 +15,9 @@ from ..io import io_templates
 FLAGS = flags.FLAGS()
 
 import datetime
-import logging
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
-logging.getLogger("tensorflow").setLevel(logging.WARNING)
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
+
 
 import tensorflow as tf
 
@@ -135,7 +135,7 @@ class trainercore(object):
 
         # Net construction:
         start = time.time()
-        sys.stdout.write("Begin constructing network\n")
+        # sys.stdout.write("Begin constructing network\n")
 
         # Make sure all required dimensions are present:
 
@@ -373,10 +373,8 @@ class trainercore(object):
 
         try:
             os.makedirs(file_path)
-        except FileExistsError:
-            pass
         except:
-            tf.log.error("Could not make file path")
+            tf.logging.error("Could not make file path")
 
         # Create a saver for snapshots of the network:
         self._saver = tf.train.Saver()
@@ -668,6 +666,11 @@ class trainercore(object):
 
         writer.add_summary(summary, global_step)
 
+    def metrics(self, metrics):
+        # This function looks useless, but it is not.
+        # It allows a handle to the distributed network to allreduce metrics.
+        return metrics
+
     def val_step(self, gs):
 
         if gs == 0: return
@@ -677,12 +680,9 @@ class trainercore(object):
 
         if gs % FLAGS.AUX_ITERATION == 0:
 
-            global_start_time = datetime.datetime.now()
 
             # Fetch the next batch of data with larcv
-            io_start_time = datetime.datetime.now()
-            minibatch_data = self.fetch_next_batch()
-            io_end_time = datetime.datetime.now()
+            minibatch_data = self.fetch_next_batch('aux')
 
             # For tensorflow, we have to build up an ops list to submit to the
             # session to run.
@@ -695,20 +695,17 @@ class trainercore(object):
             ops['metrics'] = self._metrics
 
             if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
-                print("Running summary images for validation")
                 ops['summary_images'] = self._summary_images
 
 
             ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 
-            metrics = ops["metrics"]
+            metrics = self.metrics(ops["metrics"])
 
             verbose = False
 
 
 
-
-            metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
 
             if verbose: print("Calculated metrics")
 
@@ -725,13 +722,10 @@ class trainercore(object):
 
             if verbose: print("Summarized")
 
-            global_end_time = datetime.datetime.now()
-
-            # Compute global step per second:
-            self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
 
             # Lastly, call next on the IO:
-            self._larcv_interface.next('primary')
+            if not FLAGS.DISTRIBUTED:
+                self._larcv_interface.next('aux')
 
             return ops["global_step"]
         return
@@ -764,7 +758,7 @@ class trainercore(object):
 
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 
-        metrics = ops["metrics"]
+        metrics = self.metrics(ops["metrics"])
 
         verbose = False
 
@@ -811,7 +805,8 @@ class trainercore(object):
         self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
 
         # Lastly, call next on the IO:
-        self._larcv_interface.next('primary')
+        if not FLAGS.DISTRIBUTED:
+            self._larcv_interface.next('primary')
 
         return ops["global_step"]
 
