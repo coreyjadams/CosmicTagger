@@ -117,9 +117,14 @@ class distributed_trainer(trainercore):
         # Try to restore a model?
         restored = self.restore_model()
 
-        if not restored:
+        if not restored and hvd.rank() == 0:
             self._sess.run(tf.global_variables_initializer())
 
+        # Rank 0 has either restored, or has initialized.  Broadcast it:
+
+        bcast = hvd.broadcast_global_variables(0)
+
+        print(bcast)
 
 
 
@@ -154,38 +159,16 @@ class distributed_trainer(trainercore):
 
             # Take all of the metrics and turn them into summaries:
 
-            # Additionally, in training mode if there is aux data use it for validation:
-        if hvd.rank() == 0 and FLAGS.AUX_FILE is not None:
-            self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
-
-        hooks = self.get_distributed_hooks()
 
 
-        print(self._config)
-
-        if hvd.rank() == 0:
-            if FLAGS.CHECKPOINT_ITERATION > 0:
-                checkpoint_it = FLAGS.CHECKPOINT_ITERATION
-            else:
-                checkpoint_it = None
-            self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = hooks,
-                checkpoint_dir        = FLAGS.LOG_DIRECTORY,
-                log_step_count_steps  = FLAGS.LOGGING_ITERATION,
-                save_summaries_steps  = None,
-                save_summaries_secs   = None,
-                save_checkpoint_secs  = None,
-                save_checkpoint_steps = checkpoint_it
-            )
-
-        else:
-            self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = hooks,
-                checkpoint_dir = None,
-                save_summaries_steps = None,
-                save_summaries_secs = None,
-            )
 
     def restore_model(self):
         # Restore model has to restore on one rank and broadcast to other ranks
+        if hvd.rank() == 0:
+            restored = trainercore.restore_model(self)
+
+        return restored
+
 
 
     def generate_learning_rate(self, 
