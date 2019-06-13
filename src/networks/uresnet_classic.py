@@ -227,7 +227,7 @@ class ConcatConnection(nn.Module):
             kernel_size   = 1,
             stride        = 1,
             padding       = 0,
-            bias          = False)
+            bias          = FLAGS.USE_BIAS)
 
     def forward(self, x, residual):
         x = torch.cat([x, residual], dim=1)
