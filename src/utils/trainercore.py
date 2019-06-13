@@ -7,6 +7,7 @@ from collections import OrderedDict
 import numpy
 
 import torch
+# from torch.jit import trace
 
 from larcv import larcv_interface
 
@@ -124,6 +125,8 @@ class trainercore(object):
 
         self._net = FLAGS._net(FLAGS.SHAPE)
         # self._net.half()
+
+        # self._net = trace(self._net, torch.empty(1, 3, 640, 1024).uniform_(0,1))
 
         if FLAGS.TRAINING: 
             self._net.train(True)
@@ -820,7 +823,8 @@ class trainercore(object):
         self.increment_global_step()
 
         # Lastly, call next on the IO:
-        self._larcv_interface.next('primary')
+        if not FLAGS.DISTRIBUTED:
+            self._larcv_interface.next('primary')
 
         return
 
@@ -858,7 +862,8 @@ class trainercore(object):
             self.summary(metrics, saver="test")
             self.summary_images(logits_image, labels_image, saver="test")
 
-            self._larcv_interface.next('aux')
+            if not FLAGS.DISTRIBUTED:
+                self._larcv_interface.next('aux')
 
             return
 
@@ -992,7 +997,7 @@ class trainercore(object):
             # self.summary(metrics, saver="test")
             # self.summary_images(logits_image, labels_image, saver="ana")
 
-        self._larcv_interface.next('aux').next()
+        self._larcv_interface.next('aux')
 
         return
 
