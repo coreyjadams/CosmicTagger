@@ -420,10 +420,10 @@ class trainercore(object):
         cosmic_iou = (cosmic_prediction_locations & cosmic_label_locations).sum().float() / (cosmic_prediction_locations | cosmic_label_locations).sum().float()
 
         accuracy = {}
-        accuracy['accuracy'] = torch.mean(correct)
-        accuracy['acc-cosmic-iou'] = neutrino_iou
-        accuracy['acc-neutrino-iou'] = cosmic_iou
-        accuracy['acc-non-zero'] = non_zero_accuracy
+        accuracy['accuracy']         = torch.mean(correct)
+        accuracy['acc-cosmic-iou']   = cosmic_iou
+        accuracy['acc-neutrino-iou'] = neutrino_iou
+        accuracy['acc-non-zero']     = non_zero_accuracy
 
         return accuracy
 
@@ -502,7 +502,7 @@ class trainercore(object):
                 # This is a reshape and H/W swap:
                 prediction = prediction.view(
                     [1, prediction.shape[-2], prediction.shape[-1]]
-                    ).permute(0, 2, 1).float()
+                    ).float()
 
 
 
@@ -511,7 +511,7 @@ class trainercore(object):
 
                 labels = labels_by_plane[plane].view(
                     [1, labels_by_plane[plane].shape[-2], labels_by_plane[plane].shape[-1]]
-                    ).permute(0, 2, 1)
+                    )
                 # The images are in the format (Plane, W, H)
                 # Need to transpose the last two dims in order to meet the (CHW) ordering
                 # of tensorboardX
@@ -620,7 +620,27 @@ class trainercore(object):
         weight_output = numpy.zeros(labels.shape, dtype=numpy.float32)
 
         batch_size = labels.shape[0]
+ #      # Prepare output weights:
+ #        print(labels.shape)
+ #        weights = numpy.zeros(labels.shape)
 
+ #        i = 0
+ #        for batch in labels:
+ #            # First, figure out what the labels are and how many of each:
+ #            values, counts = numpy.unique(batch, return_counts=True)
+
+ #            n_pixels = numpy.sum(counts)
+ #            for value, count in zip(values, counts):
+ #                weight = 1.0*(n_pixels - count) / n_pixels
+ #                if boost_labels is not None and value in boost_labels.keys():
+ #                    weight *= boost_labels[value]
+ #                mask = labels[i] == value
+ #                weights[i, mask] += weight
+ #            weights[i] *= 1. / numpy.sum(weights[i])
+ #            i += 1
+
+ #        print(numpy.mean(labels))
+ #        print(numpy.mean(weights))
 
         if FLAGS.BALANCE_LOSS:
             for batch in range(batch_size):
@@ -644,19 +664,18 @@ class trainercore(object):
                         for i, l in enumerate(vals):
                             wvec[label_values == l] = weights[i]
                         
-                        weight_output[batch, plane, :, :] = wvec
+                        weight_output[batch, plane, :, :] = wvec / labels.shape[1]
 
         else:
             # print("type(labels): ", type(labels))
             # print("labels.shape: ", labels.shape)
             # print("numpy.prod(labels.shape): ", numpy.prod(labels.shape))
             # In this case, the weight is just 1./N_Voxels
-            weight  = 1.*labels.shape[0]/numpy.prod(labels.shape)
+            weight  = 1.*labels.shape[0]/(numpy.prod(labels.shape) / labels[1])
             # print("Weight: ", weight)
             # print(numpy.sum(counts))
 
             weight_output[:,:, :, :] = weight
-
 
         return weight_output
 
@@ -839,7 +858,7 @@ class trainercore(object):
         # perform a validation step
         # Validation steps can optionally accumulate over several minibatches, to
         # fit onto a gpu or other accelerator
-        if self._global_step % FLAGS.AUX_ITERATION == 0:
+        if self._global_step != 0 and self._global_step % FLAGS.AUX_ITERATION == 0:
 
             self._net.eval()
             # Fetch the next batch of data with larcv
@@ -1010,7 +1029,7 @@ class trainercore(object):
 
 
         # Run iterations
-        for i in range(FLAGS.ITERATIONS):
+        for self._iteration in range(FLAGS.ITERATIONS):
             if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
                 print('Finished training (iteration %d)' % self._iteration)
                 self.checkpoint()
