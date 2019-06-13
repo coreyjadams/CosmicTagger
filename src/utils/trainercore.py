@@ -6,6 +6,8 @@ from collections import OrderedDict
 
 import numpy
 
+import torch
+
 from larcv import larcv_interface
 
 
@@ -14,10 +16,14 @@ from . import data_transforms
 from ..io import io_templates
 FLAGS = flags.FLAGS()
 
+if FLAGS.SPARSE:
+    import sparseconvnet as scn 
+
 import datetime
 
+# This uses tensorboardX to save summaries and metrics to tensorboard compatible files.
+
 import tensorboardX
-import torch
 
 class trainercore(object):
     '''
@@ -36,26 +42,22 @@ class trainercore(object):
     def __del__(self):
         for f in self._cleanup:
             os.unlink(f.name)
-            
     def _initialize_io(self):
 
-
-        # This is a dummy placeholder, you must check this yourself:
-        max_voxels = 1000
 
         # Use the templates to generate a configuration string, which we store into a temporary file
         if FLAGS.TRAINING:
             config = io_templates.train_io(
-                input_file=FLAGS.FILE, 
-                data_producer= FLAGS.IMAGE_PRODUCER,
-                label_producer= FLAGS.LABEL_PRODUCER, 
-                max_voxels=max_voxels)
+                input_file=FLAGS.FILE,
+                data_producer=FLAGS.IMAGE_PRODUCER,
+                label_producer=FLAGS.LABEL_PRODUCER,
+                max_voxels=FLAGS.MAX_VOXELS)
         else:
             config = io_templates.ana_io(
-                input_file=FLAGS.FILE, 
-                data_producer= FLAGS.IMAGE_PRODUCER,
-                label_producer= FLAGS.LABEL_PRODUCER, 
-                max_voxels=max_voxels)
+                input_file=FLAGS.FILE,
+                data_producer=FLAGS.IMAGE_PRODUCER,
+                label_producer=FLAGS.LABEL_PRODUCER,
+                max_voxels=FLAGS.MAX_VOXELS)
 
 
         # Generate a named temp file:
@@ -73,7 +75,6 @@ class trainercore(object):
             'make_copy'   : True
         }
 
-        # By default, fetching data and label as the keywords from the file:
         data_keys = OrderedDict({
             'image': 'data', 
             'label': 'label'
@@ -87,7 +88,11 @@ class trainercore(object):
         if FLAGS.AUX_FILE is not None:
 
             if FLAGS.TRAINING:
-                config = io_templates.test_io(input_file=FLAGS.AUX_FILE, max_voxels=max_voxels)
+                config = io_templates.test_io(
+                    input_file=FLAGS.AUX_FILE,
+                    data_producer=FLAGS.IMAGE_PRODUCER,
+                    label_producer=FLAGS.LABEL_PRODUCER,
+                    max_voxels=FLAGS.MAX_VOXELS)
 
                 # Generate a named temp file:
                 aux_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
@@ -117,7 +122,6 @@ class trainercore(object):
 
     def init_network(self):
 
-        # By default, pass the shape to the network:
         self._net = FLAGS._net(FLAGS.SHAPE)
         # self._net.half()
 
@@ -126,34 +130,7 @@ class trainercore(object):
 
         self._criterion = torch.nn.CrossEntropyLoss(reduction='none')
         
-        self._log_keys = ['loss', 'accuracy']
-
-
-    def print_network_info(self):
-
-        n_trainable_parameters = 0
-        for var in self._net.parameters():
-            n_trainable_parameters += numpy.prod(var.shape)
-        print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
-
-
-    def load_model_from_file(self):
-
-        state = self.restore_model()
-
-        if state is not None:
-            self.load_state(state)
-
-    def set_compute_parameters(self):
-        # If using half precision on the model, convert it now:
-        if FLAGS.MODEL_HALF_PRECISION:
-            self._net.half()
-
-        if FLAGS.COMPUTE_MODE == "CPU":
-            pass
-        if FLAGS.COMPUTE_MODE == "GPU":
-            self._net.cuda()
-
+        self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
 
     def initialize(self, io_only=False):
 
@@ -169,7 +146,10 @@ class trainercore(object):
 
         self.init_network()
 
-        self.print_network_info()
+        n_trainable_parameters = 0
+        for var in self._net.parameters():
+            n_trainable_parameters += numpy.prod(var.shape)
+        print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
 
         self.init_optimizer()
 
@@ -178,23 +158,31 @@ class trainercore(object):
         self._global_step = 0
 
 
-        self.load_model_from_file()
+        state = self.restore_model()
 
-        self.set_compute_parameters()
+        if state is not None:
+            self.load_state(state)
 
+        # If using half precision on the model, convert it now:
+        if FLAGS.MODEL_HALF_PRECISION:
+            self._net.half()
+
+        if FLAGS.COMPUTE_MODE == "CPU":
+            pass
+        if FLAGS.COMPUTE_MODE == "GPU":
+            self._net.cuda()
 
 
 
 
     def init_optimizer(self):
+
         if FLAGS.OPTIMIZER == "adam":
             # Create an optimizer:
             if FLAGS.LEARNING_RATE <= 0:
                 self._opt = torch.optim.Adam(self._net.parameters())
             else:
                 self._opt = torch.optim.Adam(self._net.parameters(), FLAGS.LEARNING_RATE)
-        elif FLAGS.OPTIMIZER == "lars":
-            raise NotImplementedError("There is no LARS implementation in pytorch")
         else:            
             # Create an optimizer:
             if FLAGS.LEARNING_RATE <= 0:
@@ -205,7 +193,11 @@ class trainercore(object):
 
 
 
+
+
+
     def init_saver(self):
+
         # This sets up the summary saver:
         self._saver = tensorboardX.SummaryWriter(FLAGS.LOG_DIRECTORY)
 
@@ -215,6 +207,15 @@ class trainercore(object):
             self._aux_saver = tensorboardX.SummaryWriter(FLAGS.LOG_DIRECTORY + "/val/")
         else:
             self._aux_saver = None
+        # This code is supposed to add the graph definition.
+        # It doesn't currently work
+        # temp_dims = list(dims['image'])
+        # temp_dims[0] = 1
+        # dummy_input = torch.randn(size=tuple(temp_dims), requires_grad=True)
+        # self._saver.add_graph(self._net, (dummy_input,))
+
+        # Here, either restore the weights of the network or initialize it:
+
 
     def restore_model(self):
         ''' This function attempts to restore the model from file
@@ -237,8 +238,8 @@ class trainercore(object):
         state = torch.load(chkp_file)
         return state
 
-
     def load_state(self, state):
+
 
         self._net.load_state_dict(state['state_dict'])
         self._opt.load_state_dict(state['optimizer'])
@@ -252,7 +253,6 @@ class trainercore(object):
                         state[k] = v.cuda()
 
         return True
-
 
     def save_model(self):
         '''Save the model to file
@@ -314,6 +314,7 @@ class trainercore(object):
         
         
         '''
+
         # Find the base path of the log directory
         if FLAGS.CHECKPOINT_DIRECTORY == None:
             file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
@@ -328,19 +329,95 @@ class trainercore(object):
 
 
 
-
-    def _calculate_loss(self, labels, logits):
+    def _calculate_loss(self, labels, logits, weight):
         ''' Calculate the loss.
 
         returns a single scalar for the optimizer to use.
         '''
-        raise NotImplementedError("You must implement this function")
+
+
+        # To apply the loss function, we have to convert the sparse tensors 
+        # to dense tensors.  We can take a version of the labels, however,
+        # and set all its points to 1.0 (or another function) to create a weight
+        # tensor to apply to the corresponding loss map.
+
+
+        shape =  labels.shape
+
+        labels = labels.view([shape[0], shape[-3], shape[-2], shape[-1]]).long()
+
+
+        # weight = weight.view([shape[0], shape[-3], shape[-2], shape[-1]])
+
+        # print numpy.unique(labels.cpu(), return_counts=True)
+
+
+        loss = self._criterion(logits, target=labels)
+
+
+
+
+        loss = (loss*weight).sum(dim=[1,2,3])
+        loss = loss.mean()
+
+        if FLAGS.LOSS_SCALE != 1.0:
+            loss *= FLAGS.LOSS_SCALE
+
+        # loss = torch.sum(loss*weight)
+
+        # Summing scales up by batch size and by number of images.
+        # We can address this by averaging those two dimensions out:
+        # loss /= weight.shape[0]*weight.shape[1]
+
+        # print(loss)
+        return loss
+
+        # if FLAGS.LABEL_MODE == 'all':
+        #     values, target = torch.max(inputs[FLAGS.KEYWORD_LABEL], dim = 1)
+        #     loss = self._criterion(logits, target=target)
+        #     return loss
+       
+
 
     def _calculate_accuracy(self, logits, labels):
         ''' Calculate the accuracy.
 
+            Images received here are not sparse but dense.
+            This is to ensure equivalent metrics are computed for sparse and dense networks.
+
         '''
-        raise NotImplementedError("You must implement this function")
+
+        values, predicted_label = torch.max(logits, dim=1)
+
+
+        correct = (predicted_label == labels.long()).float()
+
+        # We calculate 3 metrics.
+        # First is the mean accuracy over all pixels
+        # Second is the intersection over union of all cosmic pixels
+        # Third is the intersection over union of all neutrino pixels
+
+        # This is more stable than the accuracy, since the union is unlikely to be ever 0
+
+        # To compute the IoU, we use torch bytetensors which are similar to numpy masks.
+
+        neutrino_label_locations = labels == 1
+        cosmic_label_locations   = labels == 2
+
+        neutrino_prediction_locations = predicted_label == 1
+        cosmic_prediction_locations   = predicted_label == 2    
+
+        neutrino_iou = (neutrino_prediction_locations & neutrino_label_locations).sum().float() / (neutrino_prediction_locations | neutrino_label_locations).sum().float()
+        cosmic_iou = (cosmic_prediction_locations & cosmic_label_locations).sum().float() / (cosmic_prediction_locations | cosmic_label_locations).sum().float()
+
+        accuracy = {}
+        accuracy['accuracy'] = torch.mean(correct)
+        accuracy['acc-cosmic-iou'] = neutrino_iou
+        # print("Got non-zero mean")
+        accuracy['acc-neutrino-iou'] = cosmic_iou
+
+
+        return accuracy
 
 
     def _compute_metrics(self, logits, labels, loss):
@@ -353,7 +430,6 @@ class trainercore(object):
         metrics.update(accuracy)
 
         return metrics
-
 
     def log(self, metrics, saver=''):
 
@@ -382,6 +458,7 @@ class trainercore(object):
             print("{} Step {} metrics: {}".format(saver, self._global_step, s))
 
 
+
     def summary(self, metrics,saver=""):
 
         if self._global_step % FLAGS.SUMMARY_ITERATION == 0:
@@ -398,21 +475,19 @@ class trainercore(object):
             return
 
 
+    def summary_images(self, logits_image, labels_image, saver=""):
 
-    def summary_images(self, logits, labels, saver=""):
-        '''Store images to tensorboardX
-        
-        Create images from the output logits and labels and snapshot them
-        Only useful in segmentation networks of some kind.
-
-        Certainly gives garbage in standard classification networks
-        
-        '''
-
+        # if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
         if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0:
 
-            logits_by_plane = torch.chunk(logits[0], chunks=FLAGS.NPLANES,dim=1)
-            labels_by_plane = torch.chunk(labels[0], chunks=FLAGS.NPLANES,dim=0)
+            # print(logits_image.shape)
+            # print(labels_image.shape)
+            logits_by_plane = torch.chunk(logits_image[0], chunks=FLAGS.NPLANES,dim=1)
+            labels_by_plane = torch.chunk(labels_image[0], chunks=FLAGS.NPLANES,dim=0)
+            # print(logits_by_plane[0].shape)
+            # print(logits_by_plane[1].shape)
+            # print(logits_by_plane[2].shape)
+
 
             for plane in range(FLAGS.NPLANES):
                 val, prediction = torch.max(logits_by_plane[plane], dim=0)
@@ -423,6 +498,9 @@ class trainercore(object):
 
 
 
+                #TODO - need to address this function here!!!
+
+
                 labels = labels_by_plane[plane].view(
                     [1, labels_by_plane[plane].shape[-2], labels_by_plane[plane].shape[-1]]
                     ).permute(0, 2, 1)
@@ -431,7 +509,6 @@ class trainercore(object):
                 # of tensorboardX
 
 
-                #  re-write this if you have a number of classes different than 3:
                 # Values get mapped to gray scale, so put them in the range (0,1)
                 labels[labels == 1] = 0.5
                 labels[labels == 2] = 1.0
@@ -454,8 +531,6 @@ class trainercore(object):
 
         return
 
-
-
     def fetch_next_batch(self, mode='primary', metadata=False):
 
         minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, fetch_meta_data=metadata)
@@ -467,15 +542,120 @@ class trainercore(object):
                 continue
             minibatch_data[key] = numpy.reshape(minibatch_data[key], minibatch_dims[key])
 
-        minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
-        minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
+
+        # We compute the weights upstream of converting to scn format:
+
+        #If we're using a sparse network:
+        if FLAGS.SPARSE:
+            minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])    
+
+            minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['image'])
+            minibatch_data['label']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['label'])
+            minibatch_data['weight'] = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['weight'])
+        else:
+            dense_shape = FLAGS.SHAPE
+            minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=dense_shape)
+            minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=dense_shape)
+
+            minibatch_data['weight'] = self.compute_weights_dense(minibatch_data['label'])    
 
 
+
+        # This adds the weights to the data for the loss calculation:
 
         return minibatch_data
 
+    def compute_weights(self, labels):
+
+        # Labels is of the format (batch, plane, N_VOXELS, value)
+
+        weight_output = numpy.copy(labels)
+
+        batch_size = labels.shape[0]
+
+        for batch in range(batch_size):
+
+            for plane in range(FLAGS.NPLANES):
+
+                label_values = labels[batch, plane, :, -1]
+                active = label_values != -999
+                vals, counts = numpy.unique(label_values[active], return_counts=True)
+
+                if FLAGS.BALANCE_LOSS:
+                    # In this case, the weight is set such summed weight
+                    # over each pixel's class is equal across all weights.
+                    # It's then normalized to equal one
+                    weights = 1. / (len(vals) * counts)
+
+                    # Normalize the weights to sum to one:
+                    # weights /= numpy.sum(weights*counts)
+                    
+                    wvec = numpy.full(label_values.shape, -999.)
+
+                    for i, l in enumerate(vals):
+                        wvec[label_values == l] = weights[i]
+                    
+                    weight_output[batch, plane, :, -1] = wvec
+                else:
+                    # In this case, the weight is just 1./N_Voxels
+                    weight  = 1./numpy.sum(counts)
+
+                    weight_output[batch, plane, active, -1] = weight
+
+
+        return weight_output
+
+
+    def compute_weights_dense(self, labels):
+
+        # Labels is of the format (batch, plane, x_shape, y_shape)
+
+        weight_output = numpy.zeros(labels.shape, dtype=numpy.float32)
+
+        batch_size = labels.shape[0]
+
+
+        if FLAGS.BALANCE_LOSS:
+            for batch in range(batch_size):
+
+                for plane in range(FLAGS.NPLANES):
+
+                    label_values = labels[batch, plane, :, :]
+                    # active = label_values != 0
+                    vals, counts = numpy.unique(label_values, return_counts=True)
+
+                    if FLAGS.BALANCE_LOSS:
+                        # In this case, the weight is set such summed weight
+                        # over each pixel's class is equal across all weights.
+                        # It's then normalized to equal one
+                        weights = 1./ (len(vals) * counts )
+                        # # Normalize the weights to sum to one:
+                        # weights /= numpy.sum(weights*counts)
+                        
+                        wvec = numpy.full(label_values.shape, 0.0)
+
+                        for i, l in enumerate(vals):
+                            wvec[label_values == l] = weights[i]
+                        
+                        weight_output[batch, plane, :, :] = wvec
+
+        else:
+            # print("type(labels): ", type(labels))
+            # print("labels.shape: ", labels.shape)
+            # print("numpy.prod(labels.shape): ", numpy.prod(labels.shape))
+            # In this case, the weight is just 1./N_Voxels
+            weight  = 1.*labels.shape[0]/numpy.prod(labels.shape)
+            # print("Weight: ", weight)
+            # print(numpy.sum(counts))
+
+            weight_output[:,:, :, :] = weight
+
+
+        return weight_output
+
 
     def increment_global_step(self):
+
         previous_epoch = int((self._global_step * FLAGS.MINIBATCH_SIZE) / self._epoch_size)
         self._global_step += 1
         current_epoch = int((self._global_step * FLAGS.MINIBATCH_SIZE) / self._epoch_size)
@@ -485,12 +665,12 @@ class trainercore(object):
         if previous_epoch != current_epoch:
             self.on_epoch_end()
 
-
     def on_step_end(self):
         pass
 
     def on_epoch_end(self):
         pass
+
 
     def to_torch(self, minibatch_data, device=None):
 
@@ -518,23 +698,41 @@ class trainercore(object):
                     minibatch_data[key] = minibatch_data[key].half()
         return minibatch_data
 
+    def sparse_to_dense(self, sparse_tensor, nplanes):
+
+        return scn.SparseToDense(dimension=3, nPlanes=nplanes)(sparse_tensor)
 
     def forward_pass(self, minibatch_data):
-        '''Run the model forward with pytorch
-        '''
 
         minibatch_data = self.to_torch(minibatch_data)
 
         # Run a forward pass of the model on the input image:
         logits = self._net(minibatch_data['image'])
-        if 'label' in minibatch_data: 
-            labels = minibatch_data['label']
-        else:
-            labels = None
 
-        return logits, labels
+        if FLAGS.SPARSE:
+            labels = self._net.convert_to_scn(minibatch_data['label'])
+            weight = self._net.convert_to_scn(minibatch_data['weight'])
+
+            weight_image = self.sparse_to_dense(weight, nplanes=weight.features.shape[-1])
+            logits_image = self.sparse_to_dense(logits, nplanes=logits.features.shape[-1])
+            labels_image = self.sparse_to_dense(labels, nplanes=labels.features.shape[-1])
+
+            # In just the sparse mode, we reshape the weights and labels;
+            weight_image = weight_image.view(weight_image.shape[0], 
+                weight_image.shape[-3], weight_image.shape[-2], weight_image.shape[-1])
+            labels_image = labels_image.view(labels_image.shape[0], 
+                labels_image.shape[-3], labels_image.shape[-2], labels_image.shape[-1])
+
+        else:
+            # This is just a renaming
+            weight_image = minibatch_data['weight']
+            logits_image = logits
+            labels_image = minibatch_data['label']
+
+        return logits_image, labels_image, weight_image
 
     def train_step(self):
+
 
         # For a train step, we fetch data, run a forward and backward pass, and
         # if this is a logging step, we compute some logging metrics.
@@ -551,7 +749,7 @@ class trainercore(object):
         minibatch_data = self.fetch_next_batch()
         io_end_time = datetime.datetime.now()
 
-        logits, labels = self.forward_pass(minibatch_data)
+        logits_image, labels_image, weight_image = self.forward_pass(minibatch_data)
 
 
         verbose = False
@@ -560,7 +758,7 @@ class trainercore(object):
         # Compute the loss based on the logits
 
 
-        loss = self._calculate_loss(labels, logits)
+        loss = self._calculate_loss(labels_image, logits_image, weight_image)
         if verbose: print("Completed loss")
 
         # Compute the gradients for the network parameters:
@@ -575,7 +773,7 @@ class trainercore(object):
 
 
         # Compute any necessary metrics:
-        metrics = self._compute_metrics(logits, labels, loss)
+        metrics = self._compute_metrics(logits_image, labels_image, loss)
         
 
 
@@ -607,7 +805,7 @@ class trainercore(object):
         if verbose: print("Completed Log")
 
         self.summary(metrics, saver="train")       
-        self.summary_images(logits, labels, saver="train")
+        self.summary_images(logits_image, labels_image, saver="train")
         if verbose: print("Summarized")
 
 
@@ -642,26 +840,25 @@ class trainercore(object):
             minibatch_data = self.fetch_next_batch('aux')        
             io_end_time = datetime.datetime.now()
 
-            logits, labels = self.forward_pass(minibatch_data)
+            logits_image, labels_image, weight_image = self.forward_pass(minibatch_data)
 
             # Compute the loss based on the logits
-            loss = self._calculate_loss(labels, logits,)
+            loss = self._calculate_loss(labels_image, logits_image, weight_image)
 
 
             # Compute any necessary metrics:
-            metrics = self._compute_metrics(logits, labels, loss)
+            metrics = self._compute_metrics(logits_image, labels_image, loss)
         
 
             self.log(metrics, saver="test")
             self.summary(metrics, saver="test")
-            self.summary_images(logits, labels, saver="test")
+            self.summary_images(logits_image, labels_image, saver="test")
 
-            self._larcv_interface.next('aux').next()
+            self._larcv_interface.next('aux')
 
             return
 
 
- 
  
     def stop(self):
         # Mostly, this is just turning off the io:
@@ -694,21 +891,106 @@ class trainercore(object):
 
         # Run a forward pass of the model on the input image:
         with torch.no_grad():
-            logits, labels = self.forward_pass(minibatch_data)
+            logits_image, labels_image, weight_image = self.forward_pass(minibatch_data)
             
+
+
+        # If there is an aux file, for ana that means an output file.
+        # Call the larcv interface to write data:
+        if FLAGS.AUX_FILE is not None:
+
+            # To use the PyUtils class, we have to massage the data
+            features = (logits.features).cpu()
+            coords   = (logits.get_spatial_locations()).cpu()
+            coords = coords[:,0:-1]
+            # print("Features shape: ", features.shape)
+            # print("Coords shape: ", coords.shape)
+
+            # Compute the softmax:
+            features = torch.nn.Softmax(dim=1)(features)
+            val, prediction = torch.max(features, dim=-1)
+            # print("Prediction shape: ", prediction.shape)
+
+            # Assuming batch size of 1 here so we don't need to fiddle with the batch dimension.
+
+
+            # We store the prediction for each plane, as well as it's 3 scores, seperately.
+            # Each type, though (bkg/cosmic/neut) is rolled up into one producer
+
+            list_of_dicts_by_label = {
+                0 : [None] * FLAGS.NPLANES,
+                1 : [None] * FLAGS.NPLANES,
+                2 : [None] * FLAGS.NPLANES,
+                'pred' : [None] * FLAGS.NPLANES,
+            }
+
+            for plane in range(FLAGS.NPLANES):
+                locs = coords[:,0] == plane
+                # print("Locs shape: ", locs.shape)
+                this_coords = coords[locs]
+                this_features = features[locs]
+
+                # print("Sub coords shape: ", this_coords.shape)
+                # print("Sub features shape: ", this_features.shape)
+
+                # Ravel the cooridinates into flat indexes:
+                indexes = self._y_spatial_size * this_coords[:,1] + this_coords[:,2]
+                meta = [0, 0, 
+                        self._y_spatial_size, self._x_spatial_size, 
+                        self._y_spatial_size, self._x_spatial_size, 
+                        plane,
+                    ]
+                # print("Indexes shape: ", indexes.shape)
+
+                for feature_type in [0,1,2]:
+                    writeable_features = this_features[:, feature_type]
+                    # print("Write features shape: ", writeable_features.shape)
+
+                    list_of_dicts_by_label[feature_type][plane] = {
+                        'value' : numpy.asarray(writeable_features).flatten(), 
+                        'index' : numpy.asarray(indexes.flatten()),
+                        'meta'  : meta 
+                    }
+
+
+                # Also do the prediction:
+                this_prediction = prediction[locs]
+                # print("Sub prediction shape: ", this_prediction.shape)
+                list_of_dicts_by_label['pred'][plane] = {
+                    'value' : numpy.asarray(this_prediction).flatten(), 
+                    'index' : numpy.asarray(indexes.flatten()),
+                    'meta'  : meta 
+                }
+
+
+            for l in [0,1,2]:
+                self._larcv_interface.write_output(data=list_of_dicts_by_label[l], 
+                    datatype='sparse2d', producer='label_{}'.format(l),
+                    entries=minibatch_data['entries'], 
+                    event_ids=minibatch_data['event_ids'])
+            
+            self._larcv_interface.write_output(data=list_of_dicts_by_label['pred'], 
+                datatype='sparse2d', producer='prediction'.format(l),
+                entries=minibatch_data['entries'], 
+                event_ids=minibatch_data['event_ids'])
+                
         # If the input data has labels available, compute the metrics:
-        if labels is not None:
+        if 'label' in minibatch_data:
             # Compute the loss
-            loss = self._calculate_loss(labels, logits)
+            loss = self._calculate_loss(labels_image, logits_image, weight_image)
 
             # Compute the metrics for this iteration:
             print("computing metrics for entry ", minibatch_data['entries'][0])
-            metrics = self._compute_metrics(logits, labels, loss)
+            metrics = self._compute_metrics(logits_image, labels_image, loss)
 
 
             self.log(metrics, saver="ana")
+            # self.summary(metrics, saver="test")
+            # self.summary_images(logits_image, labels_image, saver="ana")
 
         self._larcv_interface.next('aux').next()
+
+        return
 
     def batch_process(self):
 
