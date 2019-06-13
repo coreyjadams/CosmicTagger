@@ -392,20 +392,26 @@ class trainercore(object):
 
         correct = (predicted_label == labels.long()).float()
 
-        # We calculate 3 metrics.
+        # We calculate 4 metrics.
         # First is the mean accuracy over all pixels
         # Second is the intersection over union of all cosmic pixels
         # Third is the intersection over union of all neutrino pixels
+        # Fourth is the accuracy of all non-zero pixels
 
         # This is more stable than the accuracy, since the union is unlikely to be ever 0
 
-        # To compute the IoU, we use torch bytetensors which are similar to numpy masks.
 
+
+        # To compute the IoU, we use torch bytetensors which are similar to numpy masks.
+        non_zero_locations       = labels != 0
         neutrino_label_locations = labels == 1
         cosmic_label_locations   = labels == 2
 
         neutrino_prediction_locations = predicted_label == 1
         cosmic_prediction_locations   = predicted_label == 2    
+
+
+        non_zero_accuracy = torch.mean(correct[non_zero_locations])
 
         neutrino_iou = (neutrino_prediction_locations & neutrino_label_locations).sum().float() / (neutrino_prediction_locations | neutrino_label_locations).sum().float()
         cosmic_iou = (cosmic_prediction_locations & cosmic_label_locations).sum().float() / (cosmic_prediction_locations | cosmic_label_locations).sum().float()
@@ -413,9 +419,8 @@ class trainercore(object):
         accuracy = {}
         accuracy['accuracy'] = torch.mean(correct)
         accuracy['acc-cosmic-iou'] = neutrino_iou
-        # print("Got non-zero mean")
         accuracy['acc-neutrino-iou'] = cosmic_iou
-
+        accuracy['acc-non-zero'] = non_zero_accuracy
 
         return accuracy
 
