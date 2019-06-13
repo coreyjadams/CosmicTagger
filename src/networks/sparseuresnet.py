@@ -258,7 +258,7 @@ class SparseUNetCore(nn.Module):
         self.layers = nlayers
         self.depth  = depth
 
-        if depth == 1:
+        if depth == 0:
             self.main_module = SparseDeepestBlock(inplanes, FLAGS.RES_BLOCKS_DEEPEST_LAYER, residual = residual)
         else:
             # Residual or convolutional blocks, applied in series:
@@ -296,7 +296,7 @@ class SparseUNetCore(nn.Module):
 
         # Take the input and apply the downward pass convolutions.  Save the residual
         # at the correct time.
-        if self.depth != 1:
+        if self.depth != 0:
             if FLAGS.CONNECT_PRE_RES_BLOCKS_DOWN:
                 residual = x
 
@@ -311,7 +311,7 @@ class SparseUNetCore(nn.Module):
         # Apply the main module:
         x = self.main_module(x)
 
-        if self.depth != 1:
+        if self.depth != 0:
 
             # perform the upsampling step:
             # perform the downsampling operation:
@@ -350,7 +350,7 @@ class UResNet(torch.nn.Module):
         self.initial_convolution = scn.SubmanifoldConvolution(dimension=3, 
             nIn=1, 
             nOut=FLAGS.N_INITIAL_FILTERS, 
-            filter_size=[1,5,5], 
+            filter_size=[1,3,3], 
             bias=False)
         
 

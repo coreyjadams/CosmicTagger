@@ -189,7 +189,6 @@ class DeepestBlock(nn.Module):
 
     def forward(self, x):
         
-
         # THis isn't really a recommended setting to use, but we can control whether or not to connect here:
         if FLAGS.BLOCK_CONCAT:
             x = [ self.blocks(_x) for _x in x ]
@@ -244,7 +243,7 @@ class UNetCore(nn.Module):
         self.layers = nlayers
         self.depth  = depth
 
-        if depth == 1:
+        if depth == 0:
             self.main_module = DeepestBlock(inplanes, residual = residual)
         else:
             # Residual or convolutional blocks, applied in series:
@@ -279,9 +278,10 @@ class UNetCore(nn.Module):
 
     def forward(self, x):
         
+
         # Take the input and apply the downward pass convolutions.  Save the residual
         # at the correct time.
-        if self.depth != 1:
+        if self.depth != 0:
             if FLAGS.CONNECT_PRE_RES_BLOCKS_DOWN:
                 residual = x
 
@@ -293,11 +293,15 @@ class UNetCore(nn.Module):
             # perform the downsampling operation:
             x = [ self.downsample(_x) for _x in x ]
 
+        if FLAGS.VERBOSITY >1:
+            for p in range(len(x)):
+                print("plane {} Depth {}, shape: ".format(p, self.depth), x[p].shape)
+
+
         # Apply the main module:
         x = self.main_module(x)
 
-
-        if self.depth != 1:
+        if self.depth != 0:
 
             # perform the upsampling step:
             # perform the downsampling operation:
@@ -317,6 +321,10 @@ class UNetCore(nn.Module):
 
                     x[i] = self.connection(x[i], residual=residual[i])
 
+        if FLAGS.VERBOSITY >1:
+            for p in range(len(x)):
+                print("plane {} Depth {}, shape: ".format(p, self.depth), x[p].shape)
+
         return x
 
 
@@ -334,9 +342,9 @@ class UResNet(torch.nn.Module):
         self.initial_convolution = nn.Conv2d(
             in_channels  = 1,
             out_channels = FLAGS.N_INITIAL_FILTERS,
-            kernel_size  = [5, 5], 
+            kernel_size  = [3, 3], 
             stride       = [1, 1],
-            padding      = [2, 2], 
+            padding      = [1, 1], 
             bias         = FLAGS.USE_BIAS)
 
         n_filters = FLAGS.N_INITIAL_FILTERS
@@ -362,7 +370,7 @@ class UResNet(torch.nn.Module):
             kernel_size  = 1, 
             stride       = 1,
             padding      = 0,
-            bias         = False)
+            bias         = FLAGS.USE_BIAS)
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
 
@@ -391,7 +399,11 @@ class UResNet(torch.nn.Module):
 
         # Apply the initial convolutions:
         x = [ self.initial_convolution(_x) for _x in x ]
-
+        
+        if FLAGS.VERBOSITY >1:
+            print("After Initial convolution: ")
+            for p in [0,1,2]:
+                print("Plane {}, shape ".format(p), x[p].shape)
 
         # Apply the main unet architecture:
         x = self.net_core(x)

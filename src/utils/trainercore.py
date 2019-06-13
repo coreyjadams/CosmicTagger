@@ -560,7 +560,6 @@ class trainercore(object):
             minibatch_data['weight'] = self.compute_weights_dense(minibatch_data['label'])    
 
 
-
         # This adds the weights to the data for the loss calculation:
 
         return minibatch_data

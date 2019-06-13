@@ -39,7 +39,8 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
 
     # Fill in the output tensor
 
-    output_array[batch_index, plane_index, x_index, y_index] = values    
+    # FOrmat should be [N, C, H, W]
+    output_array[batch_index, plane_index, y_index, x_index] = values    
 
     return output_array
 

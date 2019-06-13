@@ -109,7 +109,7 @@ class FLAGS(Borg):
         self.IMAGE_PRODUCER        = "sbndwire"
         self.LABEL_PRODUCER        = "sbnd_cosmicseg"
 
-        self.SHAPE                 = [1024, 640]
+        self.SHAPE                 = [640, 1024]
         self.MAX_VOXELS            = 80000
 
 
@@ -327,7 +327,7 @@ class uresnet(FLAGS):
         self.LOSS_SCALE                  = 1.0
 
         # Rate at which the number of filters increases at deeper layers
-        self.GROWTH_RATE                 = "linear"
+        self.GROWTH_RATE                 = "multiplicative"
         self.BLOCK_CONCAT                = False
 
         # Parameters to control the network implementation
