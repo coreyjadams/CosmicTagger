@@ -21,6 +21,10 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
 
 import tensorflow as tf
 
+floating_point_format = tf.float32
+integer_format = tf.int64
+
+
 class trainercore(object):
     '''
     This class is the core interface for training.  Each function to
@@ -162,13 +166,13 @@ class trainercore(object):
         self._input = dict()
 
         self._input.update({
-            'image' :  tf.placeholder(tf.float32, self._dims['image'], name="input_image"),
-            'label' :  tf.placeholder(tf.int64,   self._dims['label'], name="input_label"),
-            'io_time' : tf.placeholder(tf.float32, (), name="io_fetch_time")
+            'image' :  tf.placeholder(floating_point_format, self._dims['image'], name="input_image"),
+            'label' :  tf.placeholder(integer_format,        self._dims['label'], name="input_label"),
+            'io_time' : tf.placeholder(floating_point_format, (), name="io_fetch_time")
         })
 
         if FLAGS.BALANCE_LOSS:
-            self._input['weight'] = tf.placeholder(tf.float32, self._dims['label'], name="input_weight"),
+            self._input['weight'] = tf.placeholder(floating_point_format, self._dims['label'], name="input_weight"),
 
 
         # Build the network object, forward pass only:
@@ -486,15 +490,20 @@ class trainercore(object):
             
             split_labels = [tf.squeeze(l, axis=channels_dim) for l in tf.split(labels,len(logits['prediction']) , channels_dim)]
 
+            self._any_n_index = tf.equal(labels, tf.constant(1, labels.dtype))
+
             for p in range(len(logits['prediction'])):
 
                 total_accuracy[p] = tf.reduce_mean(
-                        tf.cast(tf.equal(logits['prediction'][p], split_labels[p]), tf.float32)
+                        tf.cast(tf.equal(logits['prediction'][p], split_labels[p]), floating_point_format)
                     )
                 # Find the non zero split_labels:
                 non_zero_indices = tf.not_equal(split_labels[p], tf.constant(0, split_labels[p].dtype))
 
                 # Find the neutrino indices:
+                # Sometimes, there are no neutrino indexes in the image.  This leads to a NaN
+                # in the calculation of the neutrino accuracy.  
+                # This is an open issue to resolve.
                 neutrino_indices = tf.equal(split_labels[p], tf.constant(1, split_labels[p].dtype))
 
                 # Find the cosmic indices:
@@ -515,18 +524,23 @@ class trainercore(object):
                 neutrino_intersection = tf.math.logical_and(predicted_neutrino_indices, neutrino_indices)
                 neutrino_union = tf.math.logical_or(predicted_neutrino_indices, neutrino_indices)
 
-                neut_iou[p] = tf.reduce_sum(tf.cast(neutrino_intersection, tf.float32)) / \
-                  tf.reduce_sum(tf.cast(neutrino_union, tf.float32))
+                neut_iou[p] = tf.reduce_sum(tf.cast(neutrino_intersection, floating_point_format)) / \
+                  tf.reduce_sum(tf.cast(neutrino_union, floating_point_format))
 
                 cosmic_intersection = tf.math.logical_and(predicted_cosmic_indices, cosmic_indices)
                 cosmic_union = tf.math.logical_or(predicted_cosmic_indices, cosmic_indices)
 
-                cosmic_iou[p] = tf.reduce_sum(tf.cast(cosmic_intersection, tf.float32)) / \
-                  tf.reduce_sum(tf.cast(cosmic_union, tf.float32))
+                cosmic_iou[p] = tf.reduce_sum(tf.cast(cosmic_intersection, floating_point_format)) / \
+                  tf.reduce_sum(tf.cast(cosmic_union, floating_point_format))
 
+                self._n_index  = neutrino_indices
+                self._n_logits = neutrino_logits
+                self._n_labels = neutrino_labels
 
-                non_bkg_accuracy[p] = tf.reduce_mean(tf.cast(tf.equal(non_zero_logits, non_zero_labels), tf.float32))
-                neut_accuracy[p]    = tf.reduce_mean(tf.cast(tf.equal(neutrino_logits, neutrino_labels), tf.float32))
+                non_bkg_accuracy[p] = tf.reduce_mean(tf.cast(tf.equal(non_zero_logits, non_zero_labels), 
+                    floating_point_format))
+                neut_accuracy[p]    = tf.reduce_mean(tf.cast(tf.equal(neutrino_logits, neutrino_labels), 
+                    floating_point_format))
 
                 # Add the accuracies to the summary:
                 self._metrics["split_accuracy/plane{0}/Total_Accuracy".format(p)] = total_accuracy[p]
@@ -590,7 +604,7 @@ class trainercore(object):
             images = []
 
             # Labels is an unsplit tensor, prediction is a split tensor
-            split_labels = [ tf.cast(l, tf.float32) for l in tf.split(labels,len(prediction) , channels_dim)]
+            split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , channels_dim)]
             for p in range(len(split_labels)):
                 images.append(
                     tf.summary.image('label_plane_{}'.format(p),
@@ -599,7 +613,7 @@ class trainercore(object):
                     )
                 images.append(
                     tf.summary.image('pred_plane_{}'.format(p),
-                                 tf.expand_dims(tf.cast(prediction[p], tf.float32), channels_dim),
+                                 tf.expand_dims(tf.cast(prediction[p], floating_point_format), channels_dim),
                                  max_outputs=1)
                     )
 
@@ -757,6 +771,22 @@ class trainercore(object):
 
 
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
+
+        any_n_index, n_indexs, n_logits, n_labels = self._sess.run(
+            [self._any_n_index, self._n_index, self._n_logits, self._n_labels], feed_dict=self.feed_dict(inputs=minibatch_data))
+
+        rank = self._larcv_interface._rank
+
+        print("Rank {}, any_n_index.shape: ".format(rank), any_n_index.shape)
+        print("Rank {}, numpy.sum(any_n_index): ".format(rank), numpy.sum(any_n_index))
+        print("Rank {}, n_indexs.shape: ".format(rank), n_indexs.shape)
+        print("Rank {}, numpy.sum(n_indexs): ".format(rank), numpy.sum(n_indexs))
+        print("Rank {}, n_logits.shape: ".format(rank), n_logits.shape)
+        print("Rank {}, n_labels.shape: ".format(rank), n_labels.shape)
+        print("Rank {}, numpy.sum(n_logits): ".format(rank), numpy.sum(n_logits))
+        print("Rank {}, numpy.sum(n_labels): ".format(rank), numpy.sum(n_labels))
+
+
 
         metrics = self.metrics(ops["metrics"])
 
