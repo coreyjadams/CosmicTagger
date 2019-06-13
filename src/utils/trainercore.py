@@ -258,6 +258,7 @@ class trainercore(object):
 
         self.print_network_info()
 
+
         self.init_optimizer()
 
         self.init_saver()
@@ -772,19 +773,19 @@ class trainercore(object):
 
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 
-        any_n_index, n_indexs, n_logits, n_labels = self._sess.run(
-            [self._any_n_index, self._n_index, self._n_logits, self._n_labels], feed_dict=self.feed_dict(inputs=minibatch_data))
+        # any_n_index, n_indexs, n_logits, n_labels = self._sess.run(
+        #     [self._any_n_index, self._n_index, self._n_logits, self._n_labels], feed_dict=self.feed_dict(inputs=minibatch_data))
 
-        rank = self._larcv_interface._rank
+        # rank = self._larcv_interface._rank
 
-        print("Rank {}, any_n_index.shape: ".format(rank), any_n_index.shape)
-        print("Rank {}, numpy.sum(any_n_index): ".format(rank), numpy.sum(any_n_index))
-        print("Rank {}, n_indexs.shape: ".format(rank), n_indexs.shape)
-        print("Rank {}, numpy.sum(n_indexs): ".format(rank), numpy.sum(n_indexs))
-        print("Rank {}, n_logits.shape: ".format(rank), n_logits.shape)
-        print("Rank {}, n_labels.shape: ".format(rank), n_labels.shape)
-        print("Rank {}, numpy.sum(n_logits): ".format(rank), numpy.sum(n_logits))
-        print("Rank {}, numpy.sum(n_labels): ".format(rank), numpy.sum(n_labels))
+        # print("Rank {}, any_n_index.shape: ".format(rank), any_n_index.shape)
+        # print("Rank {}, numpy.sum(any_n_index): ".format(rank), numpy.sum(any_n_index))
+        # print("Rank {}, n_indexs.shape: ".format(rank), n_indexs.shape)
+        # print("Rank {}, numpy.sum(n_indexs): ".format(rank), numpy.sum(n_indexs))
+        # print("Rank {}, n_logits.shape: ".format(rank), n_logits.shape)
+        # print("Rank {}, n_labels.shape: ".format(rank), n_labels.shape)
+        # print("Rank {}, numpy.sum(n_logits): ".format(rank), numpy.sum(n_logits))
+        # print("Rank {}, numpy.sum(n_labels): ".format(rank), numpy.sum(n_labels))
 
 
 
