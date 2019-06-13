@@ -335,7 +335,7 @@ class SparseUNetCore(nn.Module):
 
 class UResNet(torch.nn.Module):
 
-    def __init__(self, x_spatial_size, y_spatial_size):
+    def __init__(self, shape):
         torch.nn.Module.__init__(self)
 
 
@@ -344,7 +344,7 @@ class UResNet(torch.nn.Module):
         # (first spatial dim is plane)
         # self.input_tensor = scn.InputLayer(dimension=3, spatial_size=[FLAGS.NPLANES,640,1024])
         self.input_tensor = scn.InputLayer(dimension=3,
-            spatial_size=[FLAGS.NPLANES,x_spatial_size,y_spatial_size])
+            spatial_size=[FLAGS.NPLANES,shape[0], shape[1]])
 
 
         self.initial_convolution = scn.SubmanifoldConvolution(dimension=3, 
