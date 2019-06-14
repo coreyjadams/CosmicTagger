@@ -16,7 +16,7 @@ from . import data_transforms
 from ..io import io_templates
 FLAGS = flags.FLAGS()
 
-if FLAGS.SPARSE:
+if FLAGS.SPARSE and FLAGS.MODE != "iotest":
     import sparseconvnet as scn 
 
 import datetime
@@ -128,7 +128,24 @@ class trainercore(object):
         if FLAGS.TRAINING: 
             self._net.train(True)
 
-        self._criterion = torch.nn.CrossEntropyLoss(reduction='none')
+        # Here we set up weights using the aggregate metrics for the dataset:
+        if FLAGS.BALANCE_LOSS:
+            if FLAGS.SHAPE == [640, 1024]:
+                if not FLAGS.SPARSE:
+                    # Statistics for the downsampled dense images (800 samples):
+                    # [1564304000    1570400    6989600]
+                    # [0.9945577  0.00099843 0.00444387]
+                    # This vector is simplified to be approximate:
+                    weight = torch.tensor([0.001 , 1.        , 0.25])
+                else: 
+                    # Statistics for the downsampled sparse images (800 samples):
+                    # [20273800   908000  5262600]
+                    # [0.76665759 0.03433619 0.19900622]
+                    # In the sparse case, the ratio of neutrino to cosmic is unchanged,
+                    # but the number of noise/bkg is much less
+                    weight = torch.tensor([0.05, 1.        , 0.25])
+
+        self._criterion = torch.nn.CrossEntropyLoss(weights=weight)
         
         self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
 
@@ -329,7 +346,7 @@ class trainercore(object):
 
 
 
-    def _calculate_loss(self, labels, logits, weight):
+    def _calculate_loss(self, labels, logits):
         ''' Calculate the loss.
 
         returns a single scalar for the optimizer to use.
@@ -355,19 +372,8 @@ class trainercore(object):
         loss = self._criterion(logits, target=labels)
 
 
-
-
-        loss = (loss*weight).sum(dim=[1,2,3])
-        loss = loss.mean()
-
         if FLAGS.LOSS_SCALE != 1.0:
             loss *= FLAGS.LOSS_SCALE
-
-        # loss = torch.sum(loss*weight)
-
-        # Summing scales up by batch size and by number of images.
-        # We can address this by averaging those two dimensions out:
-        # loss /= weight.shape[0]*weight.shape[1]
 
         # print(loss)
         return loss
@@ -552,110 +558,106 @@ class trainercore(object):
 
         #If we're using a sparse network:
         if FLAGS.SPARSE:
-            minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])    
 
             minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['image'])
             minibatch_data['label']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['label'])
-            minibatch_data['weight'] = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['weight'])
         else:
             dense_shape = FLAGS.SHAPE
             minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=dense_shape)
             minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=dense_shape)
 
-            minibatch_data['weight'] = self.compute_weights_dense(minibatch_data['label'])    
 
 
-        # This adds the weights to the data for the loss calculation:
 
         return minibatch_data
 
-    def compute_weights(self, labels):
+    # def compute_weights(self, labels):
 
-        # Labels is of the format (batch, plane, N_VOXELS, value)
+    #     # Labels is of the format (batch, plane, N_VOXELS, value)
 
-        weight_output = numpy.copy(labels)
+    #     weight_output = numpy.copy(labels)
 
-        batch_size = labels.shape[0]
+    #     batch_size = labels.shape[0]
 
-        for batch in range(batch_size):
+    #     for batch in range(batch_size):
 
-            for plane in range(FLAGS.NPLANES):
+    #         for plane in range(FLAGS.NPLANES):
 
-                label_values = labels[batch, plane, :, -1]
-                active = label_values != -999
-                vals, counts = numpy.unique(label_values[active], return_counts=True)
+    #             label_values = labels[batch, plane, :, -1]
+    #             active = label_values != -999
+    #             vals, counts = numpy.unique(label_values[active], return_counts=True)
 
-                if FLAGS.BALANCE_LOSS:
-                    # In this case, the weight is set such summed weight
-                    # over each pixel's class is equal across all weights.
-                    # It's then normalized to equal one
-                    weights = 1. / (len(vals) * counts)
+    #             if FLAGS.BALANCE_LOSS:
+    #                 # In this case, the weight is set such summed weight
+    #                 # over each pixel's class is equal across all weights.
+    #                 # It's then normalized to equal one
+    #                 weights = 1. / (len(vals) * counts)
 
-                    # Normalize the weights to sum to one:
-                    # weights /= numpy.sum(weights*counts)
+    #                 # Normalize the weights to sum to one:
+    #                 # weights /= numpy.sum(weights*counts)
                     
-                    wvec = numpy.full(label_values.shape, -999.)
+    #                 wvec = numpy.full(label_values.shape, -999.)
 
-                    for i, l in enumerate(vals):
-                        wvec[label_values == l] = weights[i]
+    #                 for i, l in enumerate(vals):
+    #                     wvec[label_values == l] = weights[i]
                     
-                    weight_output[batch, plane, :, -1] = wvec
-                else:
-                    # In this case, the weight is just 1./N_Voxels
-                    weight  = 1./numpy.sum(counts)
+    #                 weight_output[batch, plane, :, -1] = wvec
+    #             else:
+    #                 # In this case, the weight is just 1./N_Voxels
+    #                 weight  = 1./numpy.sum(counts)
 
-                    weight_output[batch, plane, active, -1] = weight
-
-
-        return weight_output
+    #                 weight_output[batch, plane, active, -1] = weight
 
 
-    def compute_weights_dense(self, labels):
-
-        # Labels is of the format (batch, plane, x_shape, y_shape)
-
-        weight_output = numpy.zeros(labels.shape, dtype=numpy.float32)
-
-        batch_size = labels.shape[0]
+    #     return weight_output
 
 
-        if FLAGS.BALANCE_LOSS:
-            for batch in range(batch_size):
+    # def compute_weights_dense(self, labels):
 
-                for plane in range(FLAGS.NPLANES):
+    #     # Labels is of the format (batch, plane, x_shape, y_shape)
 
-                    label_values = labels[batch, plane, :, :]
-                    # active = label_values != 0
-                    vals, counts = numpy.unique(label_values, return_counts=True)
+    #     weight_output = numpy.zeros(labels.shape, dtype=numpy.float32)
 
-                    if FLAGS.BALANCE_LOSS:
-                        # In this case, the weight is set such summed weight
-                        # over each pixel's class is equal across all weights.
-                        # It's then normalized to equal one
-                        weights = 1./ (len(vals) * counts )
-                        # # Normalize the weights to sum to one:
-                        # weights /= numpy.sum(weights*counts)
+    #     batch_size = labels.shape[0]
+
+
+    #     if FLAGS.BALANCE_LOSS:
+    #         for batch in range(batch_size):
+
+    #             for plane in range(FLAGS.NPLANES):
+
+    #                 label_values = labels[batch, plane, :, :]
+    #                 # active = label_values != 0
+    #                 vals, counts = numpy.unique(label_values, return_counts=True)
+
+    #                 if FLAGS.BALANCE_LOSS:
+    #                     # In this case, the weight is set such summed weight
+    #                     # over each pixel's class is equal across all weights.
+    #                     # It's then normalized to equal one
+    #                     weights = 1./ (len(vals) * counts )
+    #                     # # Normalize the weights to sum to one:
+    #                     # weights /= numpy.sum(weights*counts)
                         
-                        wvec = numpy.full(label_values.shape, 0.0)
+    #                     wvec = numpy.full(label_values.shape, 0.0)
 
-                        for i, l in enumerate(vals):
-                            wvec[label_values == l] = weights[i]
+    #                     for i, l in enumerate(vals):
+    #                         wvec[label_values == l] = weights[i]
                         
-                        weight_output[batch, plane, :, :] = wvec
+    #                     weight_output[batch, plane, :, :] = wvec
 
-        else:
-            # print("type(labels): ", type(labels))
-            # print("labels.shape: ", labels.shape)
-            # print("numpy.prod(labels.shape): ", numpy.prod(labels.shape))
-            # In this case, the weight is just 1./N_Voxels
-            weight  = 1.*labels.shape[0]/numpy.prod(labels.shape)
-            # print("Weight: ", weight)
-            # print(numpy.sum(counts))
+    #     else:
+    #         # print("type(labels): ", type(labels))
+    #         # print("labels.shape: ", labels.shape)
+    #         # print("numpy.prod(labels.shape): ", numpy.prod(labels.shape))
+    #         # In this case, the weight is just 1./N_Voxels
+    #         weight  = 1.*labels.shape[0]/numpy.prod(labels.shape)
+    #         # print("Weight: ", weight)
+    #         # print(numpy.sum(counts))
 
-            weight_output[:,:, :, :] = weight
+    #         weight_output[:,:, :, :] = weight
 
 
-        return weight_output
+    #     return weight_output
 
 
     def increment_global_step(self):
@@ -715,25 +717,25 @@ class trainercore(object):
 
         if FLAGS.SPARSE:
             labels = self._net.convert_to_scn(minibatch_data['label'])
-            weight = self._net.convert_to_scn(minibatch_data['weight'])
+            # weight = self._net.convert_to_scn(minibatch_data['weight'])
 
-            weight_image = self.sparse_to_dense(weight, nplanes=weight.features.shape[-1])
+            # weight_image = self.sparse_to_dense(weight, nplanes=weight.features.shape[-1])
             logits_image = self.sparse_to_dense(logits, nplanes=logits.features.shape[-1])
             labels_image = self.sparse_to_dense(labels, nplanes=labels.features.shape[-1])
 
             # In just the sparse mode, we reshape the weights and labels;
-            weight_image = weight_image.view(weight_image.shape[0], 
-                weight_image.shape[-3], weight_image.shape[-2], weight_image.shape[-1])
+            # weight_image = weight_image.view(weight_image.shape[0], 
+                # weight_image.shape[-3], weight_image.shape[-2], weight_image.shape[-1])
             labels_image = labels_image.view(labels_image.shape[0], 
                 labels_image.shape[-3], labels_image.shape[-2], labels_image.shape[-1])
 
         else:
             # This is just a renaming
-            weight_image = minibatch_data['weight']
+            # weight_image = minibatch_data['weight']
             logits_image = logits
             labels_image = minibatch_data['label']
 
-        return logits_image, labels_image, weight_image
+        return logits_image, labels_image
 
     def train_step(self):
 
@@ -753,7 +755,7 @@ class trainercore(object):
         minibatch_data = self.fetch_next_batch()
         io_end_time = datetime.datetime.now()
 
-        logits_image, labels_image, weight_image = self.forward_pass(minibatch_data)
+        logits_image, labels_image = self.forward_pass(minibatch_data)
 
 
         verbose = False
@@ -762,7 +764,7 @@ class trainercore(object):
         # Compute the loss based on the logits
 
 
-        loss = self._calculate_loss(labels_image, logits_image, weight_image)
+        loss = self._calculate_loss(labels_image, logits_image)
         if verbose: print("Completed loss")
 
         # Compute the gradients for the network parameters:
@@ -844,10 +846,10 @@ class trainercore(object):
             minibatch_data = self.fetch_next_batch('aux')        
             io_end_time = datetime.datetime.now()
 
-            logits_image, labels_image, weight_image = self.forward_pass(minibatch_data)
+            logits_image, labels_image = self.forward_pass(minibatch_data)
 
             # Compute the loss based on the logits
-            loss = self._calculate_loss(labels_image, logits_image, weight_image)
+            loss = self._calculate_loss(labels_image, logits_image)
 
 
             # Compute any necessary metrics:
@@ -895,7 +897,7 @@ class trainercore(object):
 
         # Run a forward pass of the model on the input image:
         with torch.no_grad():
-            logits_image, labels_image, weight_image = self.forward_pass(minibatch_data)
+            logits_image, labels_image = self.forward_pass(minibatch_data)
             
 
 
@@ -981,7 +983,7 @@ class trainercore(object):
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss
-            loss = self._calculate_loss(labels_image, logits_image, weight_image)
+            loss = self._calculate_loss(labels_image, logits_image)
 
             # Compute the metrics for this iteration:
             print("computing metrics for entry ", minibatch_data['entries'][0])
