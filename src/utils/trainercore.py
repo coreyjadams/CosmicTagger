@@ -83,7 +83,7 @@ class trainercore(object):
             'filler_name' : config._name,
             'filler_cfg'  : main_file.name,
             'verbosity'   : FLAGS.VERBOSITY,
-            'make_copy'   : True
+            'make_copy'   : False
         }
 
         # By default, fetching data and label as the keywords from the file:
@@ -116,7 +116,7 @@ class trainercore(object):
                     'filler_name' : config._name,
                     'filler_cfg'  : aux_file.name,
                     'verbosity'   : FLAGS.VERBOSITY,
-                    'make_copy'   : True
+                    'make_copy'   : False
                 }
 
                 data_keys = OrderedDict({
@@ -444,10 +444,7 @@ class trainercore(object):
 
                 # multiple (elementwise) the weights for the loss function:
                 if FLAGS.BALANCE_LOSS:
-                    # print(loss[p].get_shape())
-                    # print(split_weights[p].get_shape())
                     loss[p] = tf.multiply(loss[p], split_weights[p])
-                    # print(loss[p].get_shape())
                     # Because we have a weighting function, this is a summed reduction:
                     loss[p] = tf.reduce_sum(loss[p])
                 else:
@@ -671,6 +668,7 @@ class trainercore(object):
                 weights[i, mask] += weight
             weights[i] *= 1. / numpy.sum(weights[i])
             i += 1
+
 
         # Normalize the weights to sum to 1 for each event:
         return weights
