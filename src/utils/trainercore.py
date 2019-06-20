@@ -174,7 +174,6 @@ class trainercore(object):
         if FLAGS.BALANCE_LOSS:
             self._input['weight'] = tf.placeholder(floating_point_format, self._dims['label'], name="input_weight"),
 
-
         # Build the network object, forward pass only:
 
         self._metrics = {}
@@ -212,11 +211,15 @@ class trainercore(object):
             self._accuracy = self._calculate_accuracy(logits=self._output, labels=self._input['label'])
 
             # Create the loss function
-            self._loss = self._calculate_loss(
-                labels = self._input['label'], 
-                logits = self._logits, 
-                weight = self._input['weight'])
-            
+            if FLAGS.BALANCE_LOSS:
+                self._loss = self._calculate_loss(
+                    labels = self._input['label'], 
+                    logits = self._logits, 
+                    weight = self._input['weight'])
+            else:
+                self._loss = self._calculate_loss(
+                        labels = self._input['label'], 
+                        logits = self._logits)
 
         self._log_keys = ["cross_entropy/Total_Loss", "accuracy/All_Plane_Neutrino_Accuracy"]
 
@@ -414,7 +417,7 @@ class trainercore(object):
         self._train_op = self._opt.minimize(self._loss, self._global_step)
 
 
-    def _calculate_loss(self, labels, logits, weight):
+    def _calculate_loss(self, labels, logits, weight=None):
         ''' Calculate the loss.
 
         returns a single scalar for the optimizer to use.
@@ -429,7 +432,9 @@ class trainercore(object):
 
             # Calculate the loss, per plane, unreduced:
             split_labels = [tf.squeeze(l, axis=channels_dim) for l in tf.split(labels,len(logits) ,channels_dim)]
-            split_weights = [tf.squeeze(l, axis=channels_dim) for l in tf.split(weight,len(logits) ,channels_dim)]
+            if weight is not None:
+                split_weights = [tf.squeeze(l, axis=channels_dim) for l in tf.split(weight,len(logits) ,channels_dim)]
+            
             loss = [None]*len(logits)
             for p in range(len(logits)):
                 loss[p] = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -634,7 +639,8 @@ class trainercore(object):
         minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
         minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
 
-        minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
+        if FLAGS.BALANCE_LOSS:
+            minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
 
         return minibatch_data
 
