@@ -558,8 +558,6 @@ class trainercore(object):
 
         # We compute the weights upstream of converting to scn format:
 
-        return minibatch_data
-
         #If we're using a sparse network:
         if FLAGS.SPARSE:
             minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['image'])
