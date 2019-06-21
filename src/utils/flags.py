@@ -110,7 +110,7 @@ class FLAGS(Borg):
         self.LABEL_PRODUCER        = "sbnd_cosmicseg"
 
         self.SHAPE                 = [640, 1024]
-        self.MAX_VOXELS            = 80000
+        self.MAX_VOXELS            = 35000
 
 
     def _add_default_io_configuration(self, parser):
