@@ -387,9 +387,19 @@ class UResNet(torch.nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
+        self._s_to_d_1 = scn.SparseToDense(dimension=3, nPlanes=1)
+        self._s_to_d_3 = scn.SparseToDense(dimension=3, nPlanes=3)
+
     def convert_to_scn(self, _input):
 
         return self.input_tensor(_input)
+
+    def sparse_to_dense(self, _input, nPlanes):
+
+        if nPlanes == 1:
+            return self._s_to_d_1(_input)
+        else:
+            return self._s_to_d_3(_input)
 
     def forward(self, _input):
         

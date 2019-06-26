@@ -133,22 +133,30 @@ class trainercore(object):
 
         # Here we set up weights using the aggregate metrics for the dataset:
         if FLAGS.BALANCE_LOSS:
+            if FLAGS.COMPUTE_MODE == "GPU":
+                device = torch.device('cuda')
+            else:
+                device = torch.device('cpu')
+
             if FLAGS.SHAPE == [640, 1024]:
                 if not FLAGS.SPARSE:
                     # Statistics for the downsampled dense images (800 samples):
                     # [1564304000    1570400    6989600]
                     # [0.9945577  0.00099843 0.00444387]
                     # This vector is simplified to be approximate:
-                    weight = torch.tensor([0.001 , 1.        , 0.25])
+                    weight = torch.tensor([0.001 , 1.        , 0.25], device=device)
                 else: 
                     # Statistics for the downsampled sparse images (800 samples):
                     # [20273800   908000  5262600]
                     # [0.76665759 0.03433619 0.19900622]
                     # In the sparse case, the ratio of neutrino to cosmic is unchanged,
                     # but the number of noise/bkg is much less
-                    weight = torch.tensor([0.05, 1.        , 0.25])
+                    weight = torch.tensor([0.05, 1.        , 0.25], device=device)
 
-        self._criterion = torch.nn.CrossEntropyLoss(weights=weight)
+        else:
+            weight=None
+
+        self._criterion = torch.nn.CrossEntropyLoss(weight=weight)
         
         self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
 
@@ -564,6 +572,7 @@ class trainercore(object):
 
             minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['image'])
             minibatch_data['label']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['label'])
+
         else:
             dense_shape = FLAGS.SHAPE
             minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=dense_shape)
@@ -581,6 +590,7 @@ class trainercore(object):
     #     weight_output = numpy.copy(labels)
 
     #     batch_size = labels.shape[0]
+
 
     #     for batch in range(batch_size):
 
@@ -737,12 +747,14 @@ class trainercore(object):
         logits = self._net(minibatch_data['image'])
 
         if FLAGS.SPARSE:
+
             labels = self._net.convert_to_scn(minibatch_data['label'])
             # weight = self._net.convert_to_scn(minibatch_data['weight'])
 
             # weight_image = self.sparse_to_dense(weight, nplanes=weight.features.shape[-1])
             logits_image = self.sparse_to_dense(logits, nplanes=logits.features.shape[-1])
             labels_image = self.sparse_to_dense(labels, nplanes=labels.features.shape[-1])
+
 
             # In just the sparse mode, we reshape the weights and labels;
             # weight_image = weight_image.view(weight_image.shape[0], 
