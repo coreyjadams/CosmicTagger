@@ -73,7 +73,7 @@ class trainercore(object):
             'filler_name' : config._name,
             'filler_cfg'  : main_file.name,
             'verbosity'   : FLAGS.VERBOSITY,
-            'make_copy'   : True
+            'make_copy'   : False
         }
 
         data_keys = OrderedDict({
@@ -105,7 +105,7 @@ class trainercore(object):
                     'filler_name' : config._name,
                     'filler_cfg'  : aux_file.name,
                     'verbosity'   : FLAGS.VERBOSITY,
-                    'make_copy'   : True
+                    'make_copy'   : False
                 }
 
                 data_keys = OrderedDict({
@@ -553,11 +553,10 @@ class trainercore(object):
 
         return
 
-    def fetch_next_batch(self, mode='primary', metadata=False):
+    def fetch_next_batch(self, mode='primary'):
 
-        minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, fetch_meta_data=metadata)
+        minibatch_data = self._larcv_interface.fetch_minibatch_data(mode)
         minibatch_dims = self._larcv_interface.fetch_minibatch_dims(mode)
-
 
         for key in minibatch_data:
             if key == 'entries' or key == 'event_ids':
@@ -569,13 +568,14 @@ class trainercore(object):
 
         #If we're using a sparse network:
         if FLAGS.SPARSE:
-
             minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['image'])
             minibatch_data['label']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['label'])
 
         else:
             dense_shape = FLAGS.SHAPE
+            print("Convert image")
             minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=dense_shape)
+            print("Convert label")
             minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=dense_shape)
 
 
