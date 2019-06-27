@@ -83,7 +83,7 @@ class trainercore(object):
             'filler_name' : config._name,
             'filler_cfg'  : main_file.name,
             'verbosity'   : FLAGS.VERBOSITY,
-            'make_copy'   : False
+            'make_copy'   : True
         }
 
         # By default, fetching data and label as the keywords from the file:
@@ -91,7 +91,6 @@ class trainercore(object):
             'image': 'data', 
             'label': 'label'
             })
-
 
 
         self._larcv_interface.prepare_manager('primary', io_config, FLAGS.MINIBATCH_SIZE, data_keys)
@@ -116,7 +115,7 @@ class trainercore(object):
                     'filler_name' : config._name,
                     'filler_cfg'  : aux_file.name,
                     'verbosity'   : FLAGS.VERBOSITY,
-                    'make_copy'   : False
+                    'make_copy'   : True
                 }
 
                 data_keys = OrderedDict({
@@ -144,6 +143,8 @@ class trainercore(object):
         # Make sure all required dimensions are present:
 
         io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
+
+        print(io_dims)
 
         self._dims = {}
         # Using the sparse IO techniques, we have to manually set the dimensions for the input.
@@ -608,6 +609,8 @@ class trainercore(object):
 
             # Labels is an unsplit tensor, prediction is a split tensor
             split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , channels_dim)]
+            if FLAGS.DATA_FORMAT == "channels_first":
+                split_labels = [ tf.transpose(l, [0, 3, 1, 2]) for l in split_labels]
             for p in range(len(split_labels)):
                 images.append(
                     tf.summary.image('label_plane_{}'.format(p),

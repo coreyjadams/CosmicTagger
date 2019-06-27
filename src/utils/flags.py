@@ -339,11 +339,11 @@ class uresnet(FLAGS):
         self.BALANCE_LOSS                = True
         
 
-        self.DATA_FORMAT                 = "channels_last"
+        self.DATA_FORMAT                 = "channels_first"
 
         # Relevant parameters for running on KNL:
-        self.INTER_OP_PARALLELISM_THREADS    = 2
-        self.INTRA_OP_PARALLELISM_THREADS    = 128
+        self.INTER_OP_PARALLELISM_THREADS    = 4
+        self.INTRA_OP_PARALLELISM_THREADS    = 64
 
         FLAGS._set_defaults(self)
 
