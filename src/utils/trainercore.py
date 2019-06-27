@@ -73,7 +73,7 @@ class trainercore(object):
             'filler_name' : config._name,
             'filler_cfg'  : main_file.name,
             'verbosity'   : FLAGS.VERBOSITY,
-            'make_copy'   : False
+            'make_copy'   : True
         }
 
         data_keys = OrderedDict({
@@ -105,7 +105,7 @@ class trainercore(object):
                     'filler_name' : config._name,
                     'filler_cfg'  : aux_file.name,
                     'verbosity'   : FLAGS.VERBOSITY,
-                    'make_copy'   : False
+                    'make_copy'   : True
                 }
 
                 data_keys = OrderedDict({
@@ -573,9 +573,7 @@ class trainercore(object):
 
         else:
             dense_shape = FLAGS.SHAPE
-            print("Convert image")
             minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=dense_shape)
-            print("Convert label")
             minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=dense_shape)
 
 

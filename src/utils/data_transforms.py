@@ -31,8 +31,6 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
 
     # print(input_array.shape)
 
-    print("Mean at conversion: ", numpy.mean(input_array))
-
 
     # Find the non_zero indexes of the input:
     batch_index, plane_index, voxel_index = numpy.where(val_coords != -999)
@@ -52,7 +50,6 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
     # Fill in the output tensor
 
     # FOrmat should be [N, C, H, W]
-    print(output_array.shape)
     output_array[batch_index, plane_index, y_index, x_index] = values    
 
     return output_array

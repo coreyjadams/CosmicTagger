@@ -377,15 +377,15 @@ class UResNet(torch.nn.Module):
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
 
-        # Configure initialization:
-        for m in self.modules():
-            if isinstance(m, scn.SubmanifoldConvolution):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            if isinstance(m, scn.Deconvolution) or isinstance(m, scn.Convolution):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, scn.BatchNormalization):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+        # # Configure initialization:
+        # for m in self.modules():
+        #     if isinstance(m, scn.SubmanifoldConvolution):
+        #         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        #     if isinstance(m, scn.Deconvolution) or isinstance(m, scn.Convolution):
+        #         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        #     elif isinstance(m, scn.BatchNormalization):
+        #         nn.init.constant_(m.weight, 1)
+        #         nn.init.constant_(m.bias, 0)
 
         self._s_to_d_1 = scn.SparseToDense(dimension=3, nPlanes=1)
         self._s_to_d_3 = scn.SparseToDense(dimension=3, nPlanes=3)
