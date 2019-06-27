@@ -4,6 +4,7 @@ This repository contains models and training utilities to train convolutional ne
 
 In general, this network has a suite of parameters available.  For example, running the torch version on theta for debugging, the parameters I used were:
 
+```
 -- CONFIG --
  MINIBATCH_SIZE = 1
  LOG_DIRECTORY = '/home/cadams/Theta/DLP3/CosmicTagger-torch//log/torch/nodes_test_conda/'
@@ -54,6 +55,7 @@ In general, this network has a suite of parameters available.  For example, runn
  IMAGE_PRODUCER = 'sbndwire'
  NPLANES = 3
  INTER_OP_PARALLELISM_THREADS = 2
+```
 
 The parameters are all controlled via argparse, and so are easy to inspect.  They can be viewed in src/utils/flags.py.
 
