@@ -145,3 +145,12 @@ In all cases, there is a general python executable in `bin/exec.py`.  This takes
 `python bin/exec.py mode [-d] [--sparse] --file /path/to/file.h5 -i 100 -mb 8 `
 
 mode is either `train` or `iotest` (or inference, but untested in this repo).  `-d` toggles distributed training, which will work even on one node and if python is executed by mpirun or aprun, will work.  `-i` is the number of iterations, and `-mb` is the minibatch size.  All other arguments can be seen in by calling `python bin/exec.py --help`
+
+# Analysis Metrics
+
+There are several analysis metrics that are used to judge the quality of the training:
+ 1) Overall Accuracy of Segmentation labels. Each pixel should be labeled as cosmic, neutrino, or background.  Because the images are very sparse, this metric should easily exceed 99.9% accuracy.
+ 2) Non-background Accuracy: of all pixels with a label != bkg, what is the accuracy? This should acheive > 90%
+ 3) Neutrino Accuracy: of all pixels with label == neutrino, what is the accuracy?  This should acheive > 90%, though is an ill-posed question for some interactions where the neutrino did not deposit energy.
+ 4) Cosmic IoU: what is the IoU of all pixels predicted cosmic and all pixels labeled cosmic?  This should acheive > 70%
+ 5) Neutrino IoU: Same definition as 4 but for neutrinos.  This should acheive > 70%.
