@@ -87,6 +87,9 @@ class distributed_trainer(trainercore):
 
         graph = tf.get_default_graph()
         self.init_network()
+        net_time = self.init_network()
+        if hvd.ranke() == 0:
+            sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(end-start))
 
         if hvd.rank() == 0:
             self.print_network_info()

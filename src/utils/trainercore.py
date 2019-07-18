@@ -144,7 +144,6 @@ class trainercore(object):
 
         io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
 
-        print(io_dims)
 
         self._dims = {}
         # Using the sparse IO techniques, we have to manually set the dimensions for the input.
@@ -225,7 +224,7 @@ class trainercore(object):
         self._log_keys = ["cross_entropy/Total_Loss", "accuracy/All_Plane_Neutrino_Accuracy"]
 
         end = time.time()
-        sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(end-start))
+        return end - start
 
     def print_network_info(self):
         n_trainable_parameters = 0
@@ -258,7 +257,10 @@ class trainercore(object):
             return
 
         graph = tf.get_default_graph()
-        self.init_network()
+        net_time = self.init_network()
+
+        sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(end-start))
+
 
         self.print_network_info()
 
