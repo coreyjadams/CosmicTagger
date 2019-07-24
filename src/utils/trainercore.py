@@ -83,7 +83,7 @@ class trainercore(object):
             'filler_name' : config._name,
             'filler_cfg'  : main_file.name,
             'verbosity'   : FLAGS.VERBOSITY,
-            'make_copy'   : True
+            'make_copy'   : False
         }
 
         # By default, fetching data and label as the keywords from the file:
@@ -638,11 +638,13 @@ class trainercore(object):
                 continue
             minibatch_data[key] = numpy.reshape(minibatch_data[key], minibatch_dims[key])
 
+        if FLAGS.BALANCE_LOSS:
+            minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
+
+
         minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
         minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
 
-        if FLAGS.BALANCE_LOSS:
-            minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
 
         return minibatch_data
 
@@ -655,28 +657,58 @@ class trainercore(object):
         '''
         # Take the labels, and compute the per-label weight
 
+        # Compute weights works on the sparse images, not the dense images.
+        # The null-weight is computed on the image shape for dense networks, 
+        # or based on occupancy on the sparse network.
+
+        # It's done per-batch rather than per image, so:
+
+        x_coords = labels[:,:,:,1]
+        y_coords = labels[:,:,:,0]
+        val_coords = labels[:,:,:,2]
+
+
+        # Find the non_zero indexes of the input:
+        batch_index, plane_index, voxel_index = numpy.where(val_coords != -999)
+
+        values  = val_coords[batch_index, plane_index, voxel_index]
+        x_index = numpy.int32(x_coords[batch_index, plane_index, voxel_index])
+        y_index = numpy.int32(y_coords[batch_index, plane_index, voxel_index])
+
+        label_values, counts = numpy.unique(values, return_counts=True)
+
+        batch_size = labels.shape[0]
 
         # Prepare output weights:
-        weights = numpy.zeros(labels.shape)
+        weights = numpy.zeros(values.shape)
 
-        i = 0
-        for batch in labels:
-            # First, figure out what the labels are and how many of each:
-            values, counts = numpy.unique(batch, return_counts=True)
+        if not FLAGS.SPARSE:
+            # Multiply by 3 planes:
+            n_pixels = batch_size * 3* numpy.prod(FLAGS.SHAPE)
+            # Correct the empty pixel values in the count:
+            counts[0] = n_pixels - counts[1] - counts[2]
+        else:
+            n_pixels = len(values)
 
-            n_pixels = numpy.sum(counts)
-            for value, count in zip(values, counts):
-                weight = 1.0*(n_pixels - count) / n_pixels
-                if boost_labels is not None and value in boost_labels.keys():
-                    weight *= boost_labels[value]
-                mask = labels[i] == value
-                weights[i, mask] += weight
-            weights[i] *= 1. / numpy.sum(weights[i])
-            i += 1
+        weight = 1.0/ (len(label_values) * counts)
 
 
-        # Normalize the weights to sum to 1 for each event:
-        return weights
+        # i = 0
+        # for batch in labels:
+        #     # First, figure out what the labels are and how many of each:
+        #     values, counts = numpy.unique(batch, return_counts=True)
+
+        #     n_pixels = numpy.sum(counts)
+        #     for value, count in zip(values, counts):
+        #         weight = 1.0*(n_pixels - count) / n_pixels
+        #         mask = labels[i] == value
+        #         weights[i, mask] += weight
+        #     weights[i] *= 1. / numpy.sum(weights[i])
+        #     i += 1
+
+
+        # # Normalize the weights to sum to 1 for each event:
+        return weight
 
     def on_step_end(self):
         pass
