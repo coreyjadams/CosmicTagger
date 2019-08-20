@@ -109,9 +109,10 @@ class FLAGS(Borg):
         self.IMAGE_PRODUCER        = "sbndwire"
         self.LABEL_PRODUCER        = "sbnd_cosmicseg"
 
-        self.SHAPE                 = [1280, 2048]
-        # self.SHAPE                 = [640, 1024]
-        self.MAX_VOXELS            = 80000
+        # self.SHAPE                 = [1280, 2048]
+        self.SHAPE                 = [640, 1024]
+        self.MAX_VOXELS            = 35000
+        # self.MAX_VOXELS            = 80000
 
 
     def _add_default_io_configuration(self, parser):

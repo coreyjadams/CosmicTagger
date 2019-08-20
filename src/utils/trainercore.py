@@ -612,9 +612,12 @@ class trainercore(object):
             # Labels is an unsplit tensor, prediction is a split tensor
             split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
             if FLAGS.DATA_FORMAT == "channels_first":
-                split_labels = [ tf.transpose(l, [0, 3, 1, 2]) for l in split_labels]
+                split_labels = [ tf.transpose(l, [0, 2, 3, 1]) for l in split_labels]
+                print("split_labels[0].shape: ", split_labels[0].shape)
+            prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
+            print("prediction[0].shape: ", prediction[0].shape)
+
             for p in range(len(split_labels)):
-                print(split_labels[p].shape)
                 
                 images.append(
                     tf.summary.image('label_plane_{}'.format(p),
@@ -623,7 +626,7 @@ class trainercore(object):
                     )
                 images.append(
                     tf.summary.image('pred_plane_{}'.format(p),
-                                 tf.expand_dims(tf.cast(prediction[p], floating_point_format), self._channels_dim),
+                                 prediction[p],
                                  max_outputs=1)
                     )
 
@@ -633,6 +636,7 @@ class trainercore(object):
 
 
         metadata=True
+        self._larcv_interface.prepare_next(mode)
 
         # This brings up the current data
         minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=True,fetch_meta_data=metadata)
@@ -652,10 +656,8 @@ class trainercore(object):
         minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
         minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
         # This preparse the next batch of data:
-        t = self._larcv_interface.prepare_next('primary')
 
-        print(numpy.unique(minibatch_data['label'], return_counts=True))
-        print(minibatch_data['entries'])
+
 
         return minibatch_data
 
@@ -831,7 +833,7 @@ class trainercore(object):
 
         ops['metrics'] = self._metrics
 
-        if self._iteration != 0 and self._iteration % 5*FLAGS.SUMMARY_ITERATION == 0:
+        if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
             ops['summary_images'] = self._summary_images
 
 
@@ -865,7 +867,7 @@ class trainercore(object):
         if verbose: print("Completed Log")
 
         self.write_summaries(self._main_writer, ops["summary"], ops["global_step"])
-        if self._iteration != 0 and self._iteration % 5*FLAGS.SUMMARY_ITERATION == 0:
+        if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
             self.write_summaries(self._main_writer, ops["summary_images"], ops["global_step"])
 
 

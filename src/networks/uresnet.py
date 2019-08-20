@@ -257,11 +257,9 @@ class DeepestBlock(tf.keras.models.Model):
     def call(self, x, training):
 
         x = tf.concat(x, axis=self.channels_axis)
-
         x = self.blocks(x, training)
 
         x = tf.split(x, 3, self.channels_axis)
-
         return x
 
 # class NoConnection(nn.Module):
@@ -368,7 +366,14 @@ class UNetCore(tf.keras.models.Model):
 
 
             # Convolutional or residual blocks for the upsampling pass:
-            self.up_blocks = BlockSeries(inplanes, nlayers, residual=residual)
+            self.up_blocks = BlockSeries(
+                inplanes    = inplanes, 
+                n_blocks    = nlayers, 
+                residual    = residual, 
+                data_format = data_format,
+                batch_norm  = batch_norm,
+                use_bias    = use_bias,
+                regularize  = regularize)
 
             # # Residual connection operation:
             # if FLAGS.CONNECTIONS == "sum":
@@ -392,7 +397,6 @@ class UNetCore(tf.keras.models.Model):
         # Apply the main module:
         x = self.main_module(x, training)
 
-
         if self._depth_of_network != 1:
 
             # perform the upsampling step:
@@ -401,9 +405,10 @@ class UNetCore(tf.keras.models.Model):
 
             x = [residual[i] + x[i] for i in range(len(x)) ]
 
+
             # Apply the convolutional steps:
             x = [ self.up_blocks(_x, training) for _x in x ]
-                
+            
         return x
 
 
