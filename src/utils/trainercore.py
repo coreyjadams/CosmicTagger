@@ -611,10 +611,13 @@ class trainercore(object):
 
             # Labels is an unsplit tensor, prediction is a split tensor
             split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
+            prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
+            
             if FLAGS.DATA_FORMAT == "channels_first":
                 split_labels = [ tf.transpose(l, [0, 2, 3, 1]) for l in split_labels]
-                print("split_labels[0].shape: ", split_labels[0].shape)
-            prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
+                prediction   = [ tf.transpose(p, [0, 2, 3, 1]) for p in prediction]
+                
+            print("split_labels[0].shape: ", split_labels[0].shape)
             print("prediction[0].shape: ", prediction[0].shape)
 
             for p in range(len(split_labels)):
