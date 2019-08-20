@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 import numpy
 
-from larcv import larcv_interface
+from larcv import queueloader
 
 
 from . import flags
@@ -33,7 +33,7 @@ class trainercore(object):
 
     '''
     def __init__(self,):
-        self._larcv_interface = larcv_interface.larcv_interface()
+        self._larcv_interface = queueloader.queue_interface()
         self._iteration       = 0
         self._global_step     = -1
         self._val_writer      = None
@@ -47,7 +47,7 @@ class trainercore(object):
             except AttributeError:
                 pass
             
-    def _initialize_io(self):
+    def _initialize_io(self, color=None):
 
 
         # This is a dummy placeholder, you must check this yourself:
@@ -83,7 +83,7 @@ class trainercore(object):
             'filler_name' : config._name,
             'filler_cfg'  : main_file.name,
             'verbosity'   : FLAGS.VERBOSITY,
-            'make_copy'   : False
+            'make_copy'   : True
         }
 
         # By default, fetching data and label as the keywords from the file:
@@ -93,7 +93,7 @@ class trainercore(object):
             })
 
 
-        self._larcv_interface.prepare_manager('primary', io_config, FLAGS.MINIBATCH_SIZE, data_keys)
+        self._larcv_interface.prepare_manager('primary', io_config, FLAGS.MINIBATCH_SIZE, data_keys, color)
 
         # All of the additional tools are in case there is a test set up:
         if FLAGS.AUX_FILE is not None:
@@ -125,7 +125,7 @@ class trainercore(object):
                
 
 
-                self._larcv_interface.prepare_manager('aux', io_config, FLAGS.AUX_MINIBATCH_SIZE, data_keys)
+                self._larcv_interface.prepare_manager('aux', io_config, FLAGS.AUX_MINIBATCH_SIZE, data_keys, color)
 
             else:
                 config = io_templates.ana_io(input_file=FLAGS.FILE, max_voxels=max_voxels)
@@ -172,12 +172,13 @@ class trainercore(object):
         })
 
         if FLAGS.BALANCE_LOSS:
-            self._input['weight'] = tf.placeholder(floating_point_format, self._dims['label'], name="input_weight"),
+            self._input['weight'] = tf.placeholder(floating_point_format, self._dims['label'], name="input_weight")
 
         # Build the network object, forward pass only:
 
         self._metrics = {}
 
+        print("Building Network")
         self._logits = FLAGS._net._build_network(self._input)
 
 
@@ -221,7 +222,7 @@ class trainercore(object):
                         labels = self._input['label'], 
                         logits = self._logits)
 
-        self._log_keys = ["cross_entropy/Total_Loss", "accuracy/All_Plane_Neutrino_Accuracy"]
+        self._log_keys = ["cross_entropy/Total_Loss", "accuracy/All_Plane_Neutrino_IoU", "accuracy/All_Plane_Non_Background_Accuracy"]
 
         end = time.time()
         return end - start
@@ -432,7 +433,6 @@ class trainercore(object):
             channels_dim = 1
 
         with tf.name_scope('cross_entropy'):
-
             # Calculate the loss, per plane, unreduced:
             split_labels = [tf.squeeze(l, axis=channels_dim) for l in tf.split(labels,len(logits) ,channels_dim)]
             if weight is not None:
@@ -645,7 +645,6 @@ class trainercore(object):
         minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
         minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
 
-
         return minibatch_data
 
 
@@ -677,10 +676,12 @@ class trainercore(object):
 
         label_values, counts = numpy.unique(values, return_counts=True)
 
+        if len(counts) < 3:
+            counts = numpy.insert(counts, 1, 0)
+
         batch_size = labels.shape[0]
 
-        # Prepare output weights:
-        weights = numpy.zeros(values.shape)
+
 
         if not FLAGS.SPARSE:
             # Multiply by 3 planes:
@@ -692,6 +693,15 @@ class trainercore(object):
 
         weight = 1.0/ (len(label_values) * counts)
 
+
+        # Now we have the weight values, return it in the proper shape:
+        # Prepare output weights:
+        weights = numpy.full(values.shape, weight[0])
+        weights[voxel_index==1] = weight[1]
+        weights[voxel_index==2] = weight[2]
+
+        dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], weight[0])
+        dense_weights[batch_index,plane_index,y_index,x_index] = weights
 
         # i = 0
         # for batch in labels:
@@ -707,8 +717,9 @@ class trainercore(object):
         #     i += 1
 
 
+
         # # Normalize the weights to sum to 1 for each event:
-        return weight
+        return dense_weights
 
     def on_step_end(self):
         pass
