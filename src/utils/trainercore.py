@@ -546,7 +546,7 @@ class trainercore(object):
                 neutrino_union = tf.math.logical_or(predicted_neutrino_indices, neutrino_indices)
 
                 neut_iou[p] = tf.reduce_sum(tf.cast(neutrino_intersection, floating_point_format)) / \
-                  tf.reduce_sum(tf.cast(neutrino_union, floating_point_format))
+                  (tf.reduce_sum(tf.cast(neutrino_union, floating_point_format)) + 1.0)
 
                 cosmic_intersection = tf.math.logical_and(predicted_cosmic_indices, cosmic_indices)
                 cosmic_union = tf.math.logical_or(predicted_cosmic_indices, cosmic_indices)
@@ -605,10 +605,6 @@ class trainercore(object):
     def _create_summary_images(self, labels, prediction):
         ''' Create images of the labels and prediction to show training progress
         '''
-        if FLAGS.DATA_FORMAT == "channels_last":
-            self._channels_dim = -1 
-        else:
-            self._channels_dim = 1
 
         with tf.variable_scope('summary_images/'):
 
@@ -620,6 +616,8 @@ class trainercore(object):
             if FLAGS.DATA_FORMAT == "channels_first":
                 split_labels = [ tf.transpose(l, [0, 3, 1, 2]) for l in split_labels]
             for p in range(len(split_labels)):
+                print(split_labels[p].shape)
+                
                 images.append(
                     tf.summary.image('label_plane_{}'.format(p),
                                  split_labels[p],
@@ -636,6 +634,7 @@ class trainercore(object):
     def fetch_next_batch(self, mode='primary', metadata=False):
 
 
+        metadata=True
 
         # This brings up the current data
         minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=True,fetch_meta_data=metadata)
@@ -657,6 +656,8 @@ class trainercore(object):
         # This preparse the next batch of data:
         t = self._larcv_interface.prepare_next('primary')
 
+        print(numpy.unique(minibatch_data['label'], return_counts=True))
+        print(minibatch_data['entries'])
         return minibatch_data
 
 
@@ -761,7 +762,7 @@ class trainercore(object):
 
             ops['metrics'] = self._metrics
 
-            if self._iteration != 0 and self._iteration % 5*FLAGS.SUMMARY_ITERATION == 0:
+            if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
                 ops['summary_images'] = self._summary_images
 
 
@@ -819,7 +820,7 @@ class trainercore(object):
 
         ops['metrics'] = self._metrics
 
-        if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
+        if self._iteration != 0 and self._iteration % 5*FLAGS.SUMMARY_ITERATION == 0:
             ops['summary_images'] = self._summary_images
 
 
@@ -853,7 +854,7 @@ class trainercore(object):
         if verbose: print("Completed Log")
 
         self.write_summaries(self._main_writer, ops["summary"], ops["global_step"])
-        if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
+        if self._iteration != 0 and self._iteration % 5*FLAGS.SUMMARY_ITERATION == 0:
             self.write_summaries(self._main_writer, ops["summary_images"], ops["global_step"])
 
 
@@ -912,6 +913,8 @@ class trainercore(object):
         fd = dict()
 
         for key in inputs:
+            if key == "entries" or key == "event_ids": continue 
+            
             if inputs[key] is not None:
                 fd.update({self._input[key] : inputs[key]})
 
