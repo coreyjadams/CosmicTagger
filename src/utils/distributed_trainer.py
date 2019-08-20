@@ -20,7 +20,7 @@ hvd.init()
 
 os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
-from larcv.distributed_larcv_interface import larcv_interface
+from larcv.distributed_queue_interface import queue_interface
 
 from . import flags
 FLAGS = flags.FLAGS()
@@ -37,9 +37,9 @@ class distributed_trainer(trainercore):
         # search for parameters relevant for distributed computing here
 
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
-        root_rank = hvd.size() - 1 
+        # root_rank = hvd.size() - 1 
 
-        self._larcv_interface = larcv_interface(root=root_rank)
+        self._larcv_interface = queue_interface()
         self._iteration       = 0
         self._rank            = hvd.rank()
 
@@ -74,7 +74,7 @@ class distributed_trainer(trainercore):
         tf.logging.info("HVD rank: {}".format(hvd.rank()))
         self.set_compute_parameters()
 
-        self._initialize_io()
+        self._initialize_io(color=self._rank)
 
         if io_only:
             return
@@ -86,10 +86,10 @@ class distributed_trainer(trainercore):
 
 
         graph = tf.get_default_graph()
-        self.init_network()
+
         net_time = self.init_network()
-        if hvd.ranke() == 0:
-            sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(end-start))
+        if hvd.rank() == 0:
+            sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(net_time))
 
         if hvd.rank() == 0:
             self.print_network_info()

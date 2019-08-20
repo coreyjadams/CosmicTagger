@@ -27,9 +27,7 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
     n_planes   = input_array.shape[1]
 
     if FLAGS.DATA_FORMAT == "channels_first":
-
         output_array = numpy.zeros((batch_size, n_planes, dense_shape[0], dense_shape[1]), dtype=numpy.float32)
-
     else:
         output_array = numpy.zeros((batch_size, dense_shape[0], dense_shape[1], n_planes), dtype=numpy.float32)
 
@@ -60,7 +58,7 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
         # output_array[batch_index, plane_index, y_index, x_index] = values    
         numpy.put(output_array, [batch_index, plane_index, y_index, x_index], values)
     else:
-        output_array[batch_index, y_index, x_index, plane_index] = values    
+        numpy.put(output_array, [batch_index, y_index, x_index, plane_index], values)
 
     return output_array
 
