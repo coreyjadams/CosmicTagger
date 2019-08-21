@@ -617,8 +617,6 @@ class trainercore(object):
                 split_labels = [ tf.transpose(l, [0, 2, 3, 1]) for l in split_labels]
                 prediction   = [ tf.transpose(p, [0, 2, 3, 1]) for p in prediction]
                 
-            print("split_labels[0].shape: ", split_labels[0].shape)
-            print("prediction[0].shape: ", prediction[0].shape)
 
             for p in range(len(split_labels)):
                 
