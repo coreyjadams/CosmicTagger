@@ -455,6 +455,7 @@ class UResNet(tf.keras.models.Model):
             depth    = depth, 
             nlayers  = res_blocks_per_layer,
             inplanes = n_filters,
+            batch_norm=batch_norm,
             data_format = data_format,
             residual = residual)
 
@@ -464,6 +465,7 @@ class UResNet(tf.keras.models.Model):
         self.final_layer = BlockSeries(
             n_filters, 
             res_blocks_final, 
+            batch_norm=batch_norm,
             data_format=data_format,
             residual=residual) 
 
