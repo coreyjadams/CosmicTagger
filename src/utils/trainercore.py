@@ -191,11 +191,17 @@ class trainercore(object):
             residual                 = FLAGS.RESIDUAL,
             regularize               = FLAGS.REGULARIZE_WEIGHTS,
             depth                    = FLAGS.NETWORK_DEPTH,
-            res_blocks_final         = FLAGS.RES_BLOCKS_FINAL,
-            res_blocks_per_layer     = FLAGS.RES_BLOCKS_PER_LAYER,
-            res_blocks_deepest_layer = FLAGS.RES_BLOCKS_DEEPEST_LAYER)
+            blocks_final             = FLAGS.BLOCKS_FINAL,
+            blocks_per_layer         = FLAGS.BLOCKS_PER_LAYER,
+            blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
+            connections              = FLAGS.CONNECTIONS,
+            upsampling               = FLAGS.UPSAMPLING,
+            downsampling             = FLAGS.DOWNSAMPLING,)
 
         self._logits = self._net(self._input['image'], training=FLAGS.TRAINING)
+
+        # self._net = uresnet_classic.UResNet()
+        # self._logits = self._net._build_network(self._input)
 
 
         if FLAGS.MODE == "train":
@@ -246,6 +252,7 @@ class trainercore(object):
         n_trainable_parameters = 0
         for var in tf.trainable_variables():
             n_trainable_parameters += numpy.prod(var.get_shape())
+            # print(var.name, var.get_shape())
         sys.stdout.write("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
 
 
@@ -850,6 +857,12 @@ class trainercore(object):
         if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
             ops['summary_images'] = self._summary_images
 
+        g = tf.get_default_graph()
+        opts = tf.profiler.ProfileOptionBuilder.float_operation()    
+        run_meta = tf.RunMetadata()
+        flop = tf.profiler.profile(g, run_meta=run_meta, cmd='op', options=opts)
+
+        print("FLOP is ", flop.total_float_ops)
 
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 

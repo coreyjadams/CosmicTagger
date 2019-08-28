@@ -301,13 +301,13 @@ class uresnet(FLAGS):
         self.BATCH_NORM                  = True
         self.USE_BIAS                    = True
         self.N_INITIAL_FILTERS           = 6
-        self.RES_BLOCKS_PER_LAYER        = 2
-        self.RES_BLOCKS_DEEPEST_LAYER    = 4
-        self.RES_BLOCKS_FINAL            = 2
+        self.BLOCKS_PER_LAYER        = 2
+        self.BLOCKS_DEEPEST_LAYER    = 4
+        self.BLOCKS_FINAL            = 2
         self.NETWORK_DEPTH               = 5
         self.CONNECTIONS                 = 'sum'
-        self.CONNECT_PRE_RES_BLOCKS_DOWN = True
-        self.CONNECT_PRE_RES_BLOCKS_UP   = True
+        self.CONNECT_PRE_BLOCKS_DOWN = True
+        self.CONNECT_PRE_BLOCKS_UP   = True
         self.VERBOSITY                   = 0
         self.BOTTLENECK_SIZE             = -1
         self.NPLANES                     = 3
@@ -340,6 +340,8 @@ class uresnet(FLAGS):
         self.REGULARIZE_WEIGHTS          = 0.0001
         self.BALANCE_LOSS                = True
         
+        self.UPSAMPLING                  = "interpolation"
+        self.DOWNSAMPLING                = "max_pooling"
 
         self.DATA_FORMAT                 = "channels_first"
 
@@ -357,20 +359,20 @@ class uresnet(FLAGS):
             help="Whether or not to use batch normalization in all mlp layers [default: {}]".format(self.BATCH_NORM))
         parser.add_argument('--n-initial-filters', type=int, default=self.N_INITIAL_FILTERS,
             help="Number of filters applied, per plane, for the initial convolution [default: {}]".format(self.N_INITIAL_FILTERS))
-        parser.add_argument('--res-blocks-per-layer', type=int, default=self.RES_BLOCKS_PER_LAYER,
-            help="Number of residual blocks per layer [default: {}]".format(self.RES_BLOCKS_PER_LAYER))
-        parser.add_argument('--res-blocks-deepest-layer', type=int, default=self.RES_BLOCKS_DEEPEST_LAYER,
-            help="Number of residual blocks applied at the deepest, merged layer [default: {}]".format(self.RES_BLOCKS_DEEPEST_LAYER))
-        parser.add_argument('--res-blocks-final', type=int, default=self.RES_BLOCKS_FINAL,
-            help="Number of residual blocks applied at full, final resolution [default: {}]".format(self.RES_BLOCKS_FINAL))
+        parser.add_argument('--blocks-per-layer', type=int, default=self.BLOCKS_PER_LAYER,
+            help="Number of blocks per layer [default: {}]".format(self.BLOCKS_PER_LAYER))
+        parser.add_argument('--blocks-deepest-layer', type=int, default=self.BLOCKS_DEEPEST_LAYER,
+            help="Number of blocks applied at the deepest, merged layer [default: {}]".format(self.BLOCKS_DEEPEST_LAYER))
+        parser.add_argument('--blocks-final', type=int, default=self.BLOCKS_FINAL,
+            help="Number of blocks applied at full, final resolution [default: {}]".format(self.BLOCKS_FINAL))
         parser.add_argument('--network-depth', type=int, default=self.NETWORK_DEPTH,
             help="Total number of downsamples to apply [default: {}]".format(self.NETWORK_DEPTH))
         parser.add_argument('--connections', type=str, choices=['sum', 'concat', 'none'], default=self.CONNECTIONS,
             help="Connect shortcuts with sums, concat+bottleneck, or no connections [default: {}]".format(self.CONNECTIONS))
-        parser.add_argument('--connect-pre-res-blocks-down', type=str2bool, default=self.CONNECT_PRE_RES_BLOCKS_DOWN,
-            help="Short cut connections branch just after downsampling (True) or just before (False) [default: {}]".format(self.CONNECT_PRE_RES_BLOCKS_DOWN))
-        parser.add_argument('--connect-pre-res-blocks-up', type=str2bool, default=self.CONNECT_PRE_RES_BLOCKS_UP,
-            help="Short cut connections merge just after upsampling (True) or just before (False) [default: {}]".format(self.CONNECT_PRE_RES_BLOCKS_UP))
+        parser.add_argument('--connect-pre-res-blocks-down', type=str2bool, default=self.CONNECT_PRE_BLOCKS_DOWN,
+            help="Short cut connections branch just after downsampling (True) or just before (False) [default: {}]".format(self.CONNECT_PRE_BLOCKS_DOWN))
+        parser.add_argument('--connect-pre-res-blocks-up', type=str2bool, default=self.CONNECT_PRE_BLOCKS_UP,
+            help="Short cut connections merge just after upsampling (True) or just before (False) [default: {}]".format(self.CONNECT_PRE_BLOCKS_UP))
         parser.add_argument('--nplanes', type=int, default=self.NPLANES,
             help="Number of planes to split the initial image into [default: {}]".format(self.NPLANES))
 
@@ -396,6 +398,14 @@ class uresnet(FLAGS):
 
         parser.add_argument('--block-concat', type=str2bool, default=self.BLOCK_CONCAT,
             help="Use sparse convolutions instead of dense convolutions [default: {}]".format(self.BLOCK_CONCAT))
+
+        parser.add_argument('--upsampling', type=str, 
+            choices=["convolutional", "interpolation"], default=self.UPSAMPLING,
+            help="Which operation to use for upsamplign [default: {}]".format(self.UPSAMPLING))
+
+        parser.add_argument('--downsampling', type=str, 
+            choices=["convolutional", "max_pooling"], default=self.DOWNSAMPLING,
+            help="Which operation to use for downsamplign [default: {}]".format(self.DOWNSAMPLING))
 
 
 
