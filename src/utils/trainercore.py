@@ -289,7 +289,6 @@ class trainercore(object):
 
         self.print_network_info()
 
-        exit()
 
         self.init_optimizer()
 
