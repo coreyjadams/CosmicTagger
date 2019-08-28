@@ -727,12 +727,14 @@ class trainercore(object):
         weights = numpy.full(values.shape, 1.7e-7)
         weights[voxel_index==1] = 0.0001
         weights[voxel_index==2] = 0.001
-        dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], 1.7e-7)
-        dense_weights *= 10./numpy.sum(dense_weights)
         if FLAGS.DATA_FORMAT == "channels_first":
+            dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], 1.7e-7)
             dense_weights[batch_index,plane_index,y_index,x_index] = weights
+            dense_weights *= 10./numpy.sum(dense_weights)
         else:
+            dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], 1.7e-7)
             dense_weights[batch_index,y_index,x_index,plane_index] = weights
+            dense_weights *= 10./numpy.sum(dense_weights)
 
         # print("dense_weights.shape: ", dense_weights.shape)
         # print("numpy.unique(dense_weights): ", numpy.unique(dense_weights))
@@ -857,12 +859,12 @@ class trainercore(object):
         if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
             ops['summary_images'] = self._summary_images
 
-        g = tf.get_default_graph()
-        opts = tf.profiler.ProfileOptionBuilder.float_operation()    
-        run_meta = tf.RunMetadata()
-        flop = tf.profiler.profile(g, run_meta=run_meta, cmd='op', options=opts)
+        # g = tf.get_default_graph()
+        # opts = tf.profiler.ProfileOptionBuilder.float_operation()    
+        # run_meta = tf.RunMetadata()
+        # flop = tf.profiler.profile(g, run_meta=run_meta, cmd='op', options=opts)
 
-        print("FLOP is ", flop.total_float_ops)
+        # print("FLOP is ", flop.total_float_ops)
 
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 
