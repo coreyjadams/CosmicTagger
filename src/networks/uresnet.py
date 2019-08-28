@@ -623,16 +623,19 @@ class UResNet(tf.keras.models.Model):
 
         # We need final output shaping too.  
         # Even with shared weights, keep this separate:
+        self.final_blocks = False
+        if blocks_final != 0:
+            self.final_blocks = True
+            self.final_layer = BlockSeries(
+                in_filters  = n_filters, 
+                out_filters = n_filters,
+                n_blocks    = blocks_final,
+                residual    = residual,
+                data_format = data_format, 
+                batch_norm  = batch_norm,
+                use_bias    = use_bias,
+                regularize  = regularize)
 
-        self.final_layer = BlockSeries(
-            in_filters  = n_filters, 
-            out_filters = n_filters,
-            n_blocks    = blocks_final,
-            residual    = residual,
-            data_format = data_format, 
-            batch_norm  = batch_norm,
-            use_bias    = use_bias,
-            regularize  = regularize)
 
         self.bottleneck = convolutional_block(
             n_filters    = 3,
@@ -671,7 +674,8 @@ class UResNet(tf.keras.models.Model):
         x = self.net_core(x, training)
 
         # Apply the final residual block to each plane:
-        x = [ self.final_layer(_x, training) for _x in x ]
+        if self.final_blocks:
+            x = [ self.final_layer(_x, training) for _x in x ]
         x = [ self.bottleneck(_x, training) for _x in x ]
 
 
