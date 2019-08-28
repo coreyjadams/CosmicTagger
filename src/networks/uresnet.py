@@ -2,15 +2,15 @@ import tensorflow as tf
 
 class convolutional_block(tf.keras.models.Model):
 
-    def __init__(self, 
+    def __init__(self, *,
                  n_filters, 
-                 kernel     = (3,3),
-                 strides    = (1,1),
-                 batch_norm = True,
-                 activation = tf.nn.relu,
-                 data_format = 'channels_first',
-                 use_bias   = False,
-                 regularize = 0.0 ):
+                 kernel,
+                 strides,
+                 batch_norm,
+                 data_format,
+                 use_bias,
+                 activation,
+                 regularize):
 
         tf.keras.models.Model.__init__(self)
 
@@ -45,20 +45,20 @@ class convolutional_block(tf.keras.models.Model):
         x = self.convolution(inputs)
         if self._do_batch_norm:
             x = self.batch_norm(x)
-        return self.activation(x)
+        return  self.activation(x)
 
 
 class convolutional_upsample(tf.keras.models.Model):
 
-    def __init__(self,
-        n_filters   = None,
-        kernel      = (2,2),
-        strides     = (2,2),
-        batch_norm  = True,
-        activation  = tf.nn.relu,
-        data_format = 'channels_first',
-        use_bias    = False,
-        regularize  = 0.0):
+    def __init__(self, *,
+        n_filters,
+        kernel,
+        strides,
+        batch_norm,
+        activation,
+        data_format,
+        use_bias,
+        regularize):
 
         tf.keras.models.Model.__init__(self)
 
@@ -101,13 +101,13 @@ class convolutional_upsample(tf.keras.models.Model):
 
 class residual_block(tf.keras.models.Model):
 
-    def __init__(self,
+    def __init__(self, *,
         n_filters,
-        batch_norm  = True,
-        data_format = "channels_first",
-        use_bias    = False,
-        regularize  = 0.0,
-        bottleneck  = -1):
+        batch_norm,
+        data_format,
+        use_bias,
+        regularize,
+        bottleneck):
 
         tf.keras.models.Model.__init__(self)
 
@@ -135,12 +135,16 @@ class residual_block(tf.keras.models.Model):
 
         self.do_bottleneck = False
         if bottleneck != -1:
+            print("Doing bottleneck")
             self.do_bottleneck = True
             self.bottleneck = convolutional_block(
                 n_filters   = bottleneck,
                 batch_norm  = batch_norm,
                 data_format = data_format,
                 use_bias    = use_bias,
+                activation  = tf.nn.relu,
+                kernel      = (1,1),
+                strides     = (1,1),
                 regularize  = regularize)
 
             n_filters = bottleneck
@@ -150,6 +154,9 @@ class residual_block(tf.keras.models.Model):
             batch_norm  = batch_norm,
             data_format = data_format,
             use_bias    = use_bias,
+            kernel      = (3,3),
+            strides     = (1,1),
+            activation  = tf.nn.relu,
             regularize  = regularize)
 
         self.convolution_2 = convolutional_block(
@@ -157,6 +164,8 @@ class residual_block(tf.keras.models.Model):
             batch_norm  = batch_norm,
             data_format = data_format,
             use_bias    = use_bias,
+            kernel      = (3,3),
+            strides     = (1,1),
             activation  = tf.identity,
             regularize  = regularize)
 
@@ -180,12 +189,14 @@ class residual_block(tf.keras.models.Model):
 class BlockSeries(tf.keras.models.Model):
 
 
-    def __init__(self, inplanes, n_blocks, 
-        residual    = True, 
-        data_format = "channels_first",
-        batch_norm  = True,
-        use_bias    = False,
-        regularize  = 0.0):
+    def __init__(self, *, 
+        inplanes, 
+        n_blocks, 
+        residual, 
+        data_format,
+        batch_norm,
+        use_bias,
+        regularize):
 
         tf.keras.models.Model.__init__(self) 
 
@@ -193,7 +204,8 @@ class BlockSeries(tf.keras.models.Model):
         if not residual:
             for i in range(n_blocks):
                 self.blocks.append(
-                    convolutional_block(inplanes, 
+                    convolutional_block(
+                        n_filters   = inplanes, 
                         data_format = data_format,
                         use_bias    = use_bias,
                         batch_norm  = batch_norm,
@@ -205,11 +217,13 @@ class BlockSeries(tf.keras.models.Model):
         else:
             for i in range(n_blocks):
                 self.blocks.append(
-                    residual_block(inplanes, 
+                    residual_block(
+                        n_filters   = inplanes, 
                         data_format = data_format,
                         use_bias    = use_bias,
                         batch_norm  = batch_norm,
-                        regularize  = regularize
+                        regularize  = regularize,
+                        bottleneck  = -1,
                     )
                  )
 
@@ -298,14 +312,16 @@ class DeepestBlock(tf.keras.models.Model):
 
 class UNetCore(tf.keras.models.Model):
 
-    def __init__(self, 
+    def __init__(self, *,
         res_blocks_deepest_layer, 
-        depth, nlayers, inplanes, 
-        residual    = True, 
-        data_format = "channels_first",
-        batch_norm  = True,
-        use_bias    = False,
-        regularize  = 0.0):
+        depth, 
+        nlayers, 
+        inplanes, 
+        residual,
+        data_format,
+        batch_norm,
+        use_bias,
+        regularize):
 
 
         tf.keras.models.Model.__init__(self)
@@ -314,7 +330,7 @@ class UNetCore(tf.keras.models.Model):
         self._depth_of_network  = depth
         self._number_of_layers = nlayers
 
-        if depth == 1:
+        if depth == 0:
             self.main_module = DeepestBlock(inplanes, 
                 n_blocks    = res_blocks_deepest_layer,
                 residual    = residual, 
@@ -324,7 +340,8 @@ class UNetCore(tf.keras.models.Model):
                 regularize  = regularize)
         else:
             # Residual or convolutional blocks, applied in series:
-            self.down_blocks = BlockSeries(inplanes, 
+            self.down_blocks = BlockSeries(
+                inplanes    = inplanes, 
                 n_blocks    = nlayers, 
                 residual    = residual, 
                 data_format = data_format,
@@ -340,7 +357,9 @@ class UNetCore(tf.keras.models.Model):
                 data_format = data_format,
                 batch_norm  = batch_norm,
                 strides     = (2,2),
+                kernel      = (2,2),
                 use_bias    = use_bias,
+                activation  = tf.nn.relu,
                 regularize  = regularize)
             
             
@@ -362,7 +381,10 @@ class UNetCore(tf.keras.models.Model):
                 data_format = data_format,
                 batch_norm  = batch_norm,
                 use_bias    = use_bias,
-                regularize  = regularize)
+                regularize  = regularize,
+                kernel      = (2,2),
+                strides     = (2,2),
+                activation  = tf.nn.relu)
 
 
             # Convolutional or residual blocks for the upsampling pass:
@@ -388,7 +410,7 @@ class UNetCore(tf.keras.models.Model):
         
         # Take the input and apply the downward pass convolutions.  Save the residual
         # at the correct time.
-        if self._depth_of_network != 1:
+        if self._depth_of_network != 0:
             residual = x
             x = [ self.down_blocks(_x, training) for _x in x ]
             # perform the downsampling operation:
@@ -397,7 +419,7 @@ class UNetCore(tf.keras.models.Model):
         # Apply the main module:
         x = self.main_module(x, training)
 
-        if self._depth_of_network != 1:
+        if self._depth_of_network != 0:
 
             # perform the upsampling step:
             # perform the downsampling operation:
@@ -414,11 +436,8 @@ class UNetCore(tf.keras.models.Model):
 
 
 class UResNet(tf.keras.models.Model):
-    '''
-    Simple autoencoder forward model
-    '''
     
-    def __init__(self, n_initial_filters,
+    def __init__(self, *, n_initial_filters,
                     data_format,
                     batch_norm,
                     regularize,
@@ -439,12 +458,13 @@ class UResNet(tf.keras.models.Model):
             self.channels_axis = -1
 
         self.initial_convolution = convolutional_block(
-            n_filters = n_initial_filters,
-            kernel      = (5,5),
+            n_filters   = n_initial_filters,
+            kernel      = (3,3),
             strides     = (1,1),
             batch_norm  = batch_norm,
             data_format = data_format,
             use_bias    = use_bias,
+            activation  = tf.nn.relu,
             regularize  = regularize)
 
         n_filters = n_initial_filters
@@ -452,22 +472,27 @@ class UResNet(tf.keras.models.Model):
 
         self.net_core = UNetCore(
             res_blocks_deepest_layer = res_blocks_deepest_layer,
-            depth    = depth, 
-            nlayers  = res_blocks_per_layer,
-            inplanes = n_filters,
-            batch_norm=batch_norm,
+            depth       = depth, 
+            nlayers     = res_blocks_per_layer, 
+            inplanes    = n_filters, 
+            residual    = residual,
             data_format = data_format,
-            residual = residual)
+            batch_norm  = batch_norm,
+            use_bias    = use_bias,
+            regularize  = regularize)
+
 
         # We need final output shaping too.  
         # Even with shared weights, keep this separate:
 
         self.final_layer = BlockSeries(
-            n_filters, 
-            res_blocks_final, 
-            batch_norm=batch_norm,
-            data_format=data_format,
-            residual=residual) 
+            inplanes    = n_filters, 
+            n_blocks    = res_blocks_final,
+            residual    = residual,
+            data_format = data_format, 
+            batch_norm  = batch_norm,
+            use_bias    = use_bias,
+            regularize  = regularize)
 
         self.bottleneck = convolutional_block(
             n_filters    = 3,
@@ -476,6 +501,8 @@ class UResNet(tf.keras.models.Model):
             data_format  = data_format,
             batch_norm   = batch_norm,
             use_bias     = use_bias,
+            activation   = tf.nn.relu,
+            regularize   = regularize
         )
 
 
