@@ -699,42 +699,40 @@ class trainercore(object):
         x_index = numpy.int32(x_coords[batch_index, plane_index, voxel_index])
         y_index = numpy.int32(y_coords[batch_index, plane_index, voxel_index])
 
-        # label_values, counts = numpy.unique(values, return_counts=True)
+        label_values, counts = numpy.unique(values, return_counts=True)
 
-        # # print("label_values: ", label_values)
-        # # print("counts: ", counts)
+        # print("label_values: ", label_values)
+        # print("counts: ", counts)
 
-        # if len(counts) < 3:
-        #     counts = numpy.insert(counts, 1, 0.1)
+        if len(counts) < 3:
+            counts = numpy.insert(counts, 1, 0.1)
 
-        # batch_size = labels.shape[0]
+        batch_size = labels.shape[0]
 
 
 
-        # if not FLAGS.SPARSE:
-        #     # Multiply by 3 planes:
-        #     n_pixels = batch_size * 3* numpy.prod(FLAGS.SHAPE)
-        #     # Correct the empty pixel values in the count:
-        #     counts[0] = n_pixels - counts[1] - counts[2]
-        # else:
-        #     n_pixels = len(values)
-
-        # weight = 1.0/ (len(label_values) * counts)
+        # Multiply by 3 planes:
+        n_pixels = batch_size * 3* numpy.prod(FLAGS.SHAPE)
+        # Correct the empty pixel values in the count:
+        counts[0] = n_pixels - counts[1] - counts[2]
 
 
         # Now we have the weight values, return it in the proper shape:
         # Prepare output weights:
         weights = numpy.full(values.shape, 1.7e-7)
-        weights[voxel_index==1] = 0.0001
-        weights[voxel_index==2] = 0.001
+        weights[values==2] = 0.0001
+        weights[values==1] = 0.001
+
+        total_weight = 1.7e-7 * counts[0] + 0.0001*counts[1] + 0.001*counts[2]
+
         if FLAGS.DATA_FORMAT == "channels_first":
             dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], 1.7e-7)
             dense_weights[batch_index,plane_index,y_index,x_index] = weights
-            dense_weights *= 10./numpy.sum(dense_weights)
+            dense_weights *= 1./total_weight
         else:
             dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], 1.7e-7)
             dense_weights[batch_index,y_index,x_index,plane_index] = weights
-            dense_weights *= 10./numpy.sum(dense_weights)
+            dense_weights *= 1./total_weight
 
         # print("dense_weights.shape: ", dense_weights.shape)
         # print("numpy.unique(dense_weights): ", numpy.unique(dense_weights))
@@ -865,6 +863,9 @@ class trainercore(object):
         # flop = tf.profiler.profile(g, run_meta=run_meta, cmd='op', options=opts)
 
         # print("FLOP is ", flop.total_float_ops)
+
+
+    
 
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 

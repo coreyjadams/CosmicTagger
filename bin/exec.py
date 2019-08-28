@@ -4,6 +4,7 @@ import time
 
 import numpy
 
+
 # Add the local folder to the import path:
 network_dir = os.path.dirname(os.path.abspath(__file__))
 network_dir = os.path.dirname(network_dir)
@@ -53,6 +54,7 @@ def main():
         for i in range(FLAGS.ITERATIONS):
             mb = trainer.fetch_next_batch()
             end = time.time()
+
             if not FLAGS.DISTRIBUTED:
                 print(i, ": Time to fetch a minibatch of data: {}".format(end - start))
             else:
