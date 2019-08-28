@@ -252,7 +252,7 @@ class trainercore(object):
         n_trainable_parameters = 0
         for var in tf.trainable_variables():
             n_trainable_parameters += numpy.prod(var.get_shape())
-            print(var.name, var.get_shape())
+            # print(var.name, var.get_shape())
         sys.stdout.write("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
 
 
