@@ -115,6 +115,8 @@ class FLAGS(Borg):
         # self.MAX_VOXELS            = 80000
 
 
+        self.SYNTHETIC             = False
+
     def _add_default_io_configuration(self, parser):
 
         # IO PARAMETERS FOR INPUT:
@@ -125,6 +127,10 @@ class FLAGS(Borg):
 
         parser.add_argument('-mb','--minibatch-size',type=int, default=self.MINIBATCH_SIZE,
             help="Number of images in the minibatch size [default: {}]".format(self.MINIBATCH_SIZE))
+
+        parser.add_argument('--synthetic', type=str2bool, default=self.SYNTHETIC,
+            help="Use synthetic data instead of real data.")
+
         return parser
 
 
@@ -301,13 +307,13 @@ class uresnet(FLAGS):
         self.BATCH_NORM                  = True
         self.USE_BIAS                    = True
         self.N_INITIAL_FILTERS           = 6
-        self.BLOCKS_PER_LAYER        = 2
-        self.BLOCKS_DEEPEST_LAYER    = 4
-        self.BLOCKS_FINAL            = 2
+        self.BLOCKS_PER_LAYER            = 2
+        self.BLOCKS_DEEPEST_LAYER        = 4
+        self.BLOCKS_FINAL                = 2
         self.NETWORK_DEPTH               = 5
-        self.CONNECTIONS                 = 'sum'
-        self.CONNECT_PRE_BLOCKS_DOWN = True
-        self.CONNECT_PRE_BLOCKS_UP   = True
+        self.CONNECTIONS                 = 'concat'
+        self.CONNECT_PRE_BLOCKS_DOWN     = True
+        self.CONNECT_PRE_BLOCKS_UP       = True
         self.VERBOSITY                   = 0
         self.BOTTLENECK_SIZE             = -1
         self.NPLANES                     = 3

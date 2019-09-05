@@ -6,14 +6,17 @@ from collections import OrderedDict
 
 import numpy
 
-from larcv import queueloader
-
 
 from . import flags
 from . import data_transforms
 from ..io import io_templates
 from ..networks import uresnet
 FLAGS = flags.FLAGS()
+
+if not FLAGS.SYNTHETIC:
+    from larcv import queueloader
+
+
 
 import datetime
 
@@ -34,7 +37,8 @@ class trainercore(object):
 
     '''
     def __init__(self,):
-        self._larcv_interface = queueloader.queue_interface()
+        if not FLAGS.SYNTHETIC:
+            self._larcv_interface = queueloader.queue_interface()
         self._iteration       = 0
         self._global_step     = -1
         self._val_writer      = None
@@ -50,6 +54,8 @@ class trainercore(object):
             
     def _initialize_io(self, color=None):
 
+        if FLAGS.SYNTHETIC:
+            return
 
         # This is a dummy placeholder, you must check this yourself:
         if 640 in FLAGS.SHAPE:
@@ -142,8 +148,21 @@ class trainercore(object):
         # sys.stdout.write("Begin constructing network\n")
 
         # Make sure all required dimensions are present:
+        if not FLAGS.SYNTHETIC:
+            io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
+        else:
+            io_dims = {}
+            if FLAGS.DATA_FORMAT == "channels_first":
+                io_dims['image'] = numpy.asarray(
+                    [FLAGS.MINIBATCH_SIZE, 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]])
+                io_dims['label'] = numpy.asarray(
+                    [FLAGS.MINIBATCH_SIZE, 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]])
+            else:
+                io_dims['image'] = numpy.asarray(
+                    [FLAGS.MINIBATCH_SIZE, FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3])
+                io_dims['label'] = numpy.asarray(
+                    [FLAGS.MINIBATCH_SIZE, FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3])
 
-        io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
 
         if FLAGS.DATA_FORMAT == "channels_last":
             self._channels_dim = -1 
@@ -165,6 +184,8 @@ class trainercore(object):
 
         self._dims['image'] = numpy.asarray(shape)
         self._dims['label'] = numpy.asarray(shape)
+
+        print(shape)
 
         # We have to make placeholders for input objects:
 
@@ -646,28 +667,34 @@ class trainercore(object):
 
     def fetch_next_batch(self, mode='primary', metadata=False):
 
+        if not FLAGS.SYNTHETIC:
+            metadata=True
+            self._larcv_interface.prepare_next(mode)
 
-        metadata=True
-        self._larcv_interface.prepare_next(mode)
-
-        # This brings up the current data
-        minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=True,fetch_meta_data=metadata)
-        minibatch_dims = self._larcv_interface.fetch_minibatch_dims(mode)
-
-
-        for key in minibatch_data:
-            if key == 'entries' or key == 'event_ids':
-                continue
-            minibatch_data[key] = numpy.reshape(minibatch_data[key], minibatch_dims[key])
-
-        if FLAGS.BALANCE_LOSS:
-            minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
+            # This brings up the current data
+            minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=True,fetch_meta_data=metadata)
+            minibatch_dims = self._larcv_interface.fetch_minibatch_dims(mode)
 
 
-        minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
-        minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
-        # This preparse the next batch of data:
+            for key in minibatch_data:
+                if key == 'entries' or key == 'event_ids':
+                    continue
+                minibatch_data[key] = numpy.reshape(minibatch_data[key], minibatch_dims[key])
 
+            if FLAGS.BALANCE_LOSS:
+                minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
+
+
+            minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
+            minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
+            # This preparse the next batch of data:
+
+        else:
+            minibatch_data = {}
+            minibatch_data['image'] = numpy.random.random_sample(self._dims['image'])
+            minibatch_data['label'] = numpy.random.randint(
+                low=0, high=3, size=self._dims['image'])
+            minibatch_data['weight'] = numpy.random.random_sample(self._dims['image'])
 
 
         return minibatch_data
@@ -917,10 +944,6 @@ class trainercore(object):
 
         # Compute global step per second:
         self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
-
-        # Lastly, call next on the IO:
-        if not FLAGS.DISTRIBUTED:
-            self._larcv_interface.prepare_next('primary')
 
         return ops["global_step"]
 
