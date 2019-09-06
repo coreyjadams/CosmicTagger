@@ -515,7 +515,7 @@ class UNetCore(tf.keras.models.Model):
                     data_format = data_format,
                     use_bias    = use_bias,
                     activation  = tf.nn.relu,
-                    regularize  = regularize,)
+                    regularize  = regularize)
             else:
                 self.connection = NoConnection()
 
@@ -581,7 +581,7 @@ class UResNet(tf.keras.models.Model):
                     blocks_per_layer,
                     connections,
                     upsampling,
-                    downsampling,):
+                    downsampling):
 
 
         tf.keras.models.Model.__init__(self)
