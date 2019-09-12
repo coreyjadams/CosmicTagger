@@ -189,8 +189,7 @@ class residual_block(tf.keras.models.Model):
 class BlockSeries(tf.keras.models.Model):
 
 
-    def __init__(self, *, 
-        in_filters,
+    def __init__(self, *,
         out_filters, 
         n_blocks, 
         residual, 
@@ -206,7 +205,7 @@ class BlockSeries(tf.keras.models.Model):
             for i in range(n_blocks):
                 self.blocks.append(
                     convolutional_block(
-                        n_filters   = in_filters, 
+                        n_filters   = out_filters, 
                         data_format = data_format,
                         use_bias    = use_bias,
                         kernel      = (3,3),
@@ -219,20 +218,6 @@ class BlockSeries(tf.keras.models.Model):
 
 
         else:
-            # For the residual case, if in_filters != out_filters, we use a bottleneck:
-            if in_filters != out_filters:
-                self.blocks.append(
-                    convolutional_block(
-                        n_filters   = out_filters, 
-                        data_format = data_format,
-                        use_bias    = use_bias,
-                        kernel      = (1,1),
-                        strides     = (1,1),
-                        activation  = tf.nn.relu,
-                        batch_norm  = batch_norm,
-                        regularize  = regularize
-                    )
-                )
             for i in range(n_blocks):
                 self.blocks.append(
                     residual_block(
@@ -276,8 +261,7 @@ class DeepestBlock(tf.keras.models.Model):
 
 
         self.blocks = BlockSeries(
-            in_filters    = 3 * in_filters, 
-            out_filters   = 3 * in_filters,
+            out_filters = 3 * in_filters,
             n_blocks    = n_blocks, 
             residual    = residual,
             batch_norm  = batch_norm,
@@ -346,11 +330,32 @@ class ConcatConnection(tf.keras.models.Model):
 
 class MaxPooling(tf.keras.models.Model):
 
-    def __init__(self,*, data_format):
+    def __init__(self,*,
+            n_filters,
+            data_format,
+            batch_norm,
+            use_bias,
+            activation,
+            regularize):
         tf.keras.models.Model.__init__(self)
+
+
         self.pool = tf.keras.layers.MaxPooling2D(pool_size=2, data_format=data_format) 
+        
+        self.bottleneck = convolutional_block(
+            n_filters   = n_filters, 
+            kernel      = (1,1),
+            strides     = (1,1),
+            batch_norm  = batch_norm,
+            data_format = data_format,
+            use_bias    = use_bias,
+            activation  = tf.nn.relu,
+            regularize  = regularize)
+    
     def call(self, x, training):
-        return self.pool(x)
+        x = self.pool(x)
+
+        return self.bottleneck(x, training)
 
 class InterpolationUpsample(tf.keras.models.Model):
 
@@ -391,13 +396,13 @@ class UNetCore(tf.keras.models.Model):
         in_filters,           # How many filters are coming into this layer from above (or going up)
         out_filters,          # How many filters to pass to a deeper layer
         residual,             # Use residual blocks where possible
-        data_format,          
-        batch_norm,
-        use_bias,
-        regularize, 
-        connections,
-        upsampling,
-        downsampling):
+        data_format,          # Channels first or channels last
+        batch_norm,           # Use Batch norm?
+        use_bias,             # Use Bias layers?
+        regularize,           # Apply weight regularization?
+        connections,          # What type of connection?
+        upsampling,           # What type of upsampling?
+        downsampling):        # What type of downsampling?
 
 
         if upsampling not in ["convolutional", "interpolation"]:
@@ -405,6 +410,10 @@ class UNetCore(tf.keras.models.Model):
 
         if downsampling not in ["convolutional", "max_pooling"]:
             raise Exception ("Must use either convolutional or max pooling downsampling")
+
+        if connections not in ['sum', 'concat', 'none']:
+            if connections != None:
+                raise Exception("Don't know what to do with connection type ", connections)
 
 
         tf.keras.models.Model.__init__(self)
@@ -423,12 +432,9 @@ class UNetCore(tf.keras.models.Model):
                 regularize  = regularize)
         else:
             # Residual or convolutional blocks, applied in series:
-            # The downsample pass will increase the number of filters if needed
-            # There is no assumption that the number of "filters in" matches the planned
-            # filter number for this layer
+            # Doesn't change the number of filters
             self.down_blocks = BlockSeries(
-                in_filters  = in_filters,
-                out_filters   = out_filters,
+                out_filters = in_filters,
                 n_blocks    = nlayers, 
                 residual    = residual, 
                 data_format = data_format,
@@ -438,9 +444,9 @@ class UNetCore(tf.keras.models.Model):
     
 
             # Down sampling operation
-            # This does not change the number of filters from above down-pass blocks
+            # This does change the number of filters from above down-pass blocks
             if downsampling == "convolutional":
-                self.downsample     = convolutional_block(
+                self.downsample = convolutional_block(
                     n_filters   = out_filters,
                     data_format = data_format,
                     batch_norm  = batch_norm,
@@ -450,7 +456,13 @@ class UNetCore(tf.keras.models.Model):
                     activation  = tf.nn.relu,
                     regularize  = regularize)
             else:
-                self.downsample = MaxPooling(data_format=data_format)
+                self.downsample = MaxPooling(
+                    n_filters   = out_filters,
+                    data_format = data_format,
+                    batch_norm  = batch_norm,
+                    use_bias    = use_bias,
+                    activation  = tf.nn.relu,
+                    regularize  = regularize)
             
             
             # Submodule: 
@@ -472,8 +484,8 @@ class UNetCore(tf.keras.models.Model):
             # Upsampling operation:
             # Upsampling will decrease the number of fitlers:
             if upsampling == "convolutional":
-                self.upsample       = convolutional_upsample(
-                    n_filters  = in_filters,
+                self.upsample = convolutional_upsample(
+                    n_filters   = in_filters,
                     data_format = data_format,
                     batch_norm  = batch_norm,
                     use_bias    = use_bias,
@@ -483,7 +495,7 @@ class UNetCore(tf.keras.models.Model):
                     activation  = tf.nn.relu)
             else:
                 self.upsample = InterpolationUpsample(
-                    n_filters  = in_filters,
+                    n_filters   = in_filters,
                     data_format = data_format,
                     batch_norm  = batch_norm,
                     use_bias    = use_bias,
@@ -494,7 +506,6 @@ class UNetCore(tf.keras.models.Model):
             # if the upsampling
 
             self.up_blocks = BlockSeries(
-                in_filters  = in_filters,
                 out_filters = in_filters, 
                 n_blocks    = nlayers, 
                 residual    = residual, 
@@ -509,8 +520,9 @@ class UNetCore(tf.keras.models.Model):
             if connections == "sum":
                 self.connection = SumConnection()
             elif connections == "concat":
+                # Concat applies a concat + bottleneck
                 self.connection = ConcatConnection(
-                    in_filters    = in_filters, 
+                    in_filters  = in_filters, 
                     batch_norm  = batch_norm,
                     data_format = data_format,
                     use_bias    = use_bias,
@@ -522,44 +534,44 @@ class UNetCore(tf.keras.models.Model):
 
     def call(self, x, training):
         
-        # print("depth ", self._depth_of_network, ", x[0] pre call ", x[0].shape)
+        print("depth ", self._depth_of_network, ", x[0] pre call ", x[0].shape)
 
         # Take the input and apply the downward pass convolutions.  Save the residual
         # at the correct time.
         if self._depth_of_network != 0:
             # Perform a series of convolutional or residual blocks:
             x = [ self.down_blocks(_x, training) for _x in x ]
-            # print("depth ", self._depth_of_network, ", x[0] post resblocks shape ", x[0].shape)
+            print("depth ", self._depth_of_network, ", x[0] post resblocks shape ", x[0].shape)
 
             # Capture the residual right before downsampling:
             residual = x
-            # print("depth ", self._depth_of_network, ", residual[0] shape ", residual[0].shape)
+            print("depth ", self._depth_of_network, ", residual[0] shape ", residual[0].shape)
 
             # perform the downsampling operation:
             x = [ self.downsample(_x, training) for _x in x ]
-            # print("depth ", self._depth_of_network, ", x[0] post downsample shape ", x[0].shape)
+            print("depth ", self._depth_of_network, ", x[0] post downsample shape ", x[0].shape)
 
         # Apply the main module:
 
-        # print("depth ", self._depth_of_network, ", x[0] pre main module shape ", x[0].shape)
+        print("depth ", self._depth_of_network, ", x[0] pre main module shape ", x[0].shape)
         x = self.main_module(x, training)
-        # print("depth ", self._depth_of_network, ", x[0] after main module shape ", x[0].shape)
+        print("depth ", self._depth_of_network, ", x[0] after main module shape ", x[0].shape)
 
         if self._depth_of_network != 0:
 
             # perform the upsampling step:
             # perform the downsampling operation:
-            # print("depth ", self._depth_of_network, ", x[0] pre upsample shape ", x[0].shape)
+            print("depth ", self._depth_of_network, ", x[0] pre upsample shape ", x[0].shape)
             x = [ self.upsample(_x, training) for _x in x ]
-            # print("depth ", self._depth_of_network, ", x[0] after upsample shape ", x[0].shape)
+            print("depth ", self._depth_of_network, ", x[0] after upsample shape ", x[0].shape)
 
 
             x = [self.connection(residual[i], x[i], training) for i in range(len(x)) ]
-            # print("depth ", self._depth_of_network, ", x[0] after connection shape ", x[0].shape)
+            print("depth ", self._depth_of_network, ", x[0] after connection shape ", x[0].shape)
 
             # Apply the convolutional steps:
             x = [ self.up_blocks(_x, training) for _x in x ]
-            # print("depth ", self._depth_of_network, ", x[0] after res blocks shape ", x[0].shape)
+            print("depth ", self._depth_of_network, ", x[0] after res blocks shape ", x[0].shape)
             
 
         return x
@@ -627,7 +639,6 @@ class UResNet(tf.keras.models.Model):
         if blocks_final != 0:
             self.final_blocks = True
             self.final_layer = BlockSeries(
-                in_filters  = n_filters, 
                 out_filters = n_filters,
                 n_blocks    = blocks_final,
                 residual    = residual,
