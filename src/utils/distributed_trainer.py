@@ -20,11 +20,13 @@ hvd.init()
 
 os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
+from . import flags
+FLAGS = flags.FLAGS()
+
 if not FLAGS.SYNTHETIC:
     from larcv.distributed_queue_interface import queue_interface
 
-from . import flags
-FLAGS = flags.FLAGS()
+
 
 class distributed_trainer(trainercore):
     '''
