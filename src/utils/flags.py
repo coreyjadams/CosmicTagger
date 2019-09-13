@@ -311,7 +311,7 @@ class uresnet(FLAGS):
         self.BLOCKS_DEEPEST_LAYER        = 4
         self.BLOCKS_FINAL                = 2
         self.NETWORK_DEPTH               = 5
-        self.CONNECTIONS                 = 'concat'
+        self.CONNECTIONS                 = 'sum'
         self.CONNECT_PRE_BLOCKS_DOWN     = True
         self.CONNECT_PRE_BLOCKS_UP       = True
         self.VERBOSITY                   = 0
