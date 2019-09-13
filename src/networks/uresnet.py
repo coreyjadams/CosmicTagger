@@ -31,6 +31,7 @@ class convolutional_block(tf.keras.models.Model):
             kernel_regularizer  = tf.keras.regularizers.l2(l=regularize)
         )
         
+
         self.activation = activation
         
         if batch_norm:
@@ -45,7 +46,9 @@ class convolutional_block(tf.keras.models.Model):
         x = self.convolution(inputs)
         if self._do_batch_norm:
             x = self.batch_norm(x)
-        return  self.activation(x)
+        if self.activation is not None:
+            x = self.activation(x)
+        return  x
 
 
 class convolutional_upsample(tf.keras.models.Model):
@@ -534,44 +537,44 @@ class UNetCore(tf.keras.models.Model):
 
     def call(self, x, training):
         
-        print("depth ", self._depth_of_network, ", x[0] pre call ", x[0].shape)
+        # print("depth ", self._depth_of_network, ", x[0] pre call ", x[0].shape)
 
         # Take the input and apply the downward pass convolutions.  Save the residual
         # at the correct time.
         if self._depth_of_network != 0:
             # Perform a series of convolutional or residual blocks:
             x = [ self.down_blocks(_x, training) for _x in x ]
-            print("depth ", self._depth_of_network, ", x[0] post resblocks shape ", x[0].shape)
+            # print("depth ", self._depth_of_network, ", x[0] post resblocks shape ", x[0].shape)
 
             # Capture the residual right before downsampling:
             residual = x
-            print("depth ", self._depth_of_network, ", residual[0] shape ", residual[0].shape)
+            # print("depth ", self._depth_of_network, ", residual[0] shape ", residual[0].shape)
 
             # perform the downsampling operation:
             x = [ self.downsample(_x, training) for _x in x ]
-            print("depth ", self._depth_of_network, ", x[0] post downsample shape ", x[0].shape)
+            # print("depth ", self._depth_of_network, ", x[0] post downsample shape ", x[0].shape)
 
         # Apply the main module:
 
-        print("depth ", self._depth_of_network, ", x[0] pre main module shape ", x[0].shape)
+        # print("depth ", self._depth_of_network, ", x[0] pre main module shape ", x[0].shape)
         x = self.main_module(x, training)
-        print("depth ", self._depth_of_network, ", x[0] after main module shape ", x[0].shape)
+        # print("depth ", self._depth_of_network, ", x[0] after main module shape ", x[0].shape)
 
         if self._depth_of_network != 0:
 
             # perform the upsampling step:
             # perform the downsampling operation:
-            print("depth ", self._depth_of_network, ", x[0] pre upsample shape ", x[0].shape)
+            # print("depth ", self._depth_of_network, ", x[0] pre upsample shape ", x[0].shape)
             x = [ self.upsample(_x, training) for _x in x ]
-            print("depth ", self._depth_of_network, ", x[0] after upsample shape ", x[0].shape)
+            # print("depth ", self._depth_of_network, ", x[0] after upsample shape ", x[0].shape)
 
 
             x = [self.connection(residual[i], x[i], training) for i in range(len(x)) ]
-            print("depth ", self._depth_of_network, ", x[0] after connection shape ", x[0].shape)
+            # print("depth ", self._depth_of_network, ", x[0] after connection shape ", x[0].shape)
 
             # Apply the convolutional steps:
             x = [ self.up_blocks(_x, training) for _x in x ]
-            print("depth ", self._depth_of_network, ", x[0] after res blocks shape ", x[0].shape)
+            # print("depth ", self._depth_of_network, ", x[0] after res blocks shape ", x[0].shape)
             
 
         return x
@@ -630,11 +633,10 @@ class UResNet(tf.keras.models.Model):
             regularize               = regularize,
             connections              = connections,
             upsampling               = upsampling,
-            downsampling             = downsampling,)
+            downsampling             = downsampling)
 
 
         # We need final output shaping too.  
-        # Even with shared weights, keep this separate:
         self.final_blocks = False
         if blocks_final != 0:
             self.final_blocks = True
@@ -650,12 +652,12 @@ class UResNet(tf.keras.models.Model):
 
         self.bottleneck = convolutional_block(
             n_filters    = 3,
-            kernel       = [1,1],
+            kernel       = [3,3],
             strides      = [1,1],
             data_format  = data_format,
-            batch_norm   = batch_norm,
+            batch_norm   = False,
             use_bias     = use_bias,
-            activation   = tf.nn.relu,
+            activation   = None,
             regularize   = regularize
         )
 
@@ -666,14 +668,11 @@ class UResNet(tf.keras.models.Model):
         
         batch_size = input_tensor.get_shape()[0]
 
-        print(batch_size)
-
-        self.input_layer = tf.keras.layers.InputLayer()
-
 
         # Reshape this tensor into the right shape to apply this multiplane network.
         x = input_tensor
         x = tf.split(x, 3, self.channels_axis)
+        split_input = x
 
 
 
@@ -687,6 +686,8 @@ class UResNet(tf.keras.models.Model):
         # Apply the final residual block to each plane:
         if self.final_blocks:
             x = [ self.final_layer(_x, training) for _x in x ]
+
+        x = [ tf.concat([x[i], split_input[i]], axis=self.channels_axis) for i in range(3)]
         x = [ self.bottleneck(_x, training) for _x in x ]
 
 
