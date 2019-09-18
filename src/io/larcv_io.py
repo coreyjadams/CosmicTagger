@@ -71,16 +71,74 @@ class IOManagerConfig(object):
 
 
     def __init__(self):
+        self._name = "IOManager"
+        self._defaults_set = False
         self._params = OrderedDict()
         self._params["Verbosity"] =  None
         self._params["IOMode"] =  None
         self._params["OutFileName"] =  None
         self._params["InputFiles"] =  None
-        self._params["InputDirs"] =  None
-        self._params["StoreOnlyName"] =  None
-        self._params["StoreOnlyType"] =  None
-        self._params["ReadOnlyName"] =  None
-        self._params["ReadOnlyType"] =  None
+        # self._params["InputDirs"] =  None
+        # self._params["StoreOnlyName"] =  None
+        # self._params["StoreOnlyType"] =  None
+        # self._params["ReadOnlyName"] =  None
+        # self._params["ReadOnlyType"] =  None
+
+    def set_param(self, param, value):
+        self._params[param] = value
+
+    def set_defaults(self):
+
+        if self._params['Verbosity'] is None:
+            self._params['Verbosity'] = 5
+        if self._params['IOMode'] is None:
+            self._params['IOMode'] = 2
+        if self._params['OutFileName'] is None:
+            self._params['OutFileName'] = "\"\""
+        if self._params['InputFiles'] is None:
+            self._params['InputFiles'] = "\"\""
+        # if self._params['StoreOnlyName'] is None:
+        #     self._params['StoreOnlyName'] = ""
+        # if self._params['StoreOnlyType'] is None:
+        #     self._params['StoreOnlyType'] = ""
+        # if self._params['ReadOnlyName'] is None:
+        #     self._params['ReadOnlyName'] = ""
+        # if self._params['ReadOnlyType'] is None:
+        #     self._params['ReadOnlyType'] = ""
+
+        self._defaults_set = True
+
+
+
+    def generate_config_str(self):
+
+        if not self._defaults_set:
+            self.set_defaults()
+
+        indent_level = 0
+
+        # Take the config and generate a parsable string:
+        output_str = ""
+        output_str += self._name + ": {\n"
+        indent_level += 2
+
+        for param in self._params:
+            if param == 'InputFiles':
+                output_str += "{indent}{param}: [\"{value}\"]\n".format(
+                    indent = " "*indent_level,
+                    param  = param,
+                    value  = self._params[param])
+            else:
+                output_str += "{indent}{param}: {value} \n".format(
+                    indent = " "*indent_level,
+                    param  = param,
+                    value  = self._params[param])
+
+
+        indent_level -= 2
+        output_str += "{indent}}}\n".format(indent=" "*indent_level)
+
+        return output_str
 
 # class ProcessDriverConfig(CoreConfig):
 

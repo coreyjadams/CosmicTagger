@@ -38,7 +38,11 @@ class trainercore(object):
     '''
     def __init__(self,):
         if not FLAGS.SYNTHETIC:
-            self._larcv_interface = queueloader.queue_interface()
+            if FLAGS.MODE == 'inference':
+                mode = 'serial_access'
+            else:
+                mode = 'random_blocks'
+            self._larcv_interface = queueloader.queue_interface(random_access_mode=mode)
         self._iteration       = 0
         self._global_step     = -1
         self._val_writer      = None
@@ -135,8 +139,15 @@ class trainercore(object):
                 self._larcv_interface.prepare_manager('aux', io_config, FLAGS.AUX_MINIBATCH_SIZE, data_keys, color)
 
             else:
-                config = io_templates.ana_io(input_file=FLAGS.FILE, max_voxels=max_voxels)
-                self._larcv_interface.prepare_writer(FLAGS.AUX_FILE)
+                config = io_templates.output_io(input_file=FLAGS.FILE)
+                print(config.generate_config_str())
+                # Generate a named temp file:
+                out_file_config = tempfile.NamedTemporaryFile(mode='w', delete=False)
+                out_file_config.write(config.generate_config_str())
+
+                out_file_config.close()
+                self._cleanup.append(out_file_config)
+                self._larcv_interface.prepare_writer(out_file_config.name, FLAGS.AUX_FILE)
 
     def init_network(self):
 
@@ -225,7 +236,7 @@ class trainercore(object):
         # self._logits = self._net._build_network(self._input)
 
 
-        if FLAGS.MODE == "train":
+        if FLAGS.MODE == "train" or FLAGS.MODE == "inference":
 
 
             # Here, if the data format is channels_first, we have to reorder the logits tensors
@@ -310,8 +321,8 @@ class trainercore(object):
 
         self.print_network_info()
 
-
-        self.init_optimizer()
+        if FLAGS.MODE != "inference":
+            self.init_optimizer()
 
         self.init_saver()
 
@@ -319,8 +330,10 @@ class trainercore(object):
         for key in self._metrics:
             tf.summary.scalar(key, self._metrics[key])
 
-        self._summary_basic = tf.summary.merge_all()
-        self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
+        if FLAGS.MODE != "inference":
+
+            self._summary_basic = tf.summary.merge_all()
+            self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
 
 
         self.set_compute_parameters()
@@ -669,10 +682,13 @@ class trainercore(object):
 
         if not FLAGS.SYNTHETIC:
             metadata=True
-            self._larcv_interface.prepare_next(mode)
+
+            pop = True
+            if FLAGS.MODE == "inference" and self._global_step == -1:
+                pop = False
 
             # This brings up the current data
-            minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=True,fetch_meta_data=metadata)
+            minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=pop,fetch_meta_data=metadata)
             minibatch_dims = self._larcv_interface.fetch_minibatch_dims(mode)
 
 
@@ -688,6 +704,7 @@ class trainercore(object):
             minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
             minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
             # This preparse the next batch of data:
+            self._larcv_interface.prepare_next(mode)
 
         else:
             minibatch_data = {}
@@ -959,6 +976,79 @@ class trainercore(object):
 
     def ana_step(self):
 
+
+        global_start_time = datetime.datetime.now()
+
+        # Fetch the next batch of data with larcv
+        io_start_time = datetime.datetime.now()
+        minibatch_data = self.fetch_next_batch(metadata=True)
+        io_end_time = datetime.datetime.now()
+
+        # For tensorflow, we have to build up an ops list to submit to the
+        # session to run.
+
+        # These are ops that always run:
+        ops = {}
+        ops['logits']  = self._logits
+        ops['softmax'] = self._output['softmax']
+        ops['metrics'] = self._metrics
+        ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
+        ops['global_step'] = self._global_step
+
+        metrics = self.metrics(ops["metrics"])
+
+
+        verbose = False
+
+        # Add the global step / second to the tensorboard log:
+        try:
+            metrics['global_step_per_sec'] = 1./self._seconds_per_global_step
+            metrics['images_per_second'] = FLAGS.MINIBATCH_SIZE / self._seconds_per_global_step
+        except AttributeError:
+            metrics['global_step_per_sec'] = 0.0
+            metrics['images_per_second'] = 0.0
+
+
+
+        metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
+
+        if verbose: print("Calculated metrics")
+
+        # Report metrics on the terminal:
+        self.log(ops["metrics"], kind="Inference", step=ops["global_step"]) 
+
+
+        # Here is the part where we have to add output:
+
+        if FLAGS.AUX_FILE is not None:
+
+ 
+            for i, label in zip([0,1,2], ['bkg', 'cosmic', 'neutrino']):
+                softmax = []
+                for plane in [0,1,2]:
+                    if FLAGS.DATA_FORMAT == "channels_first":
+                        softmax.append(ops['softmax'][plane][0,i,:,:])
+                    else:
+                        softmax.append(ops['softmax'][plane][0,:,:,i])
+
+                self._larcv_interface.write_output(data=softmax, 
+                    datatype='image2d', 
+                    producer="seg_{}".format(label), 
+                    entries=minibatch_data['entries'], 
+                    event_ids=minibatch_data['event_ids'])
+
+
+        if verbose: print("Completed Log")
+
+        global_end_time = datetime.datetime.now()
+
+        # Compute global step per second:
+        self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
+        self._global_step += 1
+
+        return ops["global_step"]
+
+
         raise NotImplementedError("You must implement this function")
 
     def feed_dict(self, inputs):
@@ -995,6 +1085,14 @@ class trainercore(object):
                 print('Finished training (iteration %d)' % self._iteration)
                 break
 
-            gs = self.train_step()
-            self.val_step(gs)
-            self.checkpoint(gs)
+            if FLAGS.MODE == 'train':
+                gs = self.train_step()
+                self.val_step(gs)
+                self.checkpoint(gs)
+            elif FLAGS.MODE == 'inference':
+                self.ana_step()
+            else:
+                raise Exception("Don't know what to do with mode ", FLAGS.MODE)
+
+        if FLAGS.MODE == 'inference':
+            self._larcv_interface._writer.finalize()

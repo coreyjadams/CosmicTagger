@@ -47,6 +47,15 @@ def ana_io(input_file, max_voxels, data_producer, label_producer, prepend_names=
     config.add_process(label_proc)
 
     config.set_param("InputFiles", input_file)
+    config.set_param("RandomAccess", 0)
+
+    return config
+
+def output_io(input_file):
+
+    config = larcv_io.IOManagerConfig()
+
+    config.set_param("InputFiles", input_file)
 
     return config
 
