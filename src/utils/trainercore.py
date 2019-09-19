@@ -683,8 +683,9 @@ class trainercore(object):
         if not FLAGS.SYNTHETIC:
             metadata=True
 
+
             pop = True
-            if FLAGS.MODE == "inference" and self._global_step == -1:
+            if self._iteration == 0:
                 pop = False
 
             # This brings up the current data
@@ -717,7 +718,7 @@ class trainercore(object):
         return minibatch_data
 
 
-    def compute_weights(self, labels, boost_labels = None):
+    def compute_weights(self, labels, boost_labels = None, weight_mode = 1):
         '''
         This is NOT a tensorflow implementation, but a numpy implementation.
         Running on CPUs this might not make a difference.  Running on GPUs
@@ -731,6 +732,13 @@ class trainercore(object):
 
         # It's done per-batch rather than per image, so:
 
+
+        # weight modes:
+        # 1 - No loss balancing, just run normally
+        # 2 - Constant loss balancing: each class is given a weight, but the whole event is normalized
+        # 3 - Dynamic loss balancing:  each class is weighted such that it contributes 1/3 of the total weight.
+        # 4 - THere is no 4
+
         x_coords = labels[:,:,:,1]
         y_coords = labels[:,:,:,0]
         val_coords = labels[:,:,:,2]
@@ -743,57 +751,67 @@ class trainercore(object):
         x_index = numpy.int32(x_coords[batch_index, plane_index, voxel_index])
         y_index = numpy.int32(y_coords[batch_index, plane_index, voxel_index])
 
+        # Count the types of each label:
         label_values, counts = numpy.unique(values, return_counts=True)
 
-        # print("label_values: ", label_values)
-        # print("counts: ", counts)
+        # Batch size
+        batch_size = labels.shape[0]
 
+        # Make sure that if the number of counts is 0 for neutrinos, we fix that
         if len(counts) < 3:
             counts = numpy.insert(counts, 1, 0.1)
 
-        batch_size = labels.shape[0]
-
-
-
+        # This computes the *real* number 
         # Multiply by 3 planes:
         n_pixels = batch_size * 3* numpy.prod(FLAGS.SHAPE)
         # Correct the empty pixel values in the count:
         counts[0] = n_pixels - counts[1] - counts[2]
 
+        if weight_mode == 1:
 
-        # Now we have the weight values, return it in the proper shape:
-        # Prepare output weights:
-        weights = numpy.full(values.shape, 1.7e-7)
-        weights[values==2] = 0.0001
-        weights[values==1] = 0.001
+            # Now we have the weight values, return it in the proper shape:
+            # Prepare output weights:
+            class_weights = 0.3333/(counts + 1)
 
-        total_weight = 1.7e-7 * counts[0] + 0.0001*counts[1] + 0.001*counts[2]
+            bkg_weight = class_weights[0]
 
-        if FLAGS.DATA_FORMAT == "channels_first":
-            dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], 1.7e-7)
-            dense_weights[batch_index,plane_index,y_index,x_index] = weights
+            weights = numpy.full(values.shape, bkg_weight)
+            weights[values==2] = class_weights[2] 
+            weights[values==1] = class_weights[1]
+
+            if FLAGS.DATA_FORMAT == "channels_first":
+                dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight)
+                dense_weights[batch_index,plane_index,y_index,x_index] = weights
+            else:
+                dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], bkg_weight)
+                dense_weights[batch_index,y_index,x_index,plane_index] = weights
+
+        if weight_mode == 2:
+
+            bkg_weight = 1.7e-7
+            # Now we have the weight values, return it in the proper shape:
+            # Prepare output weights:
+            weights = numpy.full(values.shape, bkg_weight)
+            weights[values==2] = 0.0001
+            weights[values==1] = 0.001
+
+
+
+
+
+            if FLAGS.DATA_FORMAT == "channels_first":
+                dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight)
+                dense_weights[batch_index,plane_index,y_index,x_index] = weights
+            else:
+                dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], bkg_weight)
+                dense_weights[batch_index,y_index,x_index,plane_index] = weights
+
+            # Normalize:
+            total_weight = numpy.sum(dense_weights)
+
+            print("Total_weight: ", total_weight)
             dense_weights *= 1./total_weight
-        else:
-            dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], 1.7e-7)
-            dense_weights[batch_index,y_index,x_index,plane_index] = weights
-            dense_weights *= 1./total_weight
 
-        # print("dense_weights.shape: ", dense_weights.shape)
-        # print("numpy.unique(dense_weights): ", numpy.unique(dense_weights))
-        # print("numpy.sum(dense_weights): ", numpy.sum(dense_weights))
-
-        # i = 0
-        # for batch in labels:
-        #     # First, figure out what the labels are and how many of each:
-        #     values, counts = numpy.unique(batch, return_counts=True)
-
-        #     n_pixels = numpy.sum(counts)
-        #     for value, count in zip(values, counts):
-        #         weight = 1.0*(n_pixels - count) / n_pixels
-        #         mask = labels[i] == value
-        #         weights[i, mask] += weight
-        #     weights[i] *= 1. / numpy.sum(weights[i])
-        #     i += 1
 
 
 
@@ -819,7 +837,6 @@ class trainercore(object):
 
     def val_step(self, gs):
 
-        if gs == 0: return
 
         if self._val_writer is None:
             return
