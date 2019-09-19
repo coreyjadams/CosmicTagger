@@ -1040,7 +1040,7 @@ class trainercore(object):
         if FLAGS.AUX_FILE is not None:
 
  
-            for i, label in zip([0,1,2], ['bkg', 'cosmic', 'neutrino']):
+            for i, label in zip([0,1,2], ['bkg', 'neutrino', 'cosmic']):
                 softmax = []
                 for plane in [0,1,2]:
                     if FLAGS.DATA_FORMAT == "channels_first":
