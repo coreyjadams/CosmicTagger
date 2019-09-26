@@ -106,6 +106,8 @@ class trainercore(object):
 
         self._larcv_interface.prepare_manager('primary', io_config, FLAGS.MINIBATCH_SIZE, data_keys, color)
 
+        self._larcv_interface.prepare_next('primary')
+
         # All of the additional tools are in case there is a test set up:
         if FLAGS.AUX_FILE is not None:
 
@@ -137,6 +139,7 @@ class trainercore(object):
 
 
                 self._larcv_interface.prepare_manager('aux', io_config, FLAGS.AUX_MINIBATCH_SIZE, data_keys, color)
+                self._larcv_interface.prepare_next('aux')
 
             else:
                 config = io_templates.output_io(input_file=FLAGS.FILE)
