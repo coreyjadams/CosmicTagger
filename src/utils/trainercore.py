@@ -55,7 +55,7 @@ class trainercore(object):
                 os.unlink(f.name)
             except AttributeError:
                 pass
-            
+
     def _initialize_io(self, color=None):
 
         if FLAGS.SYNTHETIC:
@@ -70,15 +70,15 @@ class trainercore(object):
         # Use the templates to generate a configuration string, which we store into a temporary file
         if FLAGS.TRAINING:
             config = io_templates.train_io(
-                input_file=FLAGS.FILE, 
+                input_file=FLAGS.FILE,
                 data_producer= FLAGS.IMAGE_PRODUCER,
-                label_producer= FLAGS.LABEL_PRODUCER, 
+                label_producer= FLAGS.LABEL_PRODUCER,
                 max_voxels=max_voxels)
         else:
             config = io_templates.ana_io(
-                input_file=FLAGS.FILE, 
+                input_file=FLAGS.FILE,
                 data_producer= FLAGS.IMAGE_PRODUCER,
-                label_producer= FLAGS.LABEL_PRODUCER, 
+                label_producer= FLAGS.LABEL_PRODUCER,
                 max_voxels=max_voxels)
 
 
@@ -99,7 +99,7 @@ class trainercore(object):
 
         # By default, fetching data and label as the keywords from the file:
         data_keys = OrderedDict({
-            'image': 'data', 
+            'image': 'data',
             'label': 'label'
             })
 
@@ -111,7 +111,7 @@ class trainercore(object):
 
             if FLAGS.TRAINING:
                 config = io_templates.test_io(
-                    input_file=FLAGS.AUX_FILE, 
+                    input_file=FLAGS.AUX_FILE,
                     data_producer= FLAGS.IMAGE_PRODUCER,
                     label_producer= FLAGS.LABEL_PRODUCER,
                     max_voxels=max_voxels)
@@ -130,10 +130,10 @@ class trainercore(object):
                 }
 
                 data_keys = OrderedDict({
-                    'image': 'aux_data', 
+                    'image': 'aux_data',
                     'label': 'aux_label'
                     })
-               
+
 
 
                 self._larcv_interface.prepare_manager('aux', io_config, FLAGS.AUX_MINIBATCH_SIZE, data_keys, color)
@@ -176,7 +176,7 @@ class trainercore(object):
 
 
         if FLAGS.DATA_FORMAT == "channels_last":
-            self._channels_dim = -1 
+            self._channels_dim = -1
         else:
             self._channels_dim = 1
 
@@ -246,10 +246,10 @@ class trainercore(object):
             #     # Split the channel dims apart:
             #     for i, logit in enumerate(self._logits):
             #         n_splits = logit.get_shape().as_list()[1]
-                    
+
             #         # Split the tensor apart:
             #         split = [tf.squeeze(l, 1) for l in tf.split(logit, n_splits, 1)]
-                    
+
             #         # Stack them back together with the right shape:
             #         self._logits[i] = tf.stack(split, -1)
             #         print
@@ -267,12 +267,12 @@ class trainercore(object):
             # Create the loss function
             if FLAGS.BALANCE_LOSS:
                 self._loss = self._calculate_loss(
-                    labels = self._input['label'], 
-                    logits = self._logits, 
+                    labels = self._input['label'],
+                    logits = self._logits,
                     weight = self._input['weight'])
             else:
                 self._loss = self._calculate_loss(
-                        labels = self._input['label'], 
+                        labels = self._input['label'],
                         logits = self._logits)
 
         self._log_keys = ["cross_entropy/Total_Loss", "accuracy/All_Plane_Non_Background_Accuracy"]
@@ -398,7 +398,7 @@ class trainercore(object):
 
     def save_model(self, global_step):
         '''Save the model to file
-        
+
         '''
 
         # name, checkpoint_file_path = self.get_model_filepath(global_step)
@@ -418,7 +418,7 @@ class trainercore(object):
 
     def get_model_filepath(self, global_step):
         '''Helper function to build the filepath of a model for saving and restoring:
-        
+
         '''
 
         # Find the base path of the log directory
@@ -483,15 +483,15 @@ class trainercore(object):
         ''' Calculate the loss.
 
         returns a single scalar for the optimizer to use.
-        '''        
+        '''
 
         with tf.name_scope('cross_entropy'):
             # Calculate the loss, per plane, unreduced:
             split_labels = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(labels,len(logits) ,self._channels_dim)]
             if weight is not None:
                 split_weights = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(weight,len(logits) ,self._channels_dim)]
-            
-            
+
+
             # If the channels dim is not -1, we have to reshape the labels:
             if self._channels_dim != -1:
                 logits = [ tf.transpose(l, perm=[0,2,3,1]) for l in logits]
@@ -499,7 +499,7 @@ class trainercore(object):
             loss = [None]*len(logits)
             for p in range(len(logits)):
                 loss[p] = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels = split_labels[p], 
+                    labels = split_labels[p],
                     logits = logits[p]
                 )
                 # print("loss[p].shape: ", loss[p].shape)
@@ -513,16 +513,20 @@ class trainercore(object):
                     # Because we have a weighting function, this is a summed reduction:
                     loss[p] = tf.reduce_sum(loss[p])
                 else:
-                    loss[p] = tf.reduce_mean(loss[p])                
+                    loss[p] = tf.reduce_mean(loss[p])
 
                 self._metrics["cross_entropy/Loss_plane_{}".format(p)] = loss[p]
                 # tf.summary.scalar("Loss_plane_{}".format(p),loss[p])
 
             # We do use the *mean* across planes:
             total_loss = tf.reduce_mean(loss)
+            #
+            # if tf.is_nan(total_loss):
+            #     print("Loss is NaN, ending training early")
+            #     raise Exception("Loss is Nan, ending training early.  Occured on entry ", minibatch_data['entries'])
 
             # # If desired, add weight regularization loss:
-            # if FLAGS.REGULARIZE_WEIGHTS != 0.0: 
+            # if FLAGS.REGULARIZE_WEIGHTS != 0.0:
             #     reg_loss = tf.reduce_mean(tf.losses.get_regularization_losses())
             #     tf.summary.scalar("Regularization_loss",reg_loss)
             #     total_loss += reg_loss
@@ -552,7 +556,7 @@ class trainercore(object):
             non_bkg_accuracy = [None]*n_planes
             neut_iou         = [None]*n_planes
             cosmic_iou       = [None]*n_planes
-            
+
             split_labels = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(labels, n_planes, self._channels_dim)]
 
 
@@ -566,7 +570,7 @@ class trainercore(object):
 
                 # Find the neutrino indices:
                 # Sometimes, there are no neutrino indexes in the image.  This leads to a NaN
-                # in the calculation of the neutrino accuracy.  
+                # in the calculation of the neutrino accuracy.
                 # This is an open issue to resolve.
                 neutrino_indices = tf.equal(split_labels[p], tf.constant(1, split_labels[p].dtype))
 
@@ -579,9 +583,9 @@ class trainercore(object):
                 neutrino_logits = tf.boolean_mask(logits['prediction'][p], neutrino_indices)
                 neutrino_labels = tf.boolean_mask(split_labels[p], neutrino_indices)
 
-                predicted_neutrino_indices = tf.equal(logits['prediction'][p], 
+                predicted_neutrino_indices = tf.equal(logits['prediction'][p],
                     tf.constant(1, split_labels[p].dtype))
-                predicted_cosmic_indices = tf.equal(logits['prediction'][p], 
+                predicted_cosmic_indices = tf.equal(logits['prediction'][p],
                     tf.constant(2, split_labels[p].dtype))
 
 
@@ -597,7 +601,7 @@ class trainercore(object):
                 cosmic_iou[p] = tf.reduce_sum(tf.cast(cosmic_intersection, floating_point_format)) / \
                   tf.reduce_sum(tf.cast(cosmic_union, floating_point_format))
 
-                non_bkg_accuracy[p] = tf.reduce_mean(tf.cast(tf.equal(non_zero_logits, non_zero_labels), 
+                non_bkg_accuracy[p] = tf.reduce_mean(tf.cast(tf.equal(non_zero_logits, non_zero_labels),
                     floating_point_format))
 
                 # Add the accuracies to the summary:
@@ -657,14 +661,14 @@ class trainercore(object):
             # Labels is an unsplit tensor, prediction is a split tensor
             split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
             prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
-            
+
             if FLAGS.DATA_FORMAT == "channels_first":
                 split_labels = [ tf.transpose(l, [0, 2, 3, 1]) for l in split_labels]
                 prediction   = [ tf.transpose(p, [0, 2, 3, 1]) for p in prediction]
-                
+
 
             for p in range(len(split_labels)):
-                
+
                 images.append(
                     tf.summary.image('label_plane_{}'.format(p),
                                  split_labels[p],
@@ -727,7 +731,7 @@ class trainercore(object):
         # Take the labels, and compute the per-label weight
 
         # Compute weights works on the sparse images, not the dense images.
-        # The null-weight is computed on the image shape for dense networks, 
+        # The null-weight is computed on the image shape for dense networks,
         # or based on occupancy on the sparse network.
 
         # It's done per-batch rather than per image, so:
@@ -761,7 +765,7 @@ class trainercore(object):
         if len(counts) < 3:
             counts = numpy.insert(counts, 1, 0.1)
 
-        # This computes the *real* number 
+        # This computes the *real* number
         # Multiply by 3 planes:
         n_pixels = batch_size * 3* numpy.prod(FLAGS.SHAPE)
         # Correct the empty pixel values in the count:
@@ -776,7 +780,7 @@ class trainercore(object):
             bkg_weight = class_weights[0]
 
             weights = numpy.full(values.shape, bkg_weight)
-            weights[values==2] = class_weights[2] 
+            weights[values==2] = class_weights[2]
             weights[values==1] = class_weights[1]
 
             if FLAGS.DATA_FORMAT == "channels_first":
@@ -873,7 +877,7 @@ class trainercore(object):
             if verbose: print("Calculated metrics")
 
             # Report metrics on the terminal:
-            self.log(ops["metrics"], kind="Test", step=ops["global_step"]) 
+            self.log(ops["metrics"], kind="Test", step=ops["global_step"])
 
 
             if verbose: print("Completed Log")
@@ -919,14 +923,14 @@ class trainercore(object):
             ops['summary_images'] = self._summary_images
 
         # g = tf.get_default_graph()
-        # opts = tf.profiler.ProfileOptionBuilder.float_operation()    
+        # opts = tf.profiler.ProfileOptionBuilder.float_operation()
         # run_meta = tf.RunMetadata()
         # flop = tf.profiler.profile(g, run_meta=run_meta, cmd='op', options=opts)
 
         # print("FLOP is ", flop.total_float_ops)
 
 
-    
+
 
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 
@@ -952,7 +956,7 @@ class trainercore(object):
         if verbose: print("Calculated metrics")
 
         # Report metrics on the terminal:
-        self.log(ops["metrics"], kind="Train", step=ops["global_step"]) 
+        self.log(ops["metrics"], kind="Train", step=ops["global_step"])
 
 
         if verbose: print("Completed Log")
@@ -984,7 +988,7 @@ class trainercore(object):
 
 
 
- 
+
     def stop(self):
         # Mostly, this is just turning off the io:
         # self._larcv_interface.stop()
@@ -1032,14 +1036,14 @@ class trainercore(object):
         if verbose: print("Calculated metrics")
 
         # Report metrics on the terminal:
-        self.log(ops["metrics"], kind="Inference", step=ops["global_step"]) 
+        self.log(ops["metrics"], kind="Inference", step=ops["global_step"])
 
 
         # Here is the part where we have to add output:
 
         if FLAGS.AUX_FILE is not None:
 
- 
+
             for i, label in zip([0,1,2], ['bkg', 'neutrino', 'cosmic']):
                 softmax = []
                 for plane in [0,1,2]:
@@ -1048,10 +1052,10 @@ class trainercore(object):
                     else:
                         softmax.append(ops['softmax'][plane][0,:,:,i])
 
-                self._larcv_interface.write_output(data=softmax, 
-                    datatype='image2d', 
-                    producer="seg_{}".format(label), 
-                    entries=minibatch_data['entries'], 
+                self._larcv_interface.write_output(data=softmax,
+                    datatype='image2d',
+                    producer="seg_{}".format(label),
+                    entries=minibatch_data['entries'],
                     event_ids=minibatch_data['event_ids'])
 
 
@@ -1086,8 +1090,8 @@ class trainercore(object):
         fd = dict()
 
         for key in inputs:
-            if key == "entries" or key == "event_ids": continue 
-            
+            if key == "entries" or key == "event_ids": continue
+
             if inputs[key] is not None:
                 fd.update({self._input[key] : inputs[key]})
 
