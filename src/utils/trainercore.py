@@ -38,7 +38,11 @@ class trainercore(object):
     '''
     def __init__(self,):
         if not FLAGS.SYNTHETIC:
-            self._larcv_interface = queueloader.queue_interface()
+            if FLAGS.MODE == 'inference':
+                mode = 'serial_access'
+            else:
+                mode = 'random_blocks'
+            self._larcv_interface = queueloader.queue_interface(random_access_mode=mode)
         self._iteration       = 0
         self._global_step     = -1
         self._val_writer      = None
@@ -51,7 +55,7 @@ class trainercore(object):
                 os.unlink(f.name)
             except AttributeError:
                 pass
-            
+
     def _initialize_io(self, color=None):
 
         if FLAGS.SYNTHETIC:
@@ -66,15 +70,15 @@ class trainercore(object):
         # Use the templates to generate a configuration string, which we store into a temporary file
         if FLAGS.TRAINING:
             config = io_templates.train_io(
-                input_file=FLAGS.FILE, 
+                input_file=FLAGS.FILE,
                 data_producer= FLAGS.IMAGE_PRODUCER,
-                label_producer= FLAGS.LABEL_PRODUCER, 
+                label_producer= FLAGS.LABEL_PRODUCER,
                 max_voxels=max_voxels)
         else:
             config = io_templates.ana_io(
-                input_file=FLAGS.FILE, 
+                input_file=FLAGS.FILE,
                 data_producer= FLAGS.IMAGE_PRODUCER,
-                label_producer= FLAGS.LABEL_PRODUCER, 
+                label_producer= FLAGS.LABEL_PRODUCER,
                 max_voxels=max_voxels)
 
 
@@ -95,19 +99,21 @@ class trainercore(object):
 
         # By default, fetching data and label as the keywords from the file:
         data_keys = OrderedDict({
-            'image': 'data', 
+            'image': 'data',
             'label': 'label'
             })
 
 
         self._larcv_interface.prepare_manager('primary', io_config, FLAGS.MINIBATCH_SIZE, data_keys, color)
 
+        self._larcv_interface.prepare_next('primary')
+
         # All of the additional tools are in case there is a test set up:
         if FLAGS.AUX_FILE is not None:
 
             if FLAGS.TRAINING:
                 config = io_templates.test_io(
-                    input_file=FLAGS.AUX_FILE, 
+                    input_file=FLAGS.AUX_FILE,
                     data_producer= FLAGS.IMAGE_PRODUCER,
                     label_producer= FLAGS.LABEL_PRODUCER,
                     max_voxels=max_voxels)
@@ -126,17 +132,25 @@ class trainercore(object):
                 }
 
                 data_keys = OrderedDict({
-                    'image': 'aux_data', 
+                    'image': 'aux_data',
                     'label': 'aux_label'
                     })
-               
+
 
 
                 self._larcv_interface.prepare_manager('aux', io_config, FLAGS.AUX_MINIBATCH_SIZE, data_keys, color)
+                self._larcv_interface.prepare_next('aux')
 
             else:
-                config = io_templates.ana_io(input_file=FLAGS.FILE, max_voxels=max_voxels)
-                self._larcv_interface.prepare_writer(FLAGS.AUX_FILE)
+                config = io_templates.output_io(input_file=FLAGS.FILE)
+                print(config.generate_config_str())
+                # Generate a named temp file:
+                out_file_config = tempfile.NamedTemporaryFile(mode='w', delete=False)
+                out_file_config.write(config.generate_config_str())
+
+                out_file_config.close()
+                self._cleanup.append(out_file_config)
+                self._larcv_interface.prepare_writer(out_file_config.name, FLAGS.AUX_FILE)
 
     def init_network(self):
 
@@ -165,7 +179,7 @@ class trainercore(object):
 
 
         if FLAGS.DATA_FORMAT == "channels_last":
-            self._channels_dim = -1 
+            self._channels_dim = -1
         else:
             self._channels_dim = 1
 
@@ -225,7 +239,7 @@ class trainercore(object):
         # self._logits = self._net._build_network(self._input)
 
 
-        if FLAGS.MODE == "train":
+        if FLAGS.MODE == "train" or FLAGS.MODE == "inference":
 
 
             # Here, if the data format is channels_first, we have to reorder the logits tensors
@@ -235,10 +249,10 @@ class trainercore(object):
             #     # Split the channel dims apart:
             #     for i, logit in enumerate(self._logits):
             #         n_splits = logit.get_shape().as_list()[1]
-                    
+
             #         # Split the tensor apart:
             #         split = [tf.squeeze(l, 1) for l in tf.split(logit, n_splits, 1)]
-                    
+
             #         # Stack them back together with the right shape:
             #         self._logits[i] = tf.stack(split, -1)
             #         print
@@ -256,12 +270,12 @@ class trainercore(object):
             # Create the loss function
             if FLAGS.BALANCE_LOSS:
                 self._loss = self._calculate_loss(
-                    labels = self._input['label'], 
-                    logits = self._logits, 
+                    labels = self._input['label'],
+                    logits = self._logits,
                     weight = self._input['weight'])
             else:
                 self._loss = self._calculate_loss(
-                        labels = self._input['label'], 
+                        labels = self._input['label'],
                         logits = self._logits)
 
         self._log_keys = ["cross_entropy/Total_Loss", "accuracy/All_Plane_Non_Background_Accuracy"]
@@ -310,8 +324,8 @@ class trainercore(object):
 
         self.print_network_info()
 
-
-        self.init_optimizer()
+        if FLAGS.MODE != "inference":
+            self.init_optimizer()
 
         self.init_saver()
 
@@ -319,8 +333,10 @@ class trainercore(object):
         for key in self._metrics:
             tf.summary.scalar(key, self._metrics[key])
 
-        self._summary_basic = tf.summary.merge_all()
-        self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
+        if FLAGS.MODE != "inference":
+
+            self._summary_basic = tf.summary.merge_all()
+            self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
 
 
         self.set_compute_parameters()
@@ -385,7 +401,7 @@ class trainercore(object):
 
     def save_model(self, global_step):
         '''Save the model to file
-        
+
         '''
 
         # name, checkpoint_file_path = self.get_model_filepath(global_step)
@@ -405,7 +421,7 @@ class trainercore(object):
 
     def get_model_filepath(self, global_step):
         '''Helper function to build the filepath of a model for saving and restoring:
-        
+
         '''
 
         # Find the base path of the log directory
@@ -470,15 +486,15 @@ class trainercore(object):
         ''' Calculate the loss.
 
         returns a single scalar for the optimizer to use.
-        '''        
+        '''
 
         with tf.name_scope('cross_entropy'):
             # Calculate the loss, per plane, unreduced:
             split_labels = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(labels,len(logits) ,self._channels_dim)]
             if weight is not None:
                 split_weights = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(weight,len(logits) ,self._channels_dim)]
-            
-            
+
+
             # If the channels dim is not -1, we have to reshape the labels:
             if self._channels_dim != -1:
                 logits = [ tf.transpose(l, perm=[0,2,3,1]) for l in logits]
@@ -486,7 +502,7 @@ class trainercore(object):
             loss = [None]*len(logits)
             for p in range(len(logits)):
                 loss[p] = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels = split_labels[p], 
+                    labels = split_labels[p],
                     logits = logits[p]
                 )
                 # print("loss[p].shape: ", loss[p].shape)
@@ -500,16 +516,20 @@ class trainercore(object):
                     # Because we have a weighting function, this is a summed reduction:
                     loss[p] = tf.reduce_sum(loss[p])
                 else:
-                    loss[p] = tf.reduce_mean(loss[p])                
+                    loss[p] = tf.reduce_mean(loss[p])
 
                 self._metrics["cross_entropy/Loss_plane_{}".format(p)] = loss[p]
                 # tf.summary.scalar("Loss_plane_{}".format(p),loss[p])
 
             # We do use the *mean* across planes:
             total_loss = tf.reduce_mean(loss)
+            #
+            # if tf.is_nan(total_loss):
+            #     print("Loss is NaN, ending training early")
+            #     raise Exception("Loss is Nan, ending training early.  Occured on entry ", minibatch_data['entries'])
 
             # # If desired, add weight regularization loss:
-            # if FLAGS.REGULARIZE_WEIGHTS != 0.0: 
+            # if FLAGS.REGULARIZE_WEIGHTS != 0.0:
             #     reg_loss = tf.reduce_mean(tf.losses.get_regularization_losses())
             #     tf.summary.scalar("Regularization_loss",reg_loss)
             #     total_loss += reg_loss
@@ -539,7 +559,7 @@ class trainercore(object):
             non_bkg_accuracy = [None]*n_planes
             neut_iou         = [None]*n_planes
             cosmic_iou       = [None]*n_planes
-            
+
             split_labels = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(labels, n_planes, self._channels_dim)]
 
 
@@ -553,7 +573,7 @@ class trainercore(object):
 
                 # Find the neutrino indices:
                 # Sometimes, there are no neutrino indexes in the image.  This leads to a NaN
-                # in the calculation of the neutrino accuracy.  
+                # in the calculation of the neutrino accuracy.
                 # This is an open issue to resolve.
                 neutrino_indices = tf.equal(split_labels[p], tf.constant(1, split_labels[p].dtype))
 
@@ -566,9 +586,9 @@ class trainercore(object):
                 neutrino_logits = tf.boolean_mask(logits['prediction'][p], neutrino_indices)
                 neutrino_labels = tf.boolean_mask(split_labels[p], neutrino_indices)
 
-                predicted_neutrino_indices = tf.equal(logits['prediction'][p], 
+                predicted_neutrino_indices = tf.equal(logits['prediction'][p],
                     tf.constant(1, split_labels[p].dtype))
-                predicted_cosmic_indices = tf.equal(logits['prediction'][p], 
+                predicted_cosmic_indices = tf.equal(logits['prediction'][p],
                     tf.constant(2, split_labels[p].dtype))
 
 
@@ -584,7 +604,7 @@ class trainercore(object):
                 cosmic_iou[p] = tf.reduce_sum(tf.cast(cosmic_intersection, floating_point_format)) / \
                   tf.reduce_sum(tf.cast(cosmic_union, floating_point_format))
 
-                non_bkg_accuracy[p] = tf.reduce_mean(tf.cast(tf.equal(non_zero_logits, non_zero_labels), 
+                non_bkg_accuracy[p] = tf.reduce_mean(tf.cast(tf.equal(non_zero_logits, non_zero_labels),
                     floating_point_format))
 
                 # Add the accuracies to the summary:
@@ -644,14 +664,14 @@ class trainercore(object):
             # Labels is an unsplit tensor, prediction is a split tensor
             split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
             prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
-            
+
             if FLAGS.DATA_FORMAT == "channels_first":
                 split_labels = [ tf.transpose(l, [0, 2, 3, 1]) for l in split_labels]
                 prediction   = [ tf.transpose(p, [0, 2, 3, 1]) for p in prediction]
-                
+
 
             for p in range(len(split_labels)):
-                
+
                 images.append(
                     tf.summary.image('label_plane_{}'.format(p),
                                  split_labels[p],
@@ -669,10 +689,14 @@ class trainercore(object):
 
         if not FLAGS.SYNTHETIC:
             metadata=True
-            self._larcv_interface.prepare_next(mode)
+
+
+            pop = True
+            if self._iteration == 0:
+                pop = False
 
             # This brings up the current data
-            minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=True,fetch_meta_data=metadata)
+            minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=pop,fetch_meta_data=metadata)
             minibatch_dims = self._larcv_interface.fetch_minibatch_dims(mode)
 
 
@@ -688,6 +712,7 @@ class trainercore(object):
             minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
             minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
             # This preparse the next batch of data:
+            self._larcv_interface.prepare_next(mode)
 
         else:
             minibatch_data = {}
@@ -700,7 +725,7 @@ class trainercore(object):
         return minibatch_data
 
 
-    def compute_weights(self, labels, boost_labels = None):
+    def compute_weights(self, labels, boost_labels = None, weight_mode = 1):
         '''
         This is NOT a tensorflow implementation, but a numpy implementation.
         Running on CPUs this might not make a difference.  Running on GPUs
@@ -709,10 +734,17 @@ class trainercore(object):
         # Take the labels, and compute the per-label weight
 
         # Compute weights works on the sparse images, not the dense images.
-        # The null-weight is computed on the image shape for dense networks, 
+        # The null-weight is computed on the image shape for dense networks,
         # or based on occupancy on the sparse network.
 
         # It's done per-batch rather than per image, so:
+
+
+        # weight modes:
+        # 1 - No loss balancing, just run normally
+        # 2 - Constant loss balancing: each class is given a weight, but the whole event is normalized
+        # 3 - Dynamic loss balancing:  each class is weighted such that it contributes 1/3 of the total weight.
+        # 4 - THere is no 4
 
         x_coords = labels[:,:,:,1]
         y_coords = labels[:,:,:,0]
@@ -726,57 +758,67 @@ class trainercore(object):
         x_index = numpy.int32(x_coords[batch_index, plane_index, voxel_index])
         y_index = numpy.int32(y_coords[batch_index, plane_index, voxel_index])
 
+        # Count the types of each label:
         label_values, counts = numpy.unique(values, return_counts=True)
 
-        # print("label_values: ", label_values)
-        # print("counts: ", counts)
+        # Batch size
+        batch_size = labels.shape[0]
 
+        # Make sure that if the number of counts is 0 for neutrinos, we fix that
         if len(counts) < 3:
             counts = numpy.insert(counts, 1, 0.1)
 
-        batch_size = labels.shape[0]
-
-
-
+        # This computes the *real* number
         # Multiply by 3 planes:
         n_pixels = batch_size * 3* numpy.prod(FLAGS.SHAPE)
         # Correct the empty pixel values in the count:
         counts[0] = n_pixels - counts[1] - counts[2]
 
+        if weight_mode == 1:
 
-        # Now we have the weight values, return it in the proper shape:
-        # Prepare output weights:
-        weights = numpy.full(values.shape, 1.7e-7)
-        weights[values==2] = 0.0001
-        weights[values==1] = 0.001
+            # Now we have the weight values, return it in the proper shape:
+            # Prepare output weights:
+            class_weights = 0.3333/(counts + 1)
 
-        total_weight = 1.7e-7 * counts[0] + 0.0001*counts[1] + 0.001*counts[2]
+            bkg_weight = class_weights[0]
 
-        if FLAGS.DATA_FORMAT == "channels_first":
-            dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], 1.7e-7)
-            dense_weights[batch_index,plane_index,y_index,x_index] = weights
+            weights = numpy.full(values.shape, bkg_weight)
+            weights[values==2] = class_weights[2]
+            weights[values==1] = class_weights[1]
+
+            if FLAGS.DATA_FORMAT == "channels_first":
+                dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight)
+                dense_weights[batch_index,plane_index,y_index,x_index] = weights
+            else:
+                dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], bkg_weight)
+                dense_weights[batch_index,y_index,x_index,plane_index] = weights
+
+        if weight_mode == 2:
+
+            bkg_weight = 1.7e-7
+            # Now we have the weight values, return it in the proper shape:
+            # Prepare output weights:
+            weights = numpy.full(values.shape, bkg_weight)
+            weights[values==2] = 0.0001
+            weights[values==1] = 0.001
+
+
+
+
+
+            if FLAGS.DATA_FORMAT == "channels_first":
+                dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight)
+                dense_weights[batch_index,plane_index,y_index,x_index] = weights
+            else:
+                dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], bkg_weight)
+                dense_weights[batch_index,y_index,x_index,plane_index] = weights
+
+            # Normalize:
+            total_weight = numpy.sum(dense_weights)
+
+            print("Total_weight: ", total_weight)
             dense_weights *= 1./total_weight
-        else:
-            dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], 1.7e-7)
-            dense_weights[batch_index,y_index,x_index,plane_index] = weights
-            dense_weights *= 1./total_weight
 
-        # print("dense_weights.shape: ", dense_weights.shape)
-        # print("numpy.unique(dense_weights): ", numpy.unique(dense_weights))
-        # print("numpy.sum(dense_weights): ", numpy.sum(dense_weights))
-
-        # i = 0
-        # for batch in labels:
-        #     # First, figure out what the labels are and how many of each:
-        #     values, counts = numpy.unique(batch, return_counts=True)
-
-        #     n_pixels = numpy.sum(counts)
-        #     for value, count in zip(values, counts):
-        #         weight = 1.0*(n_pixels - count) / n_pixels
-        #         mask = labels[i] == value
-        #         weights[i, mask] += weight
-        #     weights[i] *= 1. / numpy.sum(weights[i])
-        #     i += 1
 
 
 
@@ -802,7 +844,6 @@ class trainercore(object):
 
     def val_step(self, gs):
 
-        if gs == 0: return
 
         if self._val_writer is None:
             return
@@ -839,7 +880,7 @@ class trainercore(object):
             if verbose: print("Calculated metrics")
 
             # Report metrics on the terminal:
-            self.log(ops["metrics"], kind="Test", step=ops["global_step"]) 
+            self.log(ops["metrics"], kind="Test", step=ops["global_step"])
 
 
             if verbose: print("Completed Log")
@@ -885,14 +926,14 @@ class trainercore(object):
             ops['summary_images'] = self._summary_images
 
         # g = tf.get_default_graph()
-        # opts = tf.profiler.ProfileOptionBuilder.float_operation()    
+        # opts = tf.profiler.ProfileOptionBuilder.float_operation()
         # run_meta = tf.RunMetadata()
         # flop = tf.profiler.profile(g, run_meta=run_meta, cmd='op', options=opts)
 
         # print("FLOP is ", flop.total_float_ops)
 
 
-    
+
 
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 
@@ -918,7 +959,7 @@ class trainercore(object):
         if verbose: print("Calculated metrics")
 
         # Report metrics on the terminal:
-        self.log(ops["metrics"], kind="Train", step=ops["global_step"]) 
+        self.log(ops["metrics"], kind="Train", step=ops["global_step"])
 
 
         if verbose: print("Completed Log")
@@ -950,7 +991,7 @@ class trainercore(object):
 
 
 
- 
+
     def stop(self):
         # Mostly, this is just turning off the io:
         # self._larcv_interface.stop()
@@ -958,6 +999,79 @@ class trainercore(object):
 
 
     def ana_step(self):
+
+
+        global_start_time = datetime.datetime.now()
+
+        # Fetch the next batch of data with larcv
+        io_start_time = datetime.datetime.now()
+        minibatch_data = self.fetch_next_batch(metadata=True)
+        io_end_time = datetime.datetime.now()
+
+        # For tensorflow, we have to build up an ops list to submit to the
+        # session to run.
+
+        # These are ops that always run:
+        ops = {}
+        ops['logits']  = self._logits
+        ops['softmax'] = self._output['softmax']
+        ops['metrics'] = self._metrics
+        ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
+        ops['global_step'] = self._global_step
+
+        metrics = self.metrics(ops["metrics"])
+
+
+        verbose = False
+
+        # Add the global step / second to the tensorboard log:
+        try:
+            metrics['global_step_per_sec'] = 1./self._seconds_per_global_step
+            metrics['images_per_second'] = FLAGS.MINIBATCH_SIZE / self._seconds_per_global_step
+        except AttributeError:
+            metrics['global_step_per_sec'] = 0.0
+            metrics['images_per_second'] = 0.0
+
+
+
+        metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
+
+        if verbose: print("Calculated metrics")
+
+        # Report metrics on the terminal:
+        self.log(ops["metrics"], kind="Inference", step=ops["global_step"])
+
+
+        # Here is the part where we have to add output:
+
+        if FLAGS.AUX_FILE is not None:
+
+
+            for i, label in zip([0,1,2], ['bkg', 'neutrino', 'cosmic']):
+                softmax = []
+                for plane in [0,1,2]:
+                    if FLAGS.DATA_FORMAT == "channels_first":
+                        softmax.append(ops['softmax'][plane][0,i,:,:])
+                    else:
+                        softmax.append(ops['softmax'][plane][0,:,:,i])
+
+                self._larcv_interface.write_output(data=softmax,
+                    datatype='image2d',
+                    producer="seg_{}".format(label),
+                    entries=minibatch_data['entries'],
+                    event_ids=minibatch_data['event_ids'])
+
+
+        if verbose: print("Completed Log")
+
+        global_end_time = datetime.datetime.now()
+
+        # Compute global step per second:
+        self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
+        self._global_step += 1
+
+        return ops["global_step"]
+
 
         raise NotImplementedError("You must implement this function")
 
@@ -979,8 +1093,8 @@ class trainercore(object):
         fd = dict()
 
         for key in inputs:
-            if key == "entries" or key == "event_ids": continue 
-            
+            if key == "entries" or key == "event_ids": continue
+
             if inputs[key] is not None:
                 fd.update({self._input[key] : inputs[key]})
 
@@ -995,6 +1109,14 @@ class trainercore(object):
                 print('Finished training (iteration %d)' % self._iteration)
                 break
 
-            gs = self.train_step()
-            self.val_step(gs)
-            self.checkpoint(gs)
+            if FLAGS.MODE == 'train':
+                gs = self.train_step()
+                self.val_step(gs)
+                self.checkpoint(gs)
+            elif FLAGS.MODE == 'inference':
+                self.ana_step()
+            else:
+                raise Exception("Don't know what to do with mode ", FLAGS.MODE)
+
+        if FLAGS.MODE == 'inference':
+            self._larcv_interface._writer.finalize()
