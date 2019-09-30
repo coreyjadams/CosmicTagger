@@ -21,16 +21,16 @@ It then performs an upsampling step, and returns the upsampled tensor.
 
 class Block(nn.Module):
 
-    def __init__(self, *, inplanes, outplanes, params):
+    def __init__(self, *, inplanes, outplanes, kernel = [3,3], padding=[1,1], params):
         nn.Module.__init__(self)
 
 
         self.conv = nn.Conv2d(
             in_channels  = inplanes,
             out_channels = outplanes,
-            kernel_size  = [3, 3],
+            kernel_size  = kernel,
             stride       = [1, 1],
-            padding      = [1, 1],
+            padding      = padding,
             bias         = params.use_bias)
 
         self.do_batch_norm = params.batch_norm
@@ -232,20 +232,27 @@ class SumConnection(nn.Module):
 
 class ConcatConnection(nn.Module):
 
-    def __init__(self, inplanes):
+    def __init__(self, *, inplanes, params):
         nn.Module.__init__(self)
 
-        self.bottleneck = nn.Conv2d(
-            in_channels   = 2*inplanes,
-            out_channels  = inplanes,
-            kernel_size   = 1,
-            stride        = 1,
-            padding       = 0,
-            bias          = use_bias)
+        self.bottleneck = Block(
+            inplanes    = 2*inplanes,
+            outplanes   = inplanes,
+            kernel      = [1,1],
+            padding     = [0,0],
+            params      = params)
+        # self.bottleneck = nn.Conv2d(
+        #     in_channels   = 2*inplanes,
+        #     out_channels  = inplanes,
+        #     kernel_size   = 1,
+        #     stride        = 1,
+        #     padding       = 0,
+        #     bias          = params.use_bias)
 
     def forward(self, x, residual):
         x = torch.cat([x, residual], dim=1)
-        return self.bottleneck(x)
+        x = self.bottleneck(x)
+        return x
 
 
 class UNetCore(nn.Module):
@@ -298,7 +305,7 @@ class UNetCore(nn.Module):
             if params.connections == "sum":
                 self.connection = SumConnection()
             elif params.connections == "concat":
-                self.connection = ConcatConnection(inplanes)
+                self.connection = ConcatConnection(inplanes=inplanes, params=params)
             else:
                 self.connection = NoConnection()
 

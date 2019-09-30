@@ -328,7 +328,8 @@ class ConcatConnection(tf.keras.models.Model):
 
     def call(self, x, residual, training):
         x = tf.concat([x, residual] , axis=self.channels_axis)
-        return self.bottleneck(x, training)
+        x = self.bottleneck(x, training)
+        return x
 
 
 class MaxPooling(tf.keras.models.Model):
@@ -445,7 +446,6 @@ class UNetCore(tf.keras.models.Model):
                 use_bias    = use_bias,
                 regularize  = regularize)
 
-
             # Down sampling operation
             # This does change the number of filters from above down-pass blocks
             if downsampling == "convolutional":
@@ -486,6 +486,7 @@ class UNetCore(tf.keras.models.Model):
 
             # Upsampling operation:
             # Upsampling will decrease the number of fitlers:
+            
             if upsampling == "convolutional":
                 self.upsample = convolutional_upsample(
                     n_filters   = in_filters,
@@ -568,7 +569,6 @@ class UNetCore(tf.keras.models.Model):
             x = [ self.upsample(_x, training) for _x in x ]
             # print("depth ", self._depth_of_network, ", x[0] after upsample shape ", x[0].shape)
 
-
             x = [self.connection(residual[i], x[i], training) for i in range(len(x)) ]
             # print("depth ", self._depth_of_network, ", x[0] after connection shape ", x[0].shape)
 
@@ -625,7 +625,7 @@ class UResNet(tf.keras.models.Model):
             depth                    = depth,
             nlayers                  = blocks_per_layer,
             in_filters               = n_initial_filters,
-            out_filters              = n_initial_filters,
+            out_filters              = 2*n_initial_filters,
             residual                 = residual,
             data_format              = data_format,
             batch_norm               = batch_norm,

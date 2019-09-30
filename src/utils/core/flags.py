@@ -333,10 +333,7 @@ class uresnet(FLAGS):
         self.BLOCKS_FINAL                = 2
         self.NETWORK_DEPTH               = 5
         self.CONNECTIONS                 = 'sum'
-        self.CONNECT_PRE_BLOCKS_DOWN     = True
-        self.CONNECT_PRE_BLOCKS_UP       = True
         self.VERBOSITY                   = 0
-        self.BOTTLENECK_SIZE             = -1
         self.NPLANES                     = 3
 
         self.RESIDUAL                    = True
@@ -405,18 +402,8 @@ class uresnet(FLAGS):
         parser.add_argument('--connections', type=str, choices=['sum', 'concat', 'none'], default=self.CONNECTIONS,
             help="Connect shortcuts with sums, concat+bottleneck, or no connections [default: {}]".format(self.CONNECTIONS))
 
-        parser.add_argument('--connect-pre-res-blocks-down', type=str2bool, default=self.CONNECT_PRE_BLOCKS_DOWN,
-            help="Short cut connections branch just after downsampling (True) or just before (False) [default: {}]".format(self.CONNECT_PRE_BLOCKS_DOWN))
-
-        parser.add_argument('--connect-pre-res-blocks-up', type=str2bool, default=self.CONNECT_PRE_BLOCKS_UP,
-            help="Short cut connections merge just after upsampling (True) or just before (False) [default: {}]".format(self.CONNECT_PRE_BLOCKS_UP))
-
         parser.add_argument('--nplanes', type=int, default=self.NPLANES,
             help="Number of planes to split the initial image into [default: {}]".format(self.NPLANES))
-
-        parser.add_argument('--bottleneck-size', type=int, default=self.BOTTLENECK_SIZE,
-            help="Number of bottleneck filters to use to decrease larger kernel computation requirements [default: {}]".format(self.BOTTLENECK_SIZE))
-
 
         parser.add_argument('-bl','--balance-loss', type=str2bool, default=self.BALANCE_LOSS,
             help="Turn on or off weight balancing across classes [default: {}]".format(self.BALANCE_LOSS))
