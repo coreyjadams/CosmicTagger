@@ -84,14 +84,14 @@ With the default parameters and 12 initial filters, the model has approximately 
 
 Distributed training is enabled with the `-d` flag and works on Theta, Cooley, and DGX@JLSE.
 
-On Cooley, conda and singularity have indistinguishable performance for both single node and distributed learning.  Benchmarks for performance were performed up to 14nodes, or 28 GPUs, with a throughput ratio 
+On Cooley, conda and singularity have indistinguishable performance for both single node and distributed learning.  Benchmarks for performance were performed up to 14nodes, or 28 GPUs, with a throughput ratio
 
 On Theta, single node performance was checked with both the datascience and conda installations.  For the same model as on Cooley, total image throughput (img/s) with batch_size of 1 is:
  - 0.046 Img/s (datascience tensorflow)
  - 0.086 Img/s (conda tensorflow)
 
 For distributed training, the image throughput is:
- - 
+ -
  - 0.59 Img/s (conda tensorflow, 85% scaling efficiency from single node)
 
 On Cooley, using 1 image per GPU, 2 GPUs per node, throughput scales as follows:
@@ -104,10 +104,10 @@ On Cooley, using 1 image per GPU, 2 GPUs per node, throughput scales as follows:
 
 It should be noted that higher total throughput is likely possible on Theta using more images per node (currently 1).  Other parameters are set as "default" for performance:
 ```
-export KMP_AFFINITY=granularity=fine,verbose,compact 
+export KMP_AFFINITY=granularity=fine,verbose,compact
 export OMP_NUM_THREADS=64
 export KMP_BLOCKTIME=0
-export MKLDNN_VERBOSE=0 
+export MKLDNN_VERBOSE=0
 export MPICH_MAX_THREAD_SAFETY=multiple
 
 aprun -n ${N_NODES} -N 1 \
@@ -145,7 +145,6 @@ In all cases, there is a general python executable in `bin/exec.py`.  This takes
 `python bin/exec.py mode [-d] [--sparse] --file /path/to/file.h5 -i 100 -mb 8 `
 
 mode is either `train` or `iotest` (or inference, but untested in this repo).  `-d` toggles distributed training, which will work even on one node and if python is executed by mpirun or aprun, will work.  `-i` is the number of iterations, and `-mb` is the minibatch size.  All other arguments can be seen in by calling `python bin/exec.py --help`
-<<<<<<< HEAD
 
 # Analysis Metrics
 
@@ -155,5 +154,3 @@ There are several analysis metrics that are used to judge the quality of the tra
  3) Neutrino Accuracy: of all pixels with label == neutrino, what is the accuracy?  This should acheive > 90%, though is an ill-posed question for some interactions where the neutrino did not deposit energy.
  4) Cosmic IoU: what is the IoU of all pixels predicted cosmic and all pixels labeled cosmic?  This should acheive > 70%
  5) Neutrino IoU: Same definition as 4 but for neutrinos.  This should acheive > 70%.
-=======
->>>>>>> torch
