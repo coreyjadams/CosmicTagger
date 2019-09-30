@@ -388,13 +388,10 @@ class UResNet(torch.nn.Module):
             })
 
 
-        self.initial_convolution = nn.Conv2d(
-            in_channels  = 1,
-            out_channels = n_initial_filters,
-            kernel_size  = [3, 3],
-            stride       = [1, 1],
-            padding      = [1, 1],
-            bias         = params.use_bias)
+        self.initial_convolution = Block(
+            inplanes  = 1,
+            outplanes = n_initial_filters,
+            params    = params)
 
         n_filters = n_initial_filters
         # Next, build out the convolution steps:
@@ -410,6 +407,7 @@ class UResNet(torch.nn.Module):
             inplanes = n_initial_filters,
             n_blocks = blocks_final,
             params   = params )
+
 
         self.bottleneck = nn.Conv2d(
             in_channels  = n_initial_filters,

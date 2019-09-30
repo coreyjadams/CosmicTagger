@@ -652,7 +652,7 @@ class UResNet(tf.keras.models.Model):
 
         self.bottleneck = convolutional_block(
             n_filters    = 3,
-            kernel       = [3,3],
+            kernel       = [1,1],
             strides      = [1,1],
             data_format  = data_format,
             batch_norm   = False,
@@ -687,7 +687,7 @@ class UResNet(tf.keras.models.Model):
         if self.final_blocks:
             x = [ self.final_layer(_x, training) for _x in x ]
 
-        x = [ tf.concat([x[i], split_input[i]], axis=self.channels_axis) for i in range(3)]
+        # x = [ tf.concat([x[i], split_input[i]], axis=self.channels_axis) for i in range(3)]
         x = [ self.bottleneck(_x, training) for _x in x ]
 
 

@@ -110,8 +110,9 @@ class torch_trainer(trainercore):
         self.init_network()
 
         n_trainable_parameters = 0
-        for var in self._net.parameters():
+        for name, var in self._net.named_parameters():
             n_trainable_parameters += numpy.prod(var.shape)
+            print(name, var.shape)
         print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
 
         self.init_optimizer()
