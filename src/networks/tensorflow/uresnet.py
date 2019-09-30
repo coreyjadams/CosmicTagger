@@ -1,11 +1,16 @@
 import tensorflow as tf
 
-class convolutional_block(tf.keras.models.Model):
+class objectview(object):
+    def __init__(self, d):
+        self.__dict__ = d
+
+
+class Block(tf.keras.models.Model):
 
     def __init__(self, *,
                  n_filters,
-                 kernel,
-                 strides,
+                 kernel=[3,3],
+                 strides=[1,1],
                  batch_norm,
                  data_format,
                  use_bias,
@@ -51,7 +56,7 @@ class convolutional_block(tf.keras.models.Model):
         return  x
 
 
-class convolutional_upsample(tf.keras.models.Model):
+class ConvolutionUpsample(tf.keras.models.Model):
 
     def __init__(self, *,
         n_filters,
@@ -140,7 +145,7 @@ class residual_block(tf.keras.models.Model):
         if bottleneck != -1:
             print("Doing bottleneck")
             self.do_bottleneck = True
-            self.bottleneck = convolutional_block(
+            self.bottleneck = Block(
                 n_filters   = bottleneck,
                 batch_norm  = batch_norm,
                 data_format = data_format,
@@ -152,7 +157,7 @@ class residual_block(tf.keras.models.Model):
 
             n_filters = bottleneck
 
-        self.convolution_1 = convolutional_block(
+        self.convolution_1 = Block(
             n_filters   = n_filters,
             batch_norm  = batch_norm,
             data_format = data_format,
@@ -162,7 +167,7 @@ class residual_block(tf.keras.models.Model):
             activation  = tf.nn.relu,
             regularize  = regularize)
 
-        self.convolution_2 = convolutional_block(
+        self.convolution_2 = Block(
             n_filters   = n_filters_in,
             batch_norm  = batch_norm,
             data_format = data_format,
@@ -207,7 +212,7 @@ class BlockSeries(tf.keras.models.Model):
         if not residual:
             for i in range(n_blocks):
                 self.blocks.append(
-                    convolutional_block(
+                    Block(
                         n_filters   = out_filters,
                         data_format = data_format,
                         use_bias    = use_bias,
@@ -316,7 +321,7 @@ class ConcatConnection(tf.keras.models.Model):
         else:
             self.channels_axis = -1
 
-        self.bottleneck = convolutional_block(
+        self.bottleneck = Block(
             n_filters = in_filters,
             kernel = (1, 1),
             strides = (1,1),
@@ -346,7 +351,7 @@ class MaxPooling(tf.keras.models.Model):
 
         self.pool = tf.keras.layers.MaxPooling2D(pool_size=2, data_format=data_format)
 
-        self.bottleneck = convolutional_block(
+        self.bottleneck = Block(
             n_filters   = n_filters,
             kernel      = (1,1),
             strides     = (1,1),
@@ -376,7 +381,7 @@ class InterpolationUpsample(tf.keras.models.Model):
                     data_format=data_format,
                     interpolation="bilinear")
 
-        self.bottleneck = convolutional_block(
+        self.bottleneck = Block(
             n_filters   = n_filters,
             data_format = data_format,
             batch_norm  = batch_norm,
@@ -449,7 +454,7 @@ class UNetCore(tf.keras.models.Model):
             # Down sampling operation
             # This does change the number of filters from above down-pass blocks
             if downsampling == "convolutional":
-                self.downsample = convolutional_block(
+                self.downsample = Block(
                     n_filters   = out_filters,
                     data_format = data_format,
                     batch_norm  = batch_norm,
@@ -488,7 +493,7 @@ class UNetCore(tf.keras.models.Model):
             # Upsampling will decrease the number of fitlers:
             
             if upsampling == "convolutional":
-                self.upsample = convolutional_upsample(
+                self.upsample = ConvolutionUpsample(
                     n_filters   = in_filters,
                     data_format = data_format,
                     batch_norm  = batch_norm,
@@ -602,12 +607,27 @@ class UResNet(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
+        params = objectview({
+            'n_initial_filters'     : n_initial_filters,
+            'batch_norm'            : batch_norm,
+            'use_bias'              : use_bias,
+            'residual'              : residual,
+            'regularize'            : regularize,
+            'depth'                 : depth,
+            'blocks_final'          : blocks_final,
+            'blocks_per_layer'      : blocks_per_layer,
+            'blocks_deepest_layer'  : blocks_deepest_layer,
+            'connections'           : connections,
+            'upsampling'            : upsampling,
+            'downsampling'          : downsampling,
+            })
+
         if data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
 
-        self.initial_convolution = convolutional_block(
+        self.initial_convolution = Block(
             n_filters   = n_initial_filters,
             kernel      = (3,3),
             strides     = (1,1),
@@ -650,7 +670,7 @@ class UResNet(tf.keras.models.Model):
                 regularize  = regularize)
 
 
-        self.bottleneck = convolutional_block(
+        self.bottleneck = Block(
             n_filters    = 3,
             kernel       = [1,1],
             strides      = [1,1],

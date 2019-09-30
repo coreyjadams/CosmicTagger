@@ -255,6 +255,48 @@ class ConcatConnection(nn.Module):
         return x
 
 
+
+
+class MaxPooling(nn.Module):
+
+    def __init__(self,*, inplanes, outplanes, params):
+        nn.Module.__init__(self)
+
+
+        self.pool = torch.nn.MaxPool2d(stride=2, kernel_size=2)
+
+        self.bottleneck = Block(
+            inplanes    = inplanes,
+            outplanes   = outplanes,
+            kernel      = (1,1),
+            padding     = (0,0),
+            params      = params)
+
+    def forward(self, x):
+        x = self.pool(x)
+
+        return self.bottleneck(x)
+
+class InterpolationUpsample(nn.Module):
+
+    def __init__(self, *, inplanes, outplanes, params):
+        nn.Module.__init__(self)
+
+
+        self.up = torch.nn.Upsample(scale_factor=2, mode="bilinear")
+
+        self.bottleneck = Block(
+            inplanes    = inplanes,
+            outplanes   = outplanes,
+            kernel      = (1,1),
+            padding     = (0,0),
+            params      = params)
+
+    def forward(self, x):
+        x = self.up(x)
+        return self.bottleneck(x)
+
+
 class UNetCore(nn.Module):
 
     def __init__(self, *,  depth, inplanes,  params):
@@ -280,9 +322,16 @@ class UNetCore(nn.Module):
             n_filters_next_layer = inplanes * 2
 
             # Down sampling operation:
-            self.downsample     = ConvolutionDownsample(inplanes    = inplanes,
+            # This does change the number of filters from above down-pass blocks
+            if params.downsampling == "convolutional":
+                self.downsample = ConvolutionDownsample(inplanes    = inplanes,
                                                         outplanes   = n_filters_next_layer,
                                                         params      = params)
+            else:
+                self.downsample = MaxPooling(inplanes    = inplanes,
+                                             outplanes   = n_filters_next_layer,
+                                             params      = params) 
+
 
 
             # Submodule:
@@ -291,8 +340,15 @@ class UNetCore(nn.Module):
                                            params   = params )
             # Upsampling operation:
 
-            self.upsample       = ConvolutionUpsample(inplanes  = n_filters_next_layer,
-                                                      outplanes = inplanes,
+
+           
+            if params.upsampling == "convolutional":
+                self.upsample       = ConvolutionUpsample(inplanes  = n_filters_next_layer,
+                                                          outplanes = inplanes,
+                                                          params    = params)
+            else:
+                self.upsample = InterpolationUpsample(inplanes  = n_filters_next_layer, 
+                                                      outplanes = inplanes, 
                                                       params    = params)
 
 
