@@ -6,17 +6,17 @@ From sparse to dense or dense to sparse, etc.
 
 This can also convert from sparse to sparse to rearrange formats
 For example, larcv BatchFillerSparseTensor2D (and 3D) output data
-with the format of 
-    [B, N_planes, Max_voxels, N_features] 
+with the format of
+    [B, N_planes, Max_voxels, N_features]
 
-where N_features is 2 or 3 depending on whether or not values are included 
+where N_features is 2 or 3 depending on whether or not values are included
 (or 3 or 4 in the 3D case)
 
 # The input of a pointnet type format can work with this, but SparseConvNet
 # requires a tuple of (coords, features, [batch_size, optional])
 
 
-''' 
+'''
 
 from . import flags
 FLAGS = flags.FLAGS()
@@ -49,12 +49,17 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
     x_index = numpy.int32(x_coords[batch_index, plane_index, voxel_index])
     y_index = numpy.int32(y_coords[batch_index, plane_index, voxel_index])
 
+    # print(numpy.min(x_index))
+    # print(numpy.min(y_index))
+    # print()
+    # print(numpy.max(x_index))
+    # print(numpy.max(y_index))
 
     # Tensorflow expects format as either [batch, height, width, channel]
     # or [batch, channel, height, width]
     # Fill in the output tensor
     if FLAGS.DATA_FORMAT == "channels_first":
-        # output_array[batch_index, plane_index, y_index, x_index] = values    
+        # output_array[batch_index, plane_index, y_index, x_index] = values
         output_array[batch_index, plane_index, y_index, x_index] = values
     else:
         output_array[batch_index, y_index, x_index, plane_index] = values
@@ -90,6 +95,9 @@ def larcvsparse_to_scnsparse_2d(input_array):
         # Next, figure out the x, y, value coordinates:
         y,x,features = numpy.split(plane, 3, axis=-1)
 
+        # print("X: ",numpy.max(x))
+        # print("Y: ", numpy.max(y))
+
         non_zero_locs = numpy.where(features != -999)
 
         # Pull together the different dimensions:
@@ -103,7 +111,7 @@ def larcvsparse_to_scnsparse_2d(input_array):
 
         # dimension = numpy.concatenate([x,y,batch], axis=0)
         # dimension = numpy.stack([x,y,batch], axis=-1)
-        dimension = numpy.stack([p,x,y,batch], axis=-1)
+        dimension = numpy.stack([p,y,x,batch], axis=-1)
 
         output_features.append(features)
         output_dimension.append(dimension)
@@ -180,11 +188,6 @@ def larcvsparse_to_dense_3d(input_array, dense_shape):
 
     # Fill in the output tensor
 
-    output_array[batch_index, 0, x_index, y_index, z_index] = values    
+    output_array[batch_index, 0, x_index, y_index, z_index] = values
 
     return output_array
-
-
-
-
-

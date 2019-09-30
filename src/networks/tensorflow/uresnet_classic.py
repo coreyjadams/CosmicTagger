@@ -135,12 +135,12 @@ def residual_block(input_tensor,
     '''This is an all-in-one implementation of a residual block
 
     It can perform bottlenecking or not.
-    
-    
+
+
     Arguments:
         input_tensor {[type]} -- [description]
         is_training {bool} -- [description]
-    
+
     Keyword Arguments:
         strides {tuple} -- [description] (default: {(1,1)})
         batch_norm {bool} -- [description] (default: {True})
@@ -158,7 +158,7 @@ def residual_block(input_tensor,
         x = input_tensor
         y = input_tensor
 
-        # No matter what, this preserves the number of filters: 
+        # No matter what, this preserves the number of filters:
         if data_format == "channels_last":
             n_output_filters = x.get_shape().as_list()[-1]
         else:

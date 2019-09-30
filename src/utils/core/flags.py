@@ -11,7 +11,7 @@ https://github.com/DeepLearnPhysics/dynamic-gcnn/blob/develop/dgcnn/flags.py
 
 # This class is from here:
 # http://www.aleax.it/Python/5ep.html
-# Which is an incredibly simply and elegenant way 
+# Which is an incredibly simply and elegenant way
 # To enforce singleton behavior
 class Borg:
     _shared_state = {}
@@ -21,16 +21,16 @@ class Borg:
 # This function is to parse strings from argparse into bool
 def str2bool(v):
     '''Convert string to boolean value
-    
-    This function is from stackoverflow: 
+
+    This function is from stackoverflow:
     https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
-    
+
     Arguments:
         v {str} -- [description]
-    
+
     Returns:
         bool -- [description]
-    
+
     Raises:
         argparse -- [description]
     '''
@@ -44,7 +44,7 @@ def str2bool(v):
 
 class FLAGS(Borg):
     '''This class implements global flags through static variables
-    The static-ness is enforced by inheriting from Borg, which it calls first and 
+    The static-ness is enforced by inheriting from Borg, which it calls first and
     foremost in the constructor.
 
     All classes derived from FLAGS should call this constructor first
@@ -81,11 +81,11 @@ class FLAGS(Borg):
         # To be clear, this is specifying the image mode from larcv ThreadIO,
         # Not the input to the network
 
-        # IO parameters  
+        # IO parameters
         # IO has a 'default' file configuration and an optional
         # 'auxilliary' configuration.  In Train mode, the default
         # is the training data, aux is testing data.
-        # In inference mode, default is the validation data, 
+        # In inference mode, default is the validation data,
         # aux is the outputdata
         self.FILE                  = None
         self.IO_VERBOSITY          = 3
@@ -109,10 +109,7 @@ class FLAGS(Borg):
         self.IMAGE_PRODUCER        = "sbndwire"
         self.LABEL_PRODUCER        = "sbnd_cosmicseg"
 
-        # self.SHAPE                 = [1280, 2048]
         self.SHAPE                 = [640, 1024]
-        self.MAX_VOXELS            = 35000
-        # self.MAX_VOXELS            = 80000
 
 
         self.SYNTHETIC             = False
@@ -154,12 +151,12 @@ class FLAGS(Borg):
 
         self._parser = argparse.ArgumentParser(description="Configuration Flags")
 
-        subparsers = self._parser.add_subparsers(title="Modules", 
-                                                 description="Valid subcommands", 
-                                                 dest='mode', 
+        subparsers = self._parser.add_subparsers(title="Modules",
+                                                 description="Valid subcommands",
+                                                 dest='mode',
                                                  help="Available subcommands: train, iotest, inference")
-      
-      
+
+
 
         # train parser
         self.train_parser = subparsers.add_parser("train", help="Train")
@@ -172,7 +169,7 @@ class FLAGS(Borg):
         self.train_parser.add_argument('-ci','--checkpoint-iteration', type=int, default=self.CHECKPOINT_ITERATION,
                                   help='Period (in steps) to store snapshot of weights [default: {}]'.format(self.CHECKPOINT_ITERATION))
 
-        self.train_parser.add_argument('-o', '--optimizer', default=self.OPTIMIZER, type=str, 
+        self.train_parser.add_argument('-o', '--optimizer', default=self.OPTIMIZER, type=str,
             choices=['lars', 'rmsprop', 'adam'],
             help="Optimizer to use, must be lars, rmsprop, adam [default: {}]".format(self.OPTIMIZER))
 
@@ -202,7 +199,7 @@ class FLAGS(Borg):
         self.inference_parser = self._add_default_io_configuration(self.inference_parser)
         self.inference_parser = self._add_aux_io_configuration(self.inference_parser)
         self.inference_parser = self._add_core_configuration(self.inference_parser)
-       
+
 
     def _add_core_configuration(self, parser):
         # These are core parameters that are important for all modes:
@@ -227,8 +224,7 @@ class FLAGS(Borg):
 
         parser.add_argument('--shape', default=self.SHAPE, type=int, nargs="+",
             help='Dense shape of the images [default: {}]'.format(self.SHAPE))
-        parser.add_argument('--max-voxels', default=self.MAX_VOXELS, type=int,
-            help='Maximum number of voxels used in sparse IO [default: {}]'.format(self.MAX_VOXELS))
+
         parser.add_argument('--verbosity', default=self.VERBOSITY, type=int,
             help='Verbosity of python calls [default: {}]'.format(self.VERBOSITY))
 
@@ -246,10 +242,12 @@ class FLAGS(Borg):
         args = self._parser.parse_args()
         # else:
         #     # Can't do f-strings, this code runs python 2.7.
-        #     # I am working on a 3.6 transisition ... 
+        #     # I am working on a 3.6 transisition ...
         #     args_str = ' '.join("--{key}={val}".format(key=key, val=val) for key,val in hps_dict.items())
         #     args = self._parser.parse_args(mode+' '+args_str)
         self.update(vars(args))
+
+        self.check_args()
 
         if self.MODE == 'inference':
             self.TRAINING = False
@@ -257,7 +255,7 @@ class FLAGS(Borg):
 
     def dump_config(self):
         print(self.__str__())
-            
+
 
     def get_config(str):
         return str.__str__()
@@ -276,16 +274,23 @@ class FLAGS(Borg):
         except AttributeError:
             return "ERROR: call parse_args()"
 
-                    
+
     def update(self, args):
         for name,value in args.items():
             if name in ['func']: continue
             setattr(self, name.upper(), args[name])
-        # Take special care to reset the keyword label attribute 
+        # Take special care to reset the keyword label attribute
         # to match the label mode:
 
     def _add_default_network_configuration(self, parser):
         raise NotImplementedError("Must use a derived class which overrides this function")
+
+    def check_args(self):
+        '''
+        Enforce some consistency on the arguments
+        '''
+
+        pass
 
 
 
@@ -301,6 +306,22 @@ class uresnet(FLAGS):
         # For the resnet object, we set the network as resnet:
         self._net = net
 
+
+    def check_args(self):
+        '''
+        Enforce some consistency on the arguments
+        '''
+        FLAGS.check_args(self)
+
+        if self.FRAMEWORK == "tf":
+            self.FRAMEWORK = "tensorflow"
+
+            if self.SPARSE:
+                raise Exception("Can only use sparse convolutions in torch")
+
+        if self.FRAMEWORK == "torch":
+            if self.DATA_FORMAT == "channels_last":
+                raise Exception("Torch only supports channels first.")
 
     def _set_defaults(self):
         # Parameters to control the network implementation
@@ -329,14 +350,13 @@ class uresnet(FLAGS):
         self.SPARSE                      = False
         self.CONV_MODE                   = '2D'
 
-
         # Run with half precision:
         self.INPUT_HALF_PRECISION        = False
         self.MODEL_HALF_PRECISION        = False
         self.LOSS_SCALE                  = 1.0
 
         # Rate at which the number of filters increases at deeper layers
-        self.GROWTH_RATE                 = "linear"
+        self.GROWTH_RATE                 = "multiplicative"
         self.BLOCK_CONCAT                = False
 
         # Parameters to control the network implementation
@@ -345,7 +365,7 @@ class uresnet(FLAGS):
         # Parameters controlling regularization
         self.REGULARIZE_WEIGHTS          = 0.0001
         self.BALANCE_LOSS                = True
-        
+
         self.UPSAMPLING                  = "interpolation"
         self.DOWNSAMPLING                = "max_pooling"
 
@@ -355,30 +375,42 @@ class uresnet(FLAGS):
         self.INTER_OP_PARALLELISM_THREADS    = 4
         self.INTRA_OP_PARALLELISM_THREADS    = 64
 
+        self.FRAMEWORK                   = "tensorflow"
+
         FLAGS._set_defaults(self)
 
     def _add_default_network_configuration(self, parser):
 
         parser.add_argument('-ub','--use-bias', type=str2bool, default=self.USE_BIAS,
             help="Whether or not to include bias terms in all mlp layers [default: {}]".format(self.USE_BIAS))
+
         parser.add_argument('-bn','--batch-norm', type=str2bool, default=self.BATCH_NORM,
             help="Whether or not to use batch normalization in all mlp layers [default: {}]".format(self.BATCH_NORM))
+
         parser.add_argument('--n-initial-filters', type=int, default=self.N_INITIAL_FILTERS,
             help="Number of filters applied, per plane, for the initial convolution [default: {}]".format(self.N_INITIAL_FILTERS))
+
         parser.add_argument('--blocks-per-layer', type=int, default=self.BLOCKS_PER_LAYER,
             help="Number of blocks per layer [default: {}]".format(self.BLOCKS_PER_LAYER))
+
         parser.add_argument('--blocks-deepest-layer', type=int, default=self.BLOCKS_DEEPEST_LAYER,
             help="Number of blocks applied at the deepest, merged layer [default: {}]".format(self.BLOCKS_DEEPEST_LAYER))
+
         parser.add_argument('--blocks-final', type=int, default=self.BLOCKS_FINAL,
             help="Number of blocks applied at full, final resolution [default: {}]".format(self.BLOCKS_FINAL))
+
         parser.add_argument('--network-depth', type=int, default=self.NETWORK_DEPTH,
             help="Total number of downsamples to apply [default: {}]".format(self.NETWORK_DEPTH))
+
         parser.add_argument('--connections', type=str, choices=['sum', 'concat', 'none'], default=self.CONNECTIONS,
             help="Connect shortcuts with sums, concat+bottleneck, or no connections [default: {}]".format(self.CONNECTIONS))
+
         parser.add_argument('--connect-pre-res-blocks-down', type=str2bool, default=self.CONNECT_PRE_BLOCKS_DOWN,
             help="Short cut connections branch just after downsampling (True) or just before (False) [default: {}]".format(self.CONNECT_PRE_BLOCKS_DOWN))
+
         parser.add_argument('--connect-pre-res-blocks-up', type=str2bool, default=self.CONNECT_PRE_BLOCKS_UP,
             help="Short cut connections merge just after upsampling (True) or just before (False) [default: {}]".format(self.CONNECT_PRE_BLOCKS_UP))
+
         parser.add_argument('--nplanes', type=int, default=self.NPLANES,
             help="Number of planes to split the initial image into [default: {}]".format(self.NPLANES))
 
@@ -388,7 +420,7 @@ class uresnet(FLAGS):
 
         parser.add_argument('-bl','--balance-loss', type=str2bool, default=self.BALANCE_LOSS,
             help="Turn on or off weight balancing across classes [default: {}]".format(self.BALANCE_LOSS))
-        
+
 
         parser.add_argument('-df','--data-format', type=str, default=self.DATA_FORMAT,
             help="Channels format in the tensor shape [default: {}]".format(self.DATA_FORMAT))
@@ -405,11 +437,11 @@ class uresnet(FLAGS):
         parser.add_argument('--block-concat', type=str2bool, default=self.BLOCK_CONCAT,
             help="Use sparse convolutions instead of dense convolutions [default: {}]".format(self.BLOCK_CONCAT))
 
-        parser.add_argument('--upsampling', type=str, 
+        parser.add_argument('--upsampling', type=str,
             choices=["convolutional", "interpolation"], default=self.UPSAMPLING,
             help="Which operation to use for upsamplign [default: {}]".format(self.UPSAMPLING))
 
-        parser.add_argument('--downsampling', type=str, 
+        parser.add_argument('--downsampling', type=str,
             choices=["convolutional", "max_pooling"], default=self.DOWNSAMPLING,
             help="Which operation to use for downsamplign [default: {}]".format(self.DOWNSAMPLING))
 
@@ -424,20 +456,18 @@ class uresnet(FLAGS):
         parser.add_argument('--loss-scale', type=float, default=self.LOSS_SCALE,
             help="Amount to scale the loss function before back prop [default: {}]".format(self.LOSS_SCALE))
 
-
         parser.add_argument('--inter-op-parallelism-threads',type=int, default=self.INTER_OP_PARALLELISM_THREADS,
             help="Passed to tf configproto [default: {}]".format(self.INTER_OP_PARALLELISM_THREADS))
         parser.add_argument('--intra-op-parallelism-threads',type=int, default=self.INTRA_OP_PARALLELISM_THREADS,
             help="Passed to tf configproto [default: {}]".format(self.INTRA_OP_PARALLELISM_THREADS))
 
 
-        parser.add_argument('--share-weights', type=str2bool, default=self.SHARE_WEIGHTS,
-            help="Whether or not to share weights across planes [default: {}]".format(self.SHARE_WEIGHTS))
-
-
-
         parser.add_argument('--conv-mode', type=str, choices=['2D','3D'], default=self.CONV_MODE,
             help="Only for non-sparse (dense) mode, use 2d or 3d convolutions [default: {}]".format(self.CONV_MODE))
+
+
+        parser.add_argument('--framework', type=str, choices=['torch','tensorflow', 'tf'], default=self.FRAMEWORK,
+            help="Pick to use either torch or tensorflow/tf [default: {}]".format(self.FRAMEWORK))
+
+
         return parser
-
-
