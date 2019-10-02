@@ -1,10 +1,6 @@
 import torch
 import torch.nn as nn
 
-
-from src import utils
-FLAGS = utils.flags.FLAGS()
-
 '''UResNet is implemented recursively here.
 
 On the downsample pass, each layer receives a tensor as input.
