@@ -28,9 +28,12 @@ def main():
         raise Exception()
 
     if FLAGS.DISTRIBUTED:
-        from src.utils import distributed_trainer
-
-        trainer = distributed_trainer.distributed_trainer()
+        if FLAGS.FRAMEWORK == "tf" or FLAGS.FRAMEWORK == "tensorflow":
+            from src.utils.tensorflow import distributed_trainer
+            model_trainer = distributed_trainer.distributed_trainer()
+        elif FLAGS.FRAMEWORK == "torch":
+            from src.utils.torch import distributed_trainer
+            model_trainer = distributed_trainer.distributed_trainer()
     else:
         if FLAGS.FRAMEWORK == "tf" or FLAGS.FRAMEWORK == "tensorflow":
             from src.utils.tensorflow import trainer

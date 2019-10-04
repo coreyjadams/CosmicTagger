@@ -4,7 +4,6 @@ import sparseconvnet as scn
 
 
 from src import utils
-FLAGS = utils.flags.FLAGS()
 
 '''UResNet is implemented recursively here.
 
@@ -25,7 +24,7 @@ It then performs an upsampling step, and returns the upsampled tensor.
 
 class SparseBlock(nn.Module):
 
-    def __init__(self, inplanes, outplanes, nplanes=1):
+    def __init__(self, *, inplanes, outplanes, nplanes=1, params):
 
         nn.Module.__init__(self)
 
@@ -33,16 +32,18 @@ class SparseBlock(nn.Module):
             nIn=inplanes,
             nOut=outplanes,
             filter_size=[nplanes,3,3],
-            bias=False)
+            bias=params.use_bias)
 
-        if FLAGS.BATCH_NORM:
+        self.do_batch_norm = False
+        if params.batch_norm:
+            self.do_batch_norm = True
             self.bn1 = scn.BatchNormReLU(outplanes)
         self.relu = scn.ReLU()
 
     def forward(self, x):
 
         out = self.conv1(x)
-        if FLAGS.BATCH_NORM:
+        if self.do_batch_norm:
             out = self.bn1(out)
         else:
             out = self.relu(out)
@@ -53,7 +54,7 @@ class SparseBlock(nn.Module):
 
 class SparseResidualBlock(nn.Module):
 
-    def __init__(self, inplanes, outplanes, nplanes=1):
+    def __init__(self, *, inplanes, outplanes, nplanes=1, params):
         nn.Module.__init__(self)
 
 
@@ -61,10 +62,11 @@ class SparseResidualBlock(nn.Module):
             nIn         = inplanes,
             nOut        = outplanes,
             filter_size = [nplanes,3,3],
-            bias=False)
+            bias        = params.use_bias)
 
-
-        if FLAGS.BATCH_NORM:
+        self.do_batch_norm = False
+        if params.batch_norm:
+            self.do_batch_norm = True
             self.bn1 = scn.BatchNormReLU(outplanes)
 
         self.conv2 = scn.SubmanifoldConvolution(dimension=3,
@@ -73,7 +75,7 @@ class SparseResidualBlock(nn.Module):
             filter_size = [nplanes,3,3],
             bias        = False)
 
-        if FLAGS.BATCH_NORM:
+        if params.batch_norm:
             self.bn2 = scn.BatchNormalization(outplanes)
 
         self.residual = scn.Identity()
@@ -86,13 +88,13 @@ class SparseResidualBlock(nn.Module):
         residual = self.residual(x)
 
         out = self.conv1(x)
-        if FLAGS.BATCH_NORM:
+        if self.do_batch_norm:
             out = self.bn1(out)
         else:
             out = self.relu(out)
         out = self.conv2(out)
 
-        if FLAGS.BATCH_NORM:
+        if self.do_batch_norm:
             out = self.bn2(out)
 
         # The addition of sparse tensors is not straightforward, since
@@ -108,7 +110,7 @@ class SparseResidualBlock(nn.Module):
 
 class SparseConvolutionDownsample(nn.Module):
 
-    def __init__(self, inplanes, outplanes,nplanes=1):
+    def __init__(self, *, inplanes, outplanes,nplanes=1, params):
         nn.Module.__init__(self)
 
         self.conv = scn.Convolution(dimension=3,
@@ -116,16 +118,18 @@ class SparseConvolutionDownsample(nn.Module):
             nOut            = outplanes,
             filter_size     = [nplanes,2,2],
             filter_stride   = [1,2,2],
-            bias            = False
+            bias            = params.use_bias
         )
-        if FLAGS.BATCH_NORM:
+        self.do_batch_norm = False
+        if params.batch_norm:
+            self.do_batch_norm = True
             self.bn   = scn.BatchNormalization(outplanes)
         self.relu = scn.ReLU()
 
     def forward(self, x):
         out = self.conv(x)
 
-        if FLAGS.BATCH_NORM:
+        if self.do_batch_norm:
             out = self.bn(out)
 
         out = self.relu(out)
@@ -134,7 +138,7 @@ class SparseConvolutionDownsample(nn.Module):
 
 class SparseConvolutionUpsample(nn.Module):
 
-    def __init__(self, inplanes, outplanes, nplanes=1):
+    def __init__(self, *, inplanes, outplanes, nplanes=1, params):
         nn.Module.__init__(self)
 
         self.conv = scn.Deconvolution(dimension=3,
@@ -142,15 +146,17 @@ class SparseConvolutionUpsample(nn.Module):
             nOut            = outplanes,
             filter_size     = [nplanes,2,2],
             filter_stride   = [1,2,2],
-            bias            = False
+            bias            = params.use_bias
         )
-        if FLAGS.BATCH_NORM:
+        self.do_batch_norm = False
+        if params.batch_norm:
+            self.do_batch_norm = True
             self.bn   = scn.BatchNormalization(outplanes)
         self.relu = scn.ReLU()
 
     def forward(self, x):
         out = self.conv(x)
-        if FLAGS.BATCH_NORM:
+        if self.do_batch_norm:
             out = self.bn(out)
         out = self.relu(out)
         return out
@@ -158,13 +164,22 @@ class SparseConvolutionUpsample(nn.Module):
 class SparseBlockSeries(torch.nn.Module):
 
 
-    def __init__(self, inplanes, n_blocks, n_planes=1, residual=False):
+    def __init__(self, *, inplanes, n_blocks, n_planes=1, params):
         torch.nn.Module.__init__(self)
 
-        if residual:
-            self.blocks = [ SparseResidualBlock(inplanes, inplanes, n_planes) for i in range(n_blocks) ]
+        if params.residual:
+            self.blocks = [ SparseResidualBlock(inplanes = inplanes,
+                                                outplanes = inplanes,
+                                                nplanes = n_planes,
+                                                params = params)
+                                for i in range(n_blocks)
+                            ]
         else:
-            self.blocks = [ SparseBlock(inplanes, inplanes, n_planes) for i in range(n_blocks)]
+            self.blocks = [ SparseBlock(inplanes = inplanes,
+                                        outplanes = inplanes,
+                                        nplanes = n_planes,
+                                        params = params)
+                                for i in range(n_blocks)]
 
         for i, block in enumerate(self.blocks):
             self.add_module('block_{}'.format(i), block)
@@ -178,7 +193,7 @@ class SparseBlockSeries(torch.nn.Module):
 
 class SparseDeepestBlock(nn.Module):
 
-    def __init__(self, inplanes, n_blocks, residual):
+    def __init__(self, *, inplanes, params):
         nn.Module.__init__(self)
 
 
@@ -188,20 +203,23 @@ class SparseDeepestBlock(nn.Module):
 
         self.merger = scn.Convolution(dimension=3,
             nIn             = inplanes,
-            nOut            = FLAGS.NPLANES*inplanes,
-            filter_size     = [FLAGS.NPLANES,1,1],
+            nOut            = 3*inplanes,
+            filter_size     = [3,1,1],
             filter_stride   = [1,1,1],
-            bias            = False)
+            bias            = params.use_bias)
 
 
-        self.blocks = SparseBlockSeries(FLAGS.NPLANES*inplanes, FLAGS.RES_BLOCKS_DEEPEST_LAYER, n_planes=1, residual=residual)
+        self.blocks = SparseBlockSeries(inplanes = 3*inplanes,
+                                        n_blocks =  params.blocks_deepest_layer,
+                                        n_planes = 1,
+                                        params   = params)
 
         self.splitter = scn.Deconvolution(dimension=3,
-            nIn             = FLAGS.NPLANES*inplanes,
+            nIn             = 3*inplanes,
             nOut            = inplanes,
-            filter_size     = [FLAGS.NPLANES,1,1],
+            filter_size     = [3,1,1],
             filter_stride   = [1,1,1],
-            bias            = False)
+            bias            = params.use_bias)
 
 
     def forward(self, x):
@@ -230,7 +248,7 @@ class SumConnection(nn.Module):
 
 class ConcatConnection(nn.Module):
 
-    def __init__(self, inplanes):
+    def __init__(self, *, inplanes, params):
         nn.Module.__init__(self)
 
         self.concat = scn.ConcatTable()
@@ -238,7 +256,7 @@ class ConcatConnection(nn.Module):
                             nIn         = 2*inplanes,
                             nOut        = inplanes,
                             filter_size = 1,
-                            bias        = False)
+                            bias        = params.use_bias)
 
     def forward(self, x, residual):
         print(type(x))
@@ -251,41 +269,50 @@ class ConcatConnection(nn.Module):
 
 class SparseUNetCore(nn.Module):
 
-    def __init__(self, depth, nlayers, inplanes, residual):
+    def __init__(self,  *,  depth, inplanes,  params):
         nn.Module.__init__(self)
 
 
-        self.layers = nlayers
         self.depth  = depth
 
         if depth == 0:
-            self.main_module = SparseDeepestBlock(inplanes, FLAGS.RES_BLOCKS_DEEPEST_LAYER, residual = residual)
+            self.main_module = SparseDeepestBlock(inplanes=inplanes, params=params)
         else:
             # Residual or convolutional blocks, applied in series:
-            self.down_blocks = SparseBlockSeries(inplanes, nlayers,n_planes=1, residual=residual)
+            self.down_blocks = SparseBlockSeries(inplanes = inplanes,
+                                                 n_blocks = params.blocks_per_layer,
+                                                 params   = params)
 
-            if FLAGS.GROWTH_RATE == "linear":
-                n_filters_next_layer = inplanes + FLAGS.N_INITIAL_FILTERS
-            elif FLAGS.GROWTH_RATE == "multiplicative":
-                n_filters_next_layer = inplanes * 2
+            n_filters_next_layer = inplanes * 2
 
 
             # Down sampling operation:
-            self.downsample  = SparseConvolutionDownsample(inplanes, n_filters_next_layer)
+            self.downsample  = SparseConvolutionDownsample(inplanes  = inplanes,
+                                                           outplanes = n_filters_next_layer,
+                                                           nplanes   = 1,
+                                                           params    = params)
 
             # Submodule:
-            self.main_module = SparseUNetCore(depth-1, nlayers, n_filters_next_layer, residual = residual)
+            self.main_module = SparseUNetCore(depth    = depth-1,
+                                              inplanes = n_filters_next_layer,
+                                              params   = params)
+
+
             # Upsampling operation:
-            self.upsample    = SparseConvolutionUpsample(n_filters_next_layer, inplanes)
+            self.upsample    = SparseConvolutionUpsample(inplanes = n_filters_next_layer,
+                                                         outplanes = inplanes,
+                                                         params = params)
 
 
             # Convolutional or residual blocks for the upsampling pass:
-            self.up_blocks = SparseBlockSeries(inplanes, nlayers,n_planes=1, residual=residual)
+            self.up_blocks = SparseBlockSeries(inplanes = inplanes,
+                                               n_blocks = params.blocks_per_layer,
+                                               params   = params)
 
             # Residual connection operation:
-            if FLAGS.CONNECTIONS == "sum":
+            if params.connections == "sum":
                 self.connection = SumConnection()
-            elif FLAGS.CONNECTIONS == "concat":
+            elif params.connections == "concat":
                 self.connection = ConcatConnection(inplanes)
             else:
                 self.connection = NoConnection()
@@ -297,13 +324,10 @@ class SparseUNetCore(nn.Module):
         # Take the input and apply the downward pass convolutions.  Save the residual
         # at the correct time.
         if self.depth != 0:
-            if FLAGS.CONNECT_PRE_RES_BLOCKS_DOWN:
-                residual = x
 
             x = self.down_blocks(x)
 
-            if not FLAGS.CONNECT_PRE_RES_BLOCKS_DOWN:
-                residual = x
+            residual = x
 
             # perform the downsampling operation:
             x = self.downsample(x)
@@ -318,62 +342,92 @@ class SparseUNetCore(nn.Module):
             x = self.upsample(x)
 
             # Connect with the residual if necessary:
-            if FLAGS.CONNECT_PRE_RES_BLOCKS_UP:
-                x = self.connection(x, residual)
+            x = self.connection(x, residual)
 
             # Apply the convolutional steps:
             x = self.up_blocks(x)
 
-            if not FLAGS.CONNECT_PRE_RES_BLOCKS_UP:
-                x = self.connection(x, residual)
 
         return x
 
 
 
+class objectview(object):
+    def __init__(self, d):
+        self.__dict__ = d
 
 
 class UResNet(torch.nn.Module):
 
-    def __init__(self, shape):
+    def __init__(self, * ,
+            n_initial_filters,
+            batch_norm,
+            use_bias,
+            residual,
+            regularize,
+            depth,
+            blocks_final,
+            blocks_per_layer,
+            blocks_deepest_layer,
+            connections,
+            upsampling,
+            downsampling,
+            shape):
         torch.nn.Module.__init__(self)
 
 
+        params = objectview({
+            'n_initial_filters'     : n_initial_filters,
+            'batch_norm'            : batch_norm,
+            'use_bias'              : use_bias,
+            'residual'              : residual,
+            'regularize'            : regularize,
+            'depth'                 : depth,
+            'blocks_final'          : blocks_final,
+            'blocks_per_layer'      : blocks_per_layer,
+            'blocks_deepest_layer'  : blocks_deepest_layer,
+            'connections'           : connections,
+            'upsampling'            : upsampling,
+            'downsampling'          : downsampling,
+            'shape'                 : shape,
+            })
 
         # Create the sparse input tensor:
         # (first spatial dim is plane)
-        # self.input_tensor = scn.InputLayer(dimension=3, spatial_size=[FLAGS.NPLANES,640,1024])
+        # self.input_tensor = scn.InputLayer(dimension=3, spatial_size=[3,640,1024])
         self.input_tensor = scn.InputLayer(dimension=3,
-            spatial_size=[FLAGS.NPLANES,shape[0], shape[1]])
+            spatial_size=[3,params.shape[0], params.shape[1]])
 
 
         self.initial_convolution = scn.SubmanifoldConvolution(dimension=3,
             nIn=1,
-            nOut=FLAGS.N_INITIAL_FILTERS,
+            nOut=params.n_initial_filters,
             filter_size=[1,3,3],
             bias=False)
 
 
 
-        n_filters = FLAGS.N_INITIAL_FILTERS
+        n_filters = params.n_initial_filters
         # Next, build out the convolution steps:
 
-        self.net_core = SparseUNetCore(depth=FLAGS.NETWORK_DEPTH,
-            nlayers=FLAGS.RES_BLOCKS_PER_LAYER,
-            inplanes=FLAGS.N_INITIAL_FILTERS,
-            residual=FLAGS.RESIDUAL)
+        self.net_core = SparseUNetCore(depth=params.depth,
+                                       inplanes = n_filters,
+                                       params = params)
 
         # We need final output shaping too.
         # Even with shared weights, keep this separate:
 
 
 
-        self.final_layer = SparseBlockSeries(FLAGS.N_INITIAL_FILTERS, FLAGS.RES_BLOCKS_FINAL, residual=FLAGS.RESIDUAL)
+        self.final_layer = SparseBlockSeries(inplanes = params.n_initial_filters,
+                                             n_blocks = params.blocks_final,
+                                             params   = params)
+
         self.bottleneck  = scn.SubmanifoldConvolution(dimension=3,
-            nIn=FLAGS.N_INITIAL_FILTERS,
+            nIn=params.n_initial_filters,
             nOut=3,
             filter_size=1,
-            bias=False)
+            bias=params.use_bias)
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
 
