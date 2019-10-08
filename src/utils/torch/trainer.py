@@ -86,7 +86,7 @@ class torch_trainer(trainercore):
                     # [0.76665759 0.03433619 0.19900622]
                     # In the sparse case, the ratio of neutrino to cosmic is unchanged,
                     # but the number of noise/bkg is much less
-                    weight = torch.tensor([0.05, 1.        , 0.25], device=device)
+                    weight = torch.tensor([0.005, 1.        , 0.025], device=device)
 
         else:
             weight=None
@@ -435,33 +435,13 @@ class torch_trainer(trainercore):
 
     def summary_images(self, logits_image, labels_image, saver=""):
 
-        if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
-        # if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0:
+        # if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
+        if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0:
 
-            print("logits_image.shape: ", logits_image.shape)
             # Splitting just on the first batch
             logits_by_plane = torch.chunk(logits_image[0], chunks=3, dim=1)
-            print("logits_by_plane[0].shape: ", logits_by_plane[0].shape)
-            print("logits_by_plane[1].shape: ", logits_by_plane[1].shape)
-            print("logits_by_plane[2].shape: ", logits_by_plane[2].shape)
-            print()
-
-            print("torch.sum(labels_image): ", torch.sum(labels_image))
-            print()
-
-            print("labels_image.shape: ", labels_image.shape)
             # Splitting just on the first batch
             labels_by_plane = torch.chunk(labels_image[0], chunks=3, dim=0)
-            print("labels_by_plane[0].shape: ", labels_by_plane[0].shape)
-            print("labels_by_plane[1].shape: ", labels_by_plane[1].shape)
-            print("labels_by_plane[2].shape: ", labels_by_plane[2].shape)
-
-            print("torch.sum(logits_by_plane[0]): ", torch.sum(logits_by_plane[0]))
-            print("torch.sum(logits_by_plane[1]): ", torch.sum(logits_by_plane[1]))
-            print("torch.sum(logits_by_plane[2]): ", torch.sum(logits_by_plane[2]))
-            print("torch.sum(labels_by_plane[0]): ", torch.sum(labels_by_plane[0]))
-            print("torch.sum(labels_by_plane[1]): ", torch.sum(labels_by_plane[1]))
-            print("torch.sum(labels_by_plane[2]): ", torch.sum(labels_by_plane[2]))
 
             for plane in range(FLAGS.NPLANES):
                 val, prediction = torch.max(logits_by_plane[plane], dim=0)
@@ -706,7 +686,6 @@ class torch_trainer(trainercore):
         self._net.train()
         # Reset the gradient values for this step:
         self._opt.zero_grad()
-        print(self._iteration)
         # Fetch the next batch of data with larcv
         io_start_time = datetime.datetime.now()
         minibatch_data = self.fetch_next_batch()

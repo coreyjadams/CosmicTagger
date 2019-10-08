@@ -205,16 +205,11 @@ class trainercore(object):
 
 
             if not FLAGS.SPARSE:
-                print(numpy.unique(minibatch_data['label'][:,:,:,-1], return_counts=True))
                 minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
                 minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
-                print("numpy.sum(minibatch_data['label']): ", numpy.sum(minibatch_data['label']))
-                print("numpy.sum(minibatch_data['image']): ", numpy.sum(minibatch_data['image']))
-                print(numpy.unique(minibatch_data['label'], return_counts=True))
             else:
                 minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['image'])
                 minibatch_data['label']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['label'])
-                print("numpy.sum(minibatch_data['label'][1]): ", numpy.sum(minibatch_data['label'][1]))
             # This preparse the next batch of data:
             self._larcv_interface.prepare_next(mode)
 
