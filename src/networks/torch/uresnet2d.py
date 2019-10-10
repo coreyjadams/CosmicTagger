@@ -330,7 +330,7 @@ class UNetCore(nn.Module):
             else:
                 self.downsample = MaxPooling(inplanes    = inplanes,
                                              outplanes   = n_filters_next_layer,
-                                             params      = params) 
+                                             params      = params)
 
 
 
@@ -341,14 +341,14 @@ class UNetCore(nn.Module):
             # Upsampling operation:
 
 
-           
+
             if params.upsampling == "convolutional":
                 self.upsample       = ConvolutionUpsample(inplanes  = n_filters_next_layer,
                                                           outplanes = inplanes,
                                                           params    = params)
             else:
-                self.upsample = InterpolationUpsample(inplanes  = n_filters_next_layer, 
-                                                      outplanes = inplanes, 
+                self.upsample = InterpolationUpsample(inplanes  = n_filters_next_layer,
+                                                      outplanes = inplanes,
                                                       params    = params)
 
 
@@ -520,8 +520,5 @@ class UResNet(torch.nn.Module):
         x = [ self.final_layer(_x) for _x in x ]
         x = [ self.bottleneck(_x) for _x in x ]
 
-
         # Might need to do some reshaping here
-        x = torch.stack(x, 2)
-
         return x

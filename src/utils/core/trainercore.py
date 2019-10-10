@@ -209,7 +209,7 @@ class trainercore(object):
                 minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
             else:
                 minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['image'])
-                minibatch_data['label']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['label'])
+                minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
             # This preparse the next batch of data:
             self._larcv_interface.prepare_next(mode)
 

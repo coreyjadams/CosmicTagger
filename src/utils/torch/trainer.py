@@ -306,23 +306,17 @@ class torch_trainer(trainercore):
         # tensor to apply to the corresponding loss map.
 
 
-        shape =  labels.shape
-
-        labels = labels.view([shape[0], shape[-3], shape[-2], shape[-1]]).long()
-
-
-        # weight = weight.view([shape[0], shape[-3], shape[-2], shape[-1]])
-
-        # print numpy.unique(labels.cpu(), return_counts=True)
-
-
-        loss = self._criterion(logits, target=labels)
-
+        loss = None
+        for i in [0,1,2]:
+            plane_loss = self._criterion(input=logits[i], target=labels[i])
+            if loss is None:
+                loss = plane_loss
+            else:
+                loss += plane_loss
 
         if FLAGS.LOSS_SCALE != 1.0:
             loss *= FLAGS.LOSS_SCALE
 
-        # print(loss)
         return loss
 
         # if FLAGS.LABEL_MODE == 'all':
@@ -340,40 +334,51 @@ class torch_trainer(trainercore):
 
         '''
 
-        values, predicted_label = torch.max(logits, dim=1)
-
-
-        correct = (predicted_label == labels.long()).float()
-
-        # We calculate 4 metrics.
-        # First is the mean accuracy over all pixels
-        # Second is the intersection over union of all cosmic pixels
-        # Third is the intersection over union of all neutrino pixels
-        # Fourth is the accuracy of all non-zero pixels
-
-        # This is more stable than the accuracy, since the union is unlikely to be ever 0
-
-
-
-        # To compute the IoU, we use torch bytetensors which are similar to numpy masks.
-        non_zero_locations       = labels != 0
-        neutrino_label_locations = labels == 1
-        cosmic_label_locations   = labels == 2
-
-        neutrino_prediction_locations = predicted_label == 1
-        cosmic_prediction_locations   = predicted_label == 2
-
-
-        non_zero_accuracy = torch.mean(correct[non_zero_locations])
-
-        neutrino_iou = (neutrino_prediction_locations & neutrino_label_locations).sum().float() / (neutrino_prediction_locations | neutrino_label_locations).sum().float()
-        cosmic_iou = (cosmic_prediction_locations & cosmic_label_locations).sum().float() / (cosmic_prediction_locations | cosmic_label_locations).sum().float()
-
         accuracy = {}
-        accuracy['accuracy']         = torch.mean(correct)
-        accuracy['acc-cosmic-iou']   = cosmic_iou
-        accuracy['acc-neutrino-iou'] = neutrino_iou
-        accuracy['acc-non-zero']     = non_zero_accuracy
+        accuracy['accuracy']         = []
+        accuracy['acc-cosmic-iou']   = []
+        accuracy['acc-neutrino-iou'] = []
+        accuracy['acc-non-zero']     = []
+
+
+        for plane in [0,1,2]:
+            values, predicted_label = torch.max(logits[plane], dim=1)
+
+            correct = (predicted_label == labels[plane].long()).float()
+
+            # We calculate 4 metrics.
+            # First is the mean accuracy over all pixels
+            # Second is the intersection over union of all cosmic pixels
+            # Third is the intersection over union of all neutrino pixels
+            # Fourth is the accuracy of all non-zero pixels
+
+            # This is more stable than the accuracy, since the union is unlikely to be ever 0
+
+
+
+            # To compute the IoU, we use torch bytetensors which are similar to numpy masks.
+            non_zero_locations       = labels[plane] != 0
+            neutrino_label_locations = labels[plane] == 1
+            cosmic_label_locations   = labels[plane] == 2
+
+            neutrino_prediction_locations = predicted_label == 1
+            cosmic_prediction_locations   = predicted_label == 2
+
+
+            non_zero_accuracy = torch.mean(correct[non_zero_locations])
+
+            neutrino_iou = ( (neutrino_prediction_locations & neutrino_label_locations).sum().float() + 0.01) / ( (neutrino_prediction_locations | neutrino_label_locations).sum().float() + 0.01)
+            cosmic_iou = ( (cosmic_prediction_locations & cosmic_label_locations).sum().float() + 0.01) /  ((cosmic_prediction_locations | cosmic_label_locations).sum().float() + 0.01)
+
+
+            accuracy['accuracy'].append(torch.mean(correct))
+            accuracy['acc-cosmic-iou'].append(cosmic_iou)
+            accuracy['acc-neutrino-iou'].append(neutrino_iou)
+            accuracy['acc-non-zero'].append(non_zero_accuracy)
+
+
+        accuracy = { key : torch.mean(torch.stack(accuracy[key])) for key in accuracy }
+
 
         return accuracy
 
@@ -390,7 +395,6 @@ class torch_trainer(trainercore):
         return metrics
 
     def log(self, metrics, saver=''):
-
 
         if self._global_step % FLAGS.LOGGING_ITERATION == 0:
 
@@ -411,10 +415,9 @@ class torch_trainer(trainercore):
             except:
                 pass
 
+
             self._previous_log_time = self._current_log_time
-
             print("{} Step {} metrics: {}".format(saver, self._global_step, s))
-
 
 
     def summary(self, metrics,saver=""):
@@ -438,13 +441,8 @@ class torch_trainer(trainercore):
         # if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
         if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0:
 
-            # Splitting just on the first batch
-            logits_by_plane = torch.chunk(logits_image[0], chunks=3, dim=1)
-            # Splitting just on the first batch
-            labels_by_plane = torch.chunk(labels_image[0], chunks=3, dim=0)
-
             for plane in range(FLAGS.NPLANES):
-                val, prediction = torch.max(logits_by_plane[plane], dim=0)
+                val, prediction = torch.max(logits_image[plane][0], dim=0)
                 # This is a reshape and H/W swap:
                 prediction = prediction.view(
                     [1, prediction.shape[-2], prediction.shape[-1]]
@@ -455,8 +453,8 @@ class torch_trainer(trainercore):
                 #TODO - need to address this function here!!!
 
 
-                labels = labels_by_plane[plane].view(
-                    [1, labels_by_plane[plane].shape[-2], labels_by_plane[plane].shape[-1]]
+                labels = labels_image[plane][0].view(
+                    [1, labels_image[plane][0].shape[-2], labels_image[plane][0].shape[-1]]
                     )
                 # The images are in the format (Plane, W, H)
                 # Need to transpose the last two dims in order to meet the (CHW) ordering
@@ -627,11 +625,14 @@ class torch_trainer(trainercore):
                 continue
             if FLAGS.SPARSE:
                 if key == 'weight': continue
-                minibatch_data[key] = (
-                        torch.tensor(minibatch_data[key][0]).long(),
-                        torch.tensor(minibatch_data[key][1], device=device),
-                        minibatch_data[key][2],
-                    )
+                if key == 'image':
+                    minibatch_data[key] = (
+                            torch.tensor(minibatch_data[key][0]).long(),
+                            torch.tensor(minibatch_data[key][1], device=device),
+                            minibatch_data[key][2],
+                        )
+                elif key == 'label':
+                    minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
             else:
                 # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
@@ -639,38 +640,23 @@ class torch_trainer(trainercore):
                     minibatch_data[key] = minibatch_data[key].half()
         return minibatch_data
 
-    def sparse_to_dense(self, sparse_tensor, nplanes):
-
-        return scn.SparseToDense(dimension=3, nPlanes=nplanes)(sparse_tensor)
-
     def forward_pass(self, minibatch_data):
 
         minibatch_data = self.to_torch(minibatch_data)
 
         # Run a forward pass of the model on the input image:
-        logits = self._net(minibatch_data['image'])
+        logits_image = self._net(minibatch_data['image'])
+        labels_image = minibatch_data['label']
 
-        if FLAGS.SPARSE:
-
-            labels = self._net.convert_to_scn(minibatch_data['label'])
-            # weight = self._net.convert_to_scn(minibatch_data['weight'])
-
-            # weight_image = self.sparse_to_dense(weight, nplanes=weight.features.shape[-1])
-            logits_image = self.sparse_to_dense(logits, nplanes=logits.features.shape[-1])
-            labels_image = self.sparse_to_dense(labels, nplanes=labels.features.shape[-1])
+        labels_image = labels_image.long()
+        labels_image = torch.chunk(labels_image, chunks=3, dim=1)
+        shape =  labels_image[0].shape
 
 
-            # In just the sparse mode, we reshape the weights and labels;
-            # weight_image = weight_image.view(weight_image.shape[0],
-                # weight_image.shape[-3], weight_image.shape[-2], weight_image.shape[-1])
-            labels_image = labels_image.view(labels_image.shape[0],
-                labels_image.shape[-3], labels_image.shape[-2], labels_image.shape[-1])
+        # weight = weight.view([shape[0], shape[-3], shape[-2], shape[-1]])
 
-        else:
-            # This is just a renaming
-            # weight_image = minibatch_data['weight']
-            logits_image = logits
-            labels_image = minibatch_data['label']
+        # print numpy.unique(labels_image.cpu(), return_counts=True)
+        labels_image = [ _label.view([shape[0], shape[-2], shape[-1]]) for _label in labels_image ]
 
         return logits_image, labels_image
 

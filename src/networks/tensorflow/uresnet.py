@@ -312,8 +312,8 @@ class InterpolationUpsample(tf.keras.models.Model):
 class UNetCore(tf.keras.models.Model):
 
     def __init__(self, *,
-        depth,                
-        in_filters,        # How many filters are coming into this layer from above (or going up)   
+        depth,
+        in_filters,        # How many filters are coming into this layer from above (or going up)
         out_filters,       # How many filters to pass to a deeper layer
         params ):        # Wha
 
@@ -369,7 +369,7 @@ class UNetCore(tf.keras.models.Model):
 
             # Upsampling operation:
             # Upsampling will decrease the number of fitlers:
-            
+
             if params.upsampling == "convolutional":
                 self.upsample = ConvolutionUpsample(
                     n_filters   = in_filters,
@@ -437,13 +437,13 @@ class UNetCore(tf.keras.models.Model):
             x = [ self.upsample(_x, training) for _x in x ]
             # print("depth ", self._depth_of_network, ", x[0] after upsample shape ", x[0].shape)
 
-            x = [self.connection(residual[i], x[i], training) for i in range(len(x)) ]
-            # print("depth ", self._depth_of_network, ", x[0] after connection shape ", x[0].shape)
 
             # Apply the convolutional steps:
             x = [ self.up_blocks(_x, training) for _x in x ]
             # print("depth ", self._depth_of_network, ", x[0] after res blocks shape ", x[0].shape)
 
+            x = [self.connection(residual[i], x[i], training) for i in range(len(x)) ]
+            # print("depth ", self._depth_of_network, ", x[0] after connection shape ", x[0].shape)
 
         return x
 
@@ -493,6 +493,7 @@ class UResNet(tf.keras.models.Model):
 
         self.initial_convolution = Block(
             n_filters   = n_initial_filters,
+            kernel      = [7,7],
             activation  = tf.nn.relu,
             params      = params)
 
@@ -522,7 +523,7 @@ class UResNet(tf.keras.models.Model):
             strides      = [1,1],
             params       = params,
             activation   = None,
-            
+
         )
 
 

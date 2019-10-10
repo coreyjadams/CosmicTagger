@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import sparseconvnet as scn
 
-
+from .uresnet2d import BlockSeries, Block
 from src import utils
 
 '''UResNet is implemented recursively here.
@@ -407,27 +407,28 @@ class UResNet(torch.nn.Module):
 
 
 
-        n_filters = params.n_initial_filters
         # Next, build out the convolution steps:
 
         self.net_core = SparseUNetCore(depth=params.depth,
-                                       inplanes = n_filters,
+                                       inplanes = params.n_initial_filters,
                                        params = params)
 
         # We need final output shaping too.
         # Even with shared weights, keep this separate:
 
+        self._s_to_d = scn.SparseToDense(dimension=3, nPlanes=params.n_initial_filters)
 
 
-        self.final_layer = SparseBlockSeries(inplanes = params.n_initial_filters,
+        self.final_layer = BlockSeries(inplanes = params.n_initial_filters,
                                              n_blocks = params.blocks_final,
                                              params   = params)
 
-        self.bottleneck  = scn.SubmanifoldConvolution(dimension=3,
-            nIn=params.n_initial_filters,
-            nOut=3,
-            filter_size=1,
-            bias=params.use_bias)
+        self.bottleneck  = nn.Conv2d(in_channels  = n_initial_filters,
+                    out_channels = 3,
+                    kernel_size  = 1,
+                    stride       = 1,
+                    padding      = 0,
+                    bias         = use_bias)
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
 
@@ -441,19 +442,11 @@ class UResNet(torch.nn.Module):
         #         nn.init.constant_(m.weight, 1)
         #         nn.init.constant_(m.bias, 0)
 
-        self._s_to_d_1 = scn.SparseToDense(dimension=3, nPlanes=1)
-        self._s_to_d_3 = scn.SparseToDense(dimension=3, nPlanes=3)
 
     def convert_to_scn(self, _input):
 
         return self.input_tensor(_input)
 
-    def sparse_to_dense(self, _input, nPlanes):
-
-        if nPlanes == 1:
-            return self._s_to_d_1(_input)
-        else:
-            return self._s_to_d_3(_input)
 
     def forward(self, _input):
 
@@ -467,9 +460,22 @@ class UResNet(torch.nn.Module):
         # Apply the main unet architecture:
         x = self.net_core(x)
 
+
+        # Convert the images to dense layout:
+        x = self._s_to_d(x)
+
+
+        # Break the images into 3 planes:
+        x = torch.chunk(x, chunks=3, dim=2)
+
+        # This squeezes into an image tensor, not 3D
+        x = [ _x.view(_x.shape[0], _x.shape[1], _x.shape[-2], _x.shape[-1]) for _x in x ]
+
+
         # Apply the final residual block to each plane:
-        x = self.final_layer(x)
-        x = self.bottleneck(x)
+        x = [ self.final_layer(_x) for _x in x ]
+        x = [ self.bottleneck(_x) for _x in x ]
+
 
 
         return x
