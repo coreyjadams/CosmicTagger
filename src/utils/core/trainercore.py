@@ -47,9 +47,106 @@ class trainercore(object):
 
     def _initialize_io(self, color=None):
 
-        # Make sure all required dimensions are present:
+
         if not FLAGS.SYNTHETIC:
+
+            # This is a dummy placeholder, you must check this yourself:
+            if 640 in FLAGS.SHAPE:
+                max_voxels = 35000
+            else:
+                max_voxels = 70000
+
+            # Use the templates to generate a configuration string, which we store into a temporary file
+            if FLAGS.TRAINING:
+                config = io_templates.train_io(
+                    input_file      = FLAGS.FILE,
+                    data_producer   = FLAGS.IMAGE_PRODUCER,
+                    label_producer  = FLAGS.LABEL_PRODUCER,
+                    max_voxels      = max_voxels)
+            else:
+                config = io_templates.ana_io(
+                    input_file      = FLAGS.FILE,
+                    data_producer   = FLAGS.IMAGE_PRODUCER,
+                    label_producer  = FLAGS.LABEL_PRODUCER,
+                    max_voxels      =max_voxels)
+
+
+            # Generate a named temp file:
+            main_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+            main_file.write(config.generate_config_str())
+
+            main_file.close()
+            self._cleanup.append(main_file)
+
+            # Prepare data managers:
+            io_config = {
+                'filler_name' : config._name,
+                'filler_cfg'  : main_file.name,
+                'verbosity'   : FLAGS.VERBOSITY,
+                'make_copy'   : True
+            }
+
+            data_keys = OrderedDict({
+                'image': 'data',
+                'label': 'label'
+                })
+
+
+            self._larcv_interface.prepare_manager('primary', io_config, FLAGS.MINIBATCH_SIZE, data_keys, color)
+
+            self._larcv_interface.prepare_next('primary')
+
+            # All of the additional tools are in case there is a test set up:
+            if FLAGS.AUX_FILE is not None:
+
+                if FLAGS.TRAINING:
+                    config = io_templates.test_io(
+                        input_file=FLAGS.AUX_FILE,
+                        data_producer= FLAGS.IMAGE_PRODUCER,
+                        label_producer= FLAGS.LABEL_PRODUCER,
+                        max_voxels=max_voxels)
+
+                    # Generate a named temp file:
+                    aux_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+                    aux_file.write(config.generate_config_str())
+
+                    aux_file.close()
+                    self._cleanup.append(aux_file)
+                    io_config = {
+                        'filler_name' : config._name,
+                        'filler_cfg'  : aux_file.name,
+                        'verbosity'   : FLAGS.VERBOSITY,
+                        'make_copy'   : False
+                    }
+
+                    data_keys = OrderedDict({
+                        'image': 'aux_data',
+                        'label': 'aux_label'
+                        })
+
+
+
+                    self._larcv_interface.prepare_manager('aux', io_config, FLAGS.AUX_MINIBATCH_SIZE, data_keys, color)
+                    self._larcv_interface.prepare_next('aux')
+
+                else:
+                    config = io_templates.output_io(input_file=FLAGS.FILE)
+                    print(config.generate_config_str())
+                    # Generate a named temp file:
+                    out_file_config = tempfile.NamedTemporaryFile(mode='w', delete=False)
+                    out_file_config.write(config.generate_config_str())
+
+                    out_file_config.close()
+                    self._cleanup.append(out_file_config)
+                    self._larcv_interface.prepare_writer(out_file_config.name, FLAGS.AUX_FILE)
+
             io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
+
+            self.cleanup()
+
+
+
+        # Make sure all required dimensions are present:
         else:
             io_dims = {}
             if FLAGS.DATA_FORMAT == "channels_first":
@@ -85,102 +182,6 @@ class trainercore(object):
         self._dims['image'] = numpy.asarray(shape)
         self._dims['label'] = numpy.asarray(shape)
 
-
-        if FLAGS.SYNTHETIC:
-            return
-
-        # This is a dummy placeholder, you must check this yourself:
-        if 640 in FLAGS.SHAPE:
-            max_voxels = 35000
-        else:
-            max_voxels = 70000
-
-        # Use the templates to generate a configuration string, which we store into a temporary file
-        if FLAGS.TRAINING:
-            config = io_templates.train_io(
-                input_file      = FLAGS.FILE,
-                data_producer   = FLAGS.IMAGE_PRODUCER,
-                label_producer  = FLAGS.LABEL_PRODUCER,
-                max_voxels      = max_voxels)
-        else:
-            config = io_templates.ana_io(
-                input_file      = FLAGS.FILE,
-                data_producer   = FLAGS.IMAGE_PRODUCER,
-                label_producer  = FLAGS.LABEL_PRODUCER,
-                max_voxels      =max_voxels)
-
-
-        # Generate a named temp file:
-        main_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-        main_file.write(config.generate_config_str())
-
-        main_file.close()
-        self._cleanup.append(main_file)
-
-        # Prepare data managers:
-        io_config = {
-            'filler_name' : config._name,
-            'filler_cfg'  : main_file.name,
-            'verbosity'   : FLAGS.VERBOSITY,
-            'make_copy'   : True
-        }
-
-        data_keys = OrderedDict({
-            'image': 'data',
-            'label': 'label'
-            })
-
-
-        self._larcv_interface.prepare_manager('primary', io_config, FLAGS.MINIBATCH_SIZE, data_keys, color)
-
-        self._larcv_interface.prepare_next('primary')
-
-        # All of the additional tools are in case there is a test set up:
-        if FLAGS.AUX_FILE is not None:
-
-            if FLAGS.TRAINING:
-                config = io_templates.test_io(
-                    input_file=FLAGS.AUX_FILE,
-                    data_producer= FLAGS.IMAGE_PRODUCER,
-                    label_producer= FLAGS.LABEL_PRODUCER,
-                    max_voxels=max_voxels)
-
-                # Generate a named temp file:
-                aux_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-                aux_file.write(config.generate_config_str())
-
-                aux_file.close()
-                self._cleanup.append(aux_file)
-                io_config = {
-                    'filler_name' : config._name,
-                    'filler_cfg'  : aux_file.name,
-                    'verbosity'   : FLAGS.VERBOSITY,
-                    'make_copy'   : False
-                }
-
-                data_keys = OrderedDict({
-                    'image': 'aux_data',
-                    'label': 'aux_label'
-                    })
-
-
-
-                self._larcv_interface.prepare_manager('aux', io_config, FLAGS.AUX_MINIBATCH_SIZE, data_keys, color)
-                self._larcv_interface.prepare_next('aux')
-
-            else:
-                config = io_templates.output_io(input_file=FLAGS.FILE)
-                print(config.generate_config_str())
-                # Generate a named temp file:
-                out_file_config = tempfile.NamedTemporaryFile(mode='w', delete=False)
-                out_file_config.write(config.generate_config_str())
-
-                out_file_config.close()
-                self._cleanup.append(out_file_config)
-                self._larcv_interface.prepare_writer(out_file_config.name, FLAGS.AUX_FILE)
-
-
-        self.cleanup()
 
     def init_network(self):
         pass

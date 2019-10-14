@@ -9,7 +9,7 @@ import numpy
 
 from ..core                 import flags
 from ..core.trainercore     import trainercore
-from ...networks.tensorflow import uresnet
+from ...networks.tensorflow import uresnet, uresnet3d
 
 FLAGS = flags.FLAGS()
 
@@ -64,20 +64,36 @@ class tf_trainer(trainercore):
 
         self._metrics = {}
 
-        self._net = uresnet.UResNet(
-            n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
-            data_format              = FLAGS.DATA_FORMAT,
-            batch_norm               = FLAGS.BATCH_NORM,
-            use_bias                 = FLAGS.USE_BIAS,
-            residual                 = FLAGS.RESIDUAL,
-            regularize               = FLAGS.REGULARIZE_WEIGHTS,
-            depth                    = FLAGS.NETWORK_DEPTH,
-            blocks_final             = FLAGS.BLOCKS_FINAL,
-            blocks_per_layer         = FLAGS.BLOCKS_PER_LAYER,
-            blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
-            connections              = FLAGS.CONNECTIONS,
-            upsampling               = FLAGS.UPSAMPLING,
-            downsampling             = FLAGS.DOWNSAMPLING,)
+        if FLAGS.CONV_MODE == '2D':
+            self._net = uresnet.UResNet(
+                n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
+                data_format              = FLAGS.DATA_FORMAT,
+                batch_norm               = FLAGS.BATCH_NORM,
+                use_bias                 = FLAGS.USE_BIAS,
+                residual                 = FLAGS.RESIDUAL,
+                regularize               = FLAGS.REGULARIZE_WEIGHTS,
+                depth                    = FLAGS.NETWORK_DEPTH,
+                blocks_final             = FLAGS.BLOCKS_FINAL,
+                blocks_per_layer         = FLAGS.BLOCKS_PER_LAYER,
+                blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
+                connections              = FLAGS.CONNECTIONS,
+                upsampling               = FLAGS.UPSAMPLING,
+                downsampling             = FLAGS.DOWNSAMPLING,)
+        else:
+            self._net = uresnet3d.UResNet3D(
+                n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
+                data_format              = FLAGS.DATA_FORMAT,
+                batch_norm               = FLAGS.BATCH_NORM,
+                use_bias                 = FLAGS.USE_BIAS,
+                residual                 = FLAGS.RESIDUAL,
+                regularize               = FLAGS.REGULARIZE_WEIGHTS,
+                depth                    = FLAGS.NETWORK_DEPTH,
+                blocks_final             = FLAGS.BLOCKS_FINAL,
+                blocks_per_layer         = FLAGS.BLOCKS_PER_LAYER,
+                blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
+                connections              = FLAGS.CONNECTIONS,
+                upsampling               = FLAGS.UPSAMPLING,
+                downsampling             = FLAGS.DOWNSAMPLING,)
 
         self._logits = self._net(self._input['image'], training=FLAGS.TRAINING)
 
