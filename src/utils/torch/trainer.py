@@ -305,7 +305,6 @@ class torch_trainer(trainercore):
         # and set all its points to 1.0 (or another function) to create a weight
         # tensor to apply to the corresponding loss map.
 
-
         loss = None
         for i in [0,1,2]:
             plane_loss = self._criterion(input=logits[i], target=labels[i])
@@ -455,7 +454,8 @@ class torch_trainer(trainercore):
 
                 labels = labels_image[plane][0].view(
                     [1, labels_image[plane][0].shape[-2], labels_image[plane][0].shape[-1]]
-                    )
+                    ).float()
+
                 # The images are in the format (Plane, W, H)
                 # Need to transpose the last two dims in order to meet the (CHW) ordering
                 # of tensorboardX
@@ -464,6 +464,7 @@ class torch_trainer(trainercore):
                 # Values get mapped to gray scale, so put them in the range (0,1)
                 labels[labels == 1] = 0.5
                 labels[labels == 2] = 1.0
+
 
                 prediction[prediction == 1] = 0.5
                 prediction[prediction == 2] = 1.0
