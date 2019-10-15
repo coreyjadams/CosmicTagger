@@ -47,6 +47,45 @@ class trainercore(object):
 
     def _initialize_io(self, color=None):
 
+        # Make sure all required dimensions are present:
+        if not FLAGS.SYNTHETIC:
+            io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
+        else:
+            io_dims = {}
+            if FLAGS.DATA_FORMAT == "channels_first":
+                io_dims['image'] = numpy.asarray(
+                    [FLAGS.MINIBATCH_SIZE, 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]])
+                io_dims['label'] = numpy.asarray(
+                    [FLAGS.MINIBATCH_SIZE, 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]])
+            else:
+                io_dims['image'] = numpy.asarray(
+                    [FLAGS.MINIBATCH_SIZE, FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3])
+                io_dims['label'] = numpy.asarray(
+                    [FLAGS.MINIBATCH_SIZE, FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3])
+
+
+        if FLAGS.DATA_FORMAT == "channels_last":
+            self._channels_dim = -1
+        else:
+            self._channels_dim = 1
+
+        self._dims = {}
+        # Using the sparse IO techniques, we have to manually set the dimensions for the input.
+
+        # Fortunately, everything we need is in the FLAGS object and io object:
+
+        local_minibatch_size = io_dims['image'][0]
+
+
+        if FLAGS.DATA_FORMAT == "channels_first":
+            shape = [local_minibatch_size,] + [3,] + FLAGS.SHAPE
+        else:
+            shape = [local_minibatch_size,] + FLAGS.SHAPE + [3,]
+
+        self._dims['image'] = numpy.asarray(shape)
+        self._dims['label'] = numpy.asarray(shape)
+
+
         if FLAGS.SYNTHETIC:
             return
 

@@ -639,6 +639,9 @@ class torch_trainer(trainercore):
                 minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 if FLAGS.INPUT_HALF_PRECISION:
                     minibatch_data[key] = minibatch_data[key].half()
+        if FLAGS.SYNTHETIC:
+            minibatch_data['image'] = minibatch_data['image'].float()
+            minibatch_data['weight'] = minibatch_data['weight'].float()
         return minibatch_data
 
     def forward_pass(self, minibatch_data):
@@ -911,7 +914,10 @@ class torch_trainer(trainercore):
     def batch_process(self):
 
         # At the begining of batch process, figure out the epoch size:
-        self._epoch_size = self._larcv_interface.size('primary')
+        if not FLAGS.SYNTHETIC:
+            self._epoch_size = self._larcv_interface.size('primary')
+        else:
+            self._epoch_size = 100
 
         # This is the 'master' function, so it controls a lot
 
