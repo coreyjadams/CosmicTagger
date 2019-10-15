@@ -31,7 +31,7 @@ def lambda_warmup(epoch):
     # Constant terms:
     flat_warmup = 50
     linear_warmup = 50
-    full = 500
+    full = 10000
     size=hvd.size()
     target = numpy.sqrt(size)
     # Perform 500 warmup steps, gradually ramping the rate:

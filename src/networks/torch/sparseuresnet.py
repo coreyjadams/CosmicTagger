@@ -419,11 +419,17 @@ class UResNet(torch.nn.Module):
         self._s_to_d = scn.SparseToDense(dimension=3, nPlanes=params.n_initial_filters)
 
 
-        self.final_layer = BlockSeries(inplanes = params.n_initial_filters,
+        self.final_layer = SparseBlockSeries(inplanes = params.n_initial_filters,
                                              n_blocks = params.blocks_final,
                                              params   = params)
+        #
+        # self.bottleneck  = scn.SubmanifoldConvolution(dimension   = 3,
+        #                                               nIn         = params.n_initial_filters,
+        #                                               nOut        = 3,
+        #                                               filter_size = [1,1,1],
+        #                                               bias        = params.use_bias)
 
-        self.bottleneck  = nn.Conv2d(in_channels  = n_initial_filters,
+        self.bottleneck  =  nn.Conv2d(in_channels  = n_initial_filters,
                     out_channels = 3,
                     kernel_size  = 1,
                     stride       = 1,
@@ -461,21 +467,21 @@ class UResNet(torch.nn.Module):
         x = self.net_core(x)
 
 
-        # Convert the images to dense layout:
-        x = self._s_to_d(x)
-
-
-        # Break the images into 3 planes:
-        x = torch.chunk(x, chunks=3, dim=2)
 
         # This squeezes into an image tensor, not 3D
-        x = [ _x.view(_x.shape[0], _x.shape[1], _x.shape[-2], _x.shape[-1]) for _x in x ]
 
 
         # Apply the final residual block to each plane:
-        x = [ self.final_layer(_x) for _x in x ]
+        x = self.final_layer(x)
+
+
+        # Convert the images to dense layout:
+        x = self._s_to_d(x)
+
+        # Break the images into 3 planes:
+        x = torch.chunk(x, chunks=3, dim=2)
+        x = [ _x.view(_x.shape[0], _x.shape[1], _x.shape[-2], _x.shape[-1]) for _x in x ]
+
         x = [ self.bottleneck(_x) for _x in x ]
-
-
 
         return x
