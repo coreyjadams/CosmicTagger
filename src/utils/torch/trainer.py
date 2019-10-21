@@ -586,40 +586,55 @@ class torch_trainer(trainercore):
         global_start_time = datetime.datetime.now()
 
         self._net.train()
+
         # Reset the gradient values for this step:
         self._opt.zero_grad()
-        # Fetch the next batch of data with larcv
-        io_start_time = datetime.datetime.now()
-        minibatch_data = self.fetch_next_batch()
-        io_end_time = datetime.datetime.now()
 
-        logits_image, labels_image = self.forward_pass(minibatch_data)
-
-
-        verbose = False
-
-        if verbose: print("Completed Forward pass")
-        # Compute the loss based on the logits
+        metrics = {}
+        io_fetch_time = 0.0
+        
+        for interior_batch in range(FLAGS.GRADIENT_ACCUMULATION):
 
 
-        loss = self._calculate_loss(labels_image, logits_image)
-        if verbose: print("Completed loss")
-
-        # Compute the gradients for the network parameters:
-        loss.backward()
-
-        # If the loss is scaled, we have to un-scale after the backwards pass
-        if FLAGS.LOSS_SCALE != 1.0:
-            for param in self._net.parameters():
-                param.grad /= FLAGS.LOSS_SCALE
-
-        if verbose: print("Completed backward pass")
+            # Fetch the next batch of data with larcv
+            io_start_time = datetime.datetime.now()
+            minibatch_data = self.fetch_next_batch(force_pop = True)
+            io_end_time = datetime.datetime.now()
+            io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
 
-        # Compute any necessary metrics:
-        metrics = self._compute_metrics(logits_image, labels_image, loss)
+            logits_image, labels_image = self.forward_pass(minibatch_data)
 
 
+            verbose = False
+
+            if verbose: print("Completed Forward pass")
+            # Compute the loss based on the logits
+
+
+            loss = self._calculate_loss(labels_image, logits_image)
+        
+            if verbose: print("Completed loss")
+
+            # Compute the gradients for the network parameters:
+            loss.backward()
+
+            # If the loss is scaled, we have to un-scale after the backwards pass
+            if FLAGS.LOSS_SCALE != 1.0:
+                for param in self._net.parameters():
+                    param.grad /= FLAGS.LOSS_SCALE
+
+            if verbose: print("Completed backward pass")
+
+
+            # Compute any necessary metrics:
+            interior_metrics = self._compute_metrics(logits_image, labels_image, loss)
+
+            for key in interior_metrics:
+                if key in metrics:
+                    metrics[key] += interior_metrics[key]
+                else:
+                    metrics[key] = interior_metrics[key]
 
         # Add the global step / second to the tensorboard log:
         try:
@@ -629,7 +644,7 @@ class torch_trainer(trainercore):
             metrics['global_step_per_sec'] = 0.0
             metrics['images_per_second'] = 0.0
 
-        metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
+        metrics['io_fetch_time'] = io_fetch_time
 
         if verbose: print("Calculated metrics")
 

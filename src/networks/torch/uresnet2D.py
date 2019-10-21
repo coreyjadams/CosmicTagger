@@ -458,6 +458,7 @@ class UResNet(torch.nn.Module):
         self.initial_convolution = Block(
             inplanes  = 1,
             kernel    = [7,7],
+            padding   = [3,3],
             outplanes = n_initial_filters,
             params    = params)
 
@@ -523,6 +524,5 @@ class UResNet(torch.nn.Module):
         # Apply the final residual block to each plane:
         x = [ self.final_layer(_x) for _x in x ]
         x = [ self.bottleneck(_x) for _x in x ]
-
         # Might need to do some reshaping here
         return x
