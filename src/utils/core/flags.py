@@ -264,11 +264,19 @@ class FLAGS(Borg):
         try:
             _ = getattr(self, '_parser')
             s = "\n\n-- CONFIG --\n"
-            for name in vars(self):
+            for name in iter(sorted(vars(self))):
                 if name != name.upper(): continue
                 attribute = getattr(self,name)
                 if type(attribute) == type(self._parser): continue
-                s += " %s = %r\n" % (name, getattr(self, name))
+                # s += " %s = %r\n" % (name, getattr(self, name))
+                substring = ' {message:{fill}{align}{width}}: {attr}\n'.format(
+                       message=name,
+                       attr = getattr(self, name),
+                       fill='.',
+                       align='<',
+                       width=30,
+                    )
+                s += substring
             return s
 
         except AttributeError:
@@ -323,56 +331,62 @@ class uresnet(FLAGS):
             if self.DATA_FORMAT == "channels_last":
                 raise Exception("Torch only supports channels first.")
 
+        if self.BLOCK_CONCAT:
+            print("Concat blocking is ON!  This is not recommended for a real network.")
+
+            if self.CONV_MODE == "3D":
+                raise Exception("Can not block concats in 3D")
+
     def _set_defaults(self):
+
+        ##################################################################
         # Parameters to control the network implementation
+        ##################################################################
+        # Layerwise parameters:
         self.BATCH_NORM                  = True
         self.USE_BIAS                    = True
+        
+        # Network Architecture parameters:
         self.N_INITIAL_FILTERS           = 6
         self.BLOCKS_PER_LAYER            = 2
         self.BLOCKS_DEEPEST_LAYER        = 4
         self.BLOCKS_FINAL                = 2
         self.NETWORK_DEPTH               = 5
         self.CONNECTIONS                 = 'sum'
-        self.VERBOSITY                   = 0
-        self.NPLANES                     = 3
-
+        self.UPSAMPLING                  = "interpolation"
+        self.DOWNSAMPLING                = "max_pooling"
+        self.CONV_MODE                   = '2D'
+        # Rate at which the number of filters increases at deeper layers
+        self.GROWTH_RATE                 = "multiplicative"
+        self.BLOCK_CONCAT                = False
         self.RESIDUAL                    = True
 
-        # Parameters controlling regularization
-        self.BALANCE_LOSS                = True
-
-        self.OPTIMIZER                   = "Adam"
-
+        #  Tensorflow or torch?
+        self.FRAMEWORK                   = "tensorflow"
         # Run this in sparse mode or not?
         self.SPARSE                      = False
-        self.CONV_MODE                   = '2D'
 
+
+
+        ##################################################################
+        # Parameters to control the network training
+        ##################################################################
+        # Parameters controlling regularization
+        self.BALANCE_LOSS                = True
+        self.OPTIMIZER                   = "Adam"
+        self.VERBOSITY                   = 0
         # Run with half precision:
         self.INPUT_HALF_PRECISION        = False
         self.MODEL_HALF_PRECISION        = False
         self.LOSS_SCALE                  = 1.0
-
-        # Rate at which the number of filters increases at deeper layers
-        self.GROWTH_RATE                 = "multiplicative"
-        self.BLOCK_CONCAT                = False
-
-        # Parameters to control the network implementation
-        self.SHARE_WEIGHTS               = True
-
         # Parameters controlling regularization
         self.REGULARIZE_WEIGHTS          = 0.0001
         self.BALANCE_LOSS                = True
-
-        self.UPSAMPLING                  = "interpolation"
-        self.DOWNSAMPLING                = "max_pooling"
-
         self.DATA_FORMAT                 = "channels_first"
-
         # Relevant parameters for running on KNL:
         self.INTER_OP_PARALLELISM_THREADS    = 4
         self.INTRA_OP_PARALLELISM_THREADS    = 64
 
-        self.FRAMEWORK                   = "tensorflow"
 
         FLAGS._set_defaults(self)
 
@@ -402,9 +416,6 @@ class uresnet(FLAGS):
         parser.add_argument('--connections', type=str, choices=['sum', 'concat', 'none'], default=self.CONNECTIONS,
             help="Connect shortcuts with sums, concat+bottleneck, or no connections [default: {}]".format(self.CONNECTIONS))
 
-        parser.add_argument('--nplanes', type=int, default=self.NPLANES,
-            help="Number of planes to split the initial image into [default: {}]".format(self.NPLANES))
-
         parser.add_argument('-bl','--balance-loss', type=str2bool, default=self.BALANCE_LOSS,
             help="Turn on or off weight balancing across classes [default: {}]".format(self.BALANCE_LOSS))
 
@@ -418,11 +429,11 @@ class uresnet(FLAGS):
         parser.add_argument('--sparse', type=str2bool, default=self.SPARSE,
             help="Use sparse convolutions instead of dense convolutions [default: {}]".format(self.SPARSE))
 
-        parser.add_argument('-gr', '--growth-rate', type=str, choices=['multiplicative','linear'], default=self.GROWTH_RATE,
-            help="Use sparse convolutions instead of dense convolutions [default: {}]".format(self.GROWTH_RATE))
+        parser.add_argument('-gr', '--growth-rate', type=str, choices=['multiplicative','additive'], default=self.GROWTH_RATE,
+            help="Either double at each layer, or add a constant factor, to the number of filters. [default: {}]".format(self.GROWTH_RATE))
 
         parser.add_argument('--block-concat', type=str2bool, default=self.BLOCK_CONCAT,
-            help="Use sparse convolutions instead of dense convolutions [default: {}]".format(self.BLOCK_CONCAT))
+            help="Block the concatenations at the deepest layer (2D only) [default: {}]".format(self.BLOCK_CONCAT))
 
         parser.add_argument('--upsampling', type=str,
             choices=["convolutional", "interpolation"], default=self.UPSAMPLING,
@@ -431,8 +442,6 @@ class uresnet(FLAGS):
         parser.add_argument('--downsampling', type=str,
             choices=["convolutional", "max_pooling"], default=self.DOWNSAMPLING,
             help="Which operation to use for downsamplign [default: {}]".format(self.DOWNSAMPLING))
-
-
 
         parser.add_argument('--model-half-precision', type=str2bool, default=self.MODEL_HALF_PRECISION,
             help="Use half precision for model weights and parameters [default: {}]".format(self.MODEL_HALF_PRECISION))
