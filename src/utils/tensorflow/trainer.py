@@ -78,7 +78,8 @@ class tf_trainer(trainercore):
                 blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
                 connections              = FLAGS.CONNECTIONS,
                 upsampling               = FLAGS.UPSAMPLING,
-                downsampling             = FLAGS.DOWNSAMPLING,)
+                downsampling             = FLAGS.DOWNSAMPLING,
+                growth_rate              = FLAGS.GROWTH_RATE)
         else:
             self._net = uresnet3d.UResNet3D(
                 n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
@@ -93,7 +94,8 @@ class tf_trainer(trainercore):
                 blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
                 connections              = FLAGS.CONNECTIONS,
                 upsampling               = FLAGS.UPSAMPLING,
-                downsampling             = FLAGS.DOWNSAMPLING,)
+                downsampling             = FLAGS.DOWNSAMPLING,
+                growth_rate              = FLAGS.GROWTH_RATE)
 
         self._logits = self._net(self._input['image'], training=FLAGS.TRAINING)
 
@@ -149,7 +151,7 @@ class tf_trainer(trainercore):
         n_trainable_parameters = 0
         for var in tf.trainable_variables():
             n_trainable_parameters += numpy.prod(var.get_shape())
-            # print(var.name, var.get_shape())
+            print(var.name, var.get_shape())
         sys.stdout.write("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
 
 
