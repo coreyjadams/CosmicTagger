@@ -219,14 +219,14 @@ class trainercore(object):
         return
 
 
-    def fetch_next_batch(self, mode='primary', metadata=False):
+    def fetch_next_batch(self, mode='primary', metadata=False, force_pop=False):
 
         if not FLAGS.SYNTHETIC:
             metadata=True
 
 
             pop = True
-            if self._iteration == 0:
+            if self._iteration == 0 and not force_pop:
                 pop = False
 
 

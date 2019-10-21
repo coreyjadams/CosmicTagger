@@ -99,6 +99,10 @@ class tf_trainer(trainercore):
 
         self._logits = self._net(self._input['image'], training=FLAGS.TRAINING)
 
+        # Used to accumulate gradients over several iterations:
+        self._accum_vars = [tf.Variable(tv.initialized_value(),
+                            trainable=False) for tv in tf.trainable_variables()]
+
         # self._net = uresnet_classic.UResNet()
         # self._logits = self._net._build_network(self._input)
 
@@ -343,8 +347,16 @@ class tf_trainer(trainercore):
         self._global_step = tf.train.get_or_create_global_step()
 
 
-        self._train_op = self._opt.minimize(self._loss, self._global_step)
+        # self._train_op = self._opt.minimize(self._loss, self._global_step)
 
+        with tf.name_scope('gradient_accumulation'):
+
+            self._zero_gradients =  [tv.assign(tf.zeros_like(tv)) for tv in self._accum_vars]
+            self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
+                                     i, gv in enumerate(self._opt.compute_gradients(self._loss))]
+
+            self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.trainable_variables()),
+                global_step = self._global_step)
 
     def _calculate_loss(self, labels, logits, weight=None):
         ''' Calculate the loss.
@@ -633,67 +645,89 @@ class tf_trainer(trainercore):
 
         global_start_time = datetime.datetime.now()
 
-        # Fetch the next batch of data with larcv
-        io_start_time = datetime.datetime.now()
-        minibatch_data = self.fetch_next_batch()
-        io_end_time = datetime.datetime.now()
-
         # For tensorflow, we have to build up an ops list to submit to the
         # session to run.
 
-        # These are ops that always run:
-        ops = {}
-        ops['train_step']  = self._train_op
-        ops['global_step'] = self._global_step
-        ops['summary'] = self._summary_basic
 
-        ops['metrics'] = self._metrics
+        metrics = None
 
-        if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
-            ops['summary_images'] = self._summary_images
+        # First, zero out the gradients:
+        self._sess.run(self._zero_gradients)
+        io_fetch_time = 0.0
 
-        # g = tf.get_default_graph()
-        # opts = tf.profiler.ProfileOptionBuilder.float_operation()
-        # run_meta = tf.RunMetadata()
-        # flop = tf.profiler.profile(g, run_meta=run_meta, cmd='op', options=opts)
+        do_summary_images = self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0
 
-        # print("FLOP is ", flop.total_float_ops)
+        for i in range(FLAGS.GRADIENT_ACCUMULATION):
+
+            # Fetch the next batch of data with larcv
+            io_start_time = datetime.datetime.now()
+            minibatch_data = self.fetch_next_batch(force_pop=True)
+            io_end_time = datetime.datetime.now()
+            io_fetch_time += (io_end_time - io_start_time).total_seconds()
+
+            # These are ops that always run:
+            ops = {}
+            ops['_accum_gradients']  = self._accum_gradients
+            ops['global_step']       = self._global_step
+            ops['metrics']           = self._metrics
+
+            # Run the summary only once:
+            if i == 0:
+                ops['summary']           = self._summary_basic
+
+                # Add the images, but only once:
+                if do_summary_images:
+                    ops['summary_images'] = self._summary_images
+
+            ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 
 
+            if metrics is None:
+                metrics = self.metrics(ops["metrics"])
+            else:
+                temp_metrics = self.metrics(ops["metrics"])
+                for key in metrics:
+                    metrics[key] += temp_metrics[key]
 
+            # Grab the summaries if we need to write them:
+            if i == 0:
+                summaries = ops['summary']
+                if do_summary_images:
+                    summary_images = ops['summary_images']
 
-        ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
+        # Lastly, update the weights:
+        self._sess.run(self._apply_gradients)
 
-
-
-
-        metrics = self.metrics(ops["metrics"])
+        # Normalize the metrics:
+        for key in metrics:
+            metrics[key] /= FLAGS.GRADIENT_ACCUMULATION
 
         verbose = False
 
         # Add the global step / second to the tensorboard log:
         try:
             metrics['global_step_per_sec'] = 1./self._seconds_per_global_step
-            metrics['images_per_second'] = FLAGS.MINIBATCH_SIZE / self._seconds_per_global_step
+            metrics['images_per_second'] = (FLAGS.MINIBATCH_SIZE*FLAGS.GRADIENT_ACCUMULATION) / self._seconds_per_global_step
         except AttributeError:
             metrics['global_step_per_sec'] = 0.0
             metrics['images_per_second'] = 0.0
 
 
 
-        metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
+        metrics['io_fetch_time'] = io_fetch_time
 
         if verbose: print("Calculated metrics")
 
+
         # Report metrics on the terminal:
-        self.log(ops["metrics"], kind="Train", step=ops["global_step"])
+        self.log(metrics, kind="Train", step=ops["global_step"])
 
 
         if verbose: print("Completed Log")
 
-        self.write_summaries(self._main_writer, ops["summary"], ops["global_step"])
-        if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
-            self.write_summaries(self._main_writer, ops["summary_images"], ops["global_step"])
+        self.write_summaries(self._main_writer, summaries, ops["global_step"])
+        if do_summary_images:
+            self.write_summaries(self._main_writer, summary_images, ops["global_step"])
 
 
         # Create some extra summary information:

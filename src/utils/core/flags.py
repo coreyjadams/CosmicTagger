@@ -393,6 +393,9 @@ class uresnet(FLAGS):
         self.INTER_OP_PARALLELISM_THREADS    = 4
         self.INTRA_OP_PARALLELISM_THREADS    = 64
 
+        # Accumulate N minibatches of gradients before doing a weight update
+        self.GRADIENT_ACCUMULATION       = 1
+
 
         FLAGS._set_defaults(self)
 
@@ -462,6 +465,10 @@ class uresnet(FLAGS):
             help="Passed to tf configproto [default: {}]".format(self.INTER_OP_PARALLELISM_THREADS))
         parser.add_argument('--intra-op-parallelism-threads',type=int, default=self.INTRA_OP_PARALLELISM_THREADS,
             help="Passed to tf configproto [default: {}]".format(self.INTRA_OP_PARALLELISM_THREADS))
+
+
+        parser.add_argument('--gradient-accumulation',type=int, default=self.GRADIENT_ACCUMULATION,
+            help="Accumulate this many minibatches before updating weigths [default: {}]".format(self.GRADIENT_ACCUMULATION))
 
 
         parser.add_argument('--conv-mode', type=str, choices=['2D','3D'], default=self.CONV_MODE,
