@@ -16,9 +16,10 @@ from ..core.trainercore     import trainercore
 FLAGS = flags.FLAGS()
 
 if FLAGS.SPARSE:
-    from ...networks.torch.sparseuresnet import UResNet
+    from ...networks.torch.sparseuresnet import UResNet3D
 else:
-    from ...networks.torch.uresnet2d import UResNet
+    from ...networks.torch.uresnet2D     import UResNet
+    from ...networks.torch.uresnet3D     import UResNet3D
 
 
 
@@ -45,20 +46,39 @@ class torch_trainer(trainercore):
 
     def init_network(self):
 
-        self._net = UResNet(
-            n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
-            batch_norm               = FLAGS.BATCH_NORM,
-            use_bias                 = FLAGS.USE_BIAS,
-            residual                 = FLAGS.RESIDUAL,
-            regularize               = FLAGS.REGULARIZE_WEIGHTS,
-            depth                    = FLAGS.NETWORK_DEPTH,
-            blocks_final             = FLAGS.BLOCKS_FINAL,
-            blocks_per_layer         = FLAGS.BLOCKS_PER_LAYER,
-            blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
-            connections              = FLAGS.CONNECTIONS,
-            upsampling               = FLAGS.UPSAMPLING,
-            downsampling             = FLAGS.DOWNSAMPLING,
-            shape                    = FLAGS.SHAPE)
+        if FLAGS.CONV_MODE == "2D":
+
+            self._net = UResNet(
+                n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
+                batch_norm               = FLAGS.BATCH_NORM,
+                use_bias                 = FLAGS.USE_BIAS,
+                residual                 = FLAGS.RESIDUAL,
+                depth                    = FLAGS.NETWORK_DEPTH,
+                blocks_final             = FLAGS.BLOCKS_FINAL,
+                blocks_per_layer         = FLAGS.BLOCKS_PER_LAYER,
+                blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
+                connections              = FLAGS.CONNECTIONS,
+                upsampling               = FLAGS.UPSAMPLING,
+                downsampling             = FLAGS.DOWNSAMPLING,
+                shape                    = FLAGS.SHAPE,
+                growth_rate              = FLAGS.GROWTH_RATE)
+
+        else:
+            self._net = UResNet3D(
+                n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
+                batch_norm               = FLAGS.BATCH_NORM,
+                use_bias                 = FLAGS.USE_BIAS,
+                residual                 = FLAGS.RESIDUAL,
+                depth                    = FLAGS.NETWORK_DEPTH,
+                blocks_final             = FLAGS.BLOCKS_FINAL,
+                blocks_per_layer         = FLAGS.BLOCKS_PER_LAYER,
+                blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
+                connections              = FLAGS.CONNECTIONS,
+                upsampling               = FLAGS.UPSAMPLING,
+                downsampling             = FLAGS.DOWNSAMPLING,
+                shape                    = FLAGS.SHAPE,
+                growth_rate              = FLAGS.GROWTH_RATE)
+
         # self._net.half()
 
         # self._net = trace(self._net, torch.empty(1, 3, 640, 1024).uniform_(0,1))
@@ -440,7 +460,7 @@ class torch_trainer(trainercore):
         # if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
         if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0:
 
-            for plane in range(FLAGS.NPLANES):
+            for plane in range(3):
                 val, prediction = torch.max(logits_image[plane][0], dim=0)
                 # This is a reshape and H/W swap:
                 prediction = prediction.view(
@@ -483,114 +503,6 @@ class torch_trainer(trainercore):
                         labels, self._global_step)
 
         return
-
-
-    # def compute_weights(self, labels):
-
-    #     # Labels is of the format (batch, plane, N_VOXELS, value)
-
-    #     weight_output = numpy.copy(labels)
-
-    #     batch_size = labels.shape[0]
-
-
-    #     for batch in range(batch_size):
-
-    #         for plane in range(FLAGS.NPLANES):
-
-    #             label_values = labels[batch, plane, :, -1]
-    #             active = label_values != -999
-    #             vals, counts = numpy.unique(label_values[active], return_counts=True)
-
-    #             if FLAGS.BALANCE_LOSS:
-    #                 # In this case, the weight is set such summed weight
-    #                 # over each pixel's class is equal across all weights.
-    #                 # It's then normalized to equal one
-    #                 weights = 1. / (len(vals) * counts)
-
-    #                 # Normalize the weights to sum to one:
-    #                 # weights /= numpy.sum(weights*counts)
-
-    #                 wvec = numpy.full(label_values.shape, -999.)
-
-    #                 for i, l in enumerate(vals):
-    #                     wvec[label_values == l] = weights[i]
-
-    #                 weight_output[batch, plane, :, -1] = wvec
-    #             else:
-    #                 # In this case, the weight is just 1./N_Voxels
-    #                 weight  = 1./numpy.sum(counts)
-
-    #                 weight_output[batch, plane, active, -1] = weight
-
-
-    #     return weight_output
-
-
-    # def compute_weights_dense(self, labels):
-
-    #     # Labels is of the format (batch, plane, x_shape, y_shape)
-
-    #     weight_output = numpy.zeros(labels.shape, dtype=numpy.float32)
-
-    #     batch_size = labels.shape[0]
-
- #      # Prepare output weights:
- #        print(labels.shape)
- #        weights = numpy.zeros(labels.shape)
-
- #        i = 0
- #        for batch in labels:
- #            # First, figure out what the labels are and how many of each:
- #            values, counts = numpy.unique(batch, return_counts=True)
-
- #            n_pixels = numpy.sum(counts)
- #            for value, count in zip(values, counts):
- #                weight = 1.0*(n_pixels - count) / n_pixels
- #                if boost_labels is not None and value in boost_labels.keys():
- #                    weight *= boost_labels[value]
- #                mask = labels[i] == value
- #                weights[i, mask] += weight
- #            weights[i] *= 1. / numpy.sum(weights[i])
- #            i += 1
-
- #        print(numpy.mean(labels))
- #        print(numpy.mean(weights))
-
-    #     if FLAGS.BALANCE_LOSS:
-    #         for batch in range(batch_size):
-
-    #             for plane in range(FLAGS.NPLANES):
-
-    #                 label_values = labels[batch, plane, :, :]
-    #                 # active = label_values != 0
-    #                 vals, counts = numpy.unique(label_values, return_counts=True)
-
-    #                 if FLAGS.BALANCE_LOSS:
-    #                     # In this case, the weight is set such summed weight
-    #                     # over each pixel's class is equal across all weights.
-    #                     # It's then normalized to equal one
-    #                     weights = 1./ (len(vals) * counts )
-    #                     # # Normalize the weights to sum to one:
-    #                     # weights /= numpy.sum(weights*counts)
-
-    #                     wvec = numpy.full(label_values.shape, 0.0)
-
-    #                     for i, l in enumerate(vals):
-    #                         wvec[label_values == l] = weights[i]
-
-    #                     weight_output[batch, plane, :, :] = wvec
-
-    #     else:
-    #         # print("type(labels): ", type(labels))
-    #         # print("labels.shape: ", labels.shape)
-    #         # print("numpy.prod(labels.shape): ", numpy.prod(labels.shape))
-    #         # In this case, the weight is just 1./N_Voxels
-    #         weight  = 1.*labels.shape[0]/numpy.prod(labels.shape)
-    #         # print("Weight: ", weight)
-    #         # print(numpy.sum(counts))
-
-
 
 
     def increment_global_step(self):
@@ -839,13 +751,13 @@ class torch_trainer(trainercore):
             # Each type, though (bkg/cosmic/neut) is rolled up into one producer
 
             list_of_dicts_by_label = {
-                0 : [None] * FLAGS.NPLANES,
-                1 : [None] * FLAGS.NPLANES,
-                2 : [None] * FLAGS.NPLANES,
-                'pred' : [None] * FLAGS.NPLANES,
+                0 : [None] * 3,
+                1 : [None] * 3,
+                2 : [None] * 3,
+                'pred' : [None] * 3,
             }
 
-            for plane in range(FLAGS.NPLANES):
+            for plane in range(3):
                 locs = coords[:,0] == plane
                 # print("Locs shape: ", locs.shape)
                 this_coords = coords[locs]

@@ -316,38 +316,36 @@ class UNetCore(nn.Module):
                                            n_blocks = self.layers,
                                            params   = params)
 
-            # if FLAGS.GROWTH_RATE == "linear":
-            #     n_filters_next_layer = inplanes + FLAGS.N_INITIAL_FILTERS
-            # elif FLAGS.GROWTH_RATE == "multiplicative":
-            n_filters_next_layer = inplanes * 2
-
+            if params.growth_rate == "multiplicative":
+                n_filters_next = 2 * inplanes
+            else:
+                n_filters_next = inplanes + params.n_initial_filters
+            
             # Down sampling operation:
             # This does change the number of filters from above down-pass blocks
             if params.downsampling == "convolutional":
                 self.downsample = ConvolutionDownsample(inplanes    = inplanes,
-                                                        outplanes   = n_filters_next_layer,
+                                                        outplanes   = n_filters_next,
                                                         params      = params)
             else:
                 self.downsample = MaxPooling(inplanes    = inplanes,
-                                             outplanes   = n_filters_next_layer,
+                                             outplanes   = n_filters_next,
                                              params      = params)
 
 
 
             # Submodule:
             self.main_module    = UNetCore(depth    = depth-1,
-                                           inplanes = n_filters_next_layer,
+                                           inplanes = n_filters_next,
                                            params   = params )
+
             # Upsampling operation:
-
-
-
             if params.upsampling == "convolutional":
-                self.upsample       = ConvolutionUpsample(inplanes  = n_filters_next_layer,
+                self.upsample       = ConvolutionUpsample(inplanes  = n_filters_next,
                                                           outplanes = inplanes,
                                                           params    = params)
             else:
-                self.upsample = InterpolationUpsample(inplanes  = n_filters_next_layer,
+                self.upsample = InterpolationUpsample(inplanes  = n_filters_next,
                                                       outplanes = inplanes,
                                                       params    = params)
 
@@ -394,12 +392,15 @@ class UNetCore(nn.Module):
             # perform the downsampling operation:
             x = [ self.upsample(_x) for _x in x ]
 
+
+            # Apply the convolutional steps:
+            x = [ self.up_blocks(_x) for _x in x ]
+
             # Connect with the residual if necessary:
             for i in range(len(x)):
                 x[i] = self.connection(x[i], residual=residual[i])
 
-            # Apply the convolutional steps:
-            x = [ self.up_blocks(_x) for _x in x ]
+
         #
         # if FLAGS.VERBOSITY >1:
         #     for p in range(len(x)):
@@ -418,19 +419,22 @@ class objectview(object):
 class UResNet(torch.nn.Module):
 
     def __init__(self, * ,
-                n_initial_filters,
-                batch_norm,
-                use_bias,
-                residual,
-                regularize,
-                depth,
-                blocks_final,
-                blocks_per_layer,
-                blocks_deepest_layer,
-                connections,
-                upsampling,
-                downsampling,
-                shape):
+                n_initial_filters,    # Number of initial filters in the network.
+                batch_norm,           # Use Batch norm?
+                use_bias,             # Use Bias layers?
+                residual,             # Use residual blocks where possible
+                depth,                # How many times to downsample and upsample
+                blocks_final,         # How many blocks just before bottleneck?
+                blocks_per_layer,     # How many blocks to apply at this layer, if not deepest
+                blocks_deepest_layer, # How many blocks at the deepest layer
+                connections,          # What type of connection?
+                upsampling,           # What type of upsampling?
+                downsampling,         # What type of downsampling?
+                shape,                # Data shape
+                growth_rate,          # Either multiplicative (doubles) or additive (constant addition))
+            ):
+
+
         torch.nn.Module.__init__(self)
 
 
@@ -439,7 +443,6 @@ class UResNet(torch.nn.Module):
             'batch_norm'            : batch_norm,
             'use_bias'              : use_bias,
             'residual'              : residual,
-            'regularize'            : regularize,
             'depth'                 : depth,
             'blocks_final'          : blocks_final,
             'blocks_per_layer'      : blocks_per_layer,
@@ -448,16 +451,17 @@ class UResNet(torch.nn.Module):
             'upsampling'            : upsampling,
             'downsampling'          : downsampling,
             'shape'                 : shape,
+            'growth_rate'           : growth_rate,
             })
 
 
         self.initial_convolution = Block(
             inplanes  = 1,
+            kernel    = [7,7],
             outplanes = n_initial_filters,
             params    = params)
 
         n_filters = n_initial_filters
-        # Next, build out the convolution steps:
 
         self.net_core = UNetCore(
             depth    = depth,
