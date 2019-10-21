@@ -284,7 +284,7 @@ class MaxPooling3D(tf.keras.models.Model):
 
         self.pool = tf.keras.layers.MaxPooling3D(pool_size=[1,2,2], data_format=params.data_format)
 
-        self.bottleneck = Block(
+        self.bottleneck = Block3D(
             n_filters   = n_filters,
             kernel      = (1,1,1),
             strides     = (1,1,1),
@@ -309,7 +309,7 @@ class InterpolationUpsample3D(tf.keras.models.Model):
                     data_format=params.data_format,
                     interpolation="bilinear")
 
-        self.bottleneck = Block(
+        self.bottleneck = Block3D(
             n_filters   = n_filters,
             strides     = (1,1,1),
             kernel      = (1,1,1),
@@ -372,12 +372,17 @@ class UNetCore3D(tf.keras.models.Model):
                     n_filters   = out_filters,
                     params      = params)
 
-
+            
+            if params.growth_rate == "multiplicative":
+                n_filters_next = 2 * out_filters
+            else:
+                n_filters_next = out_filters + params.n_initial_filters
+                
             # Submodule:
             self.main_module    = UNetCore3D(
                 depth           = depth-1,
                 in_filters      = out_filters, #passing in more filters
-                out_filters     = 2*out_filters, # Double at the next layer too
+                out_filters     = n_filters_next, # Double at the next layer too
                 params          = params
             )
 
@@ -391,9 +396,10 @@ class UNetCore3D(tf.keras.models.Model):
                     strides     = (1,2,2),
                     params      = params)
             else:
-                self.upsample = InterpolationUpsample3D(
-                    n_filters   = in_filters,
-                    params      = params)
+                raise Exception("This ought to be unreachable!")
+                # self.upsample = InterpolationUpsample3D(
+                #     n_filters   = in_filters,
+                #     params      = params)
 
             # Convolutional or residual blocks for the upsampling pass:
 
@@ -477,7 +483,8 @@ class UResNet3D(tf.keras.models.Model):
                     blocks_per_layer,     # How many blocks to apply at this layer, if not deepest
                     connections,          # What type of connection?
                     upsampling,           # What type of upsampling?
-                    downsampling          # What type of downsampling?
+                    downsampling,         # What type of downsampling?
+                    growth_rate           # Either multiplicative (doubles) or additive (constant addition)
                 ):
 
         tf.keras.models.Model.__init__(self)
@@ -497,6 +504,7 @@ class UResNet3D(tf.keras.models.Model):
             'connections'           : connections,
             'upsampling'            : upsampling,
             'downsampling'          : downsampling,
+            'growth_rate'           : growth_rate,
             })
 
         if data_format == "channels_first":
@@ -512,11 +520,16 @@ class UResNet3D(tf.keras.models.Model):
 
         n_filters = n_initial_filters
         # Next, build out the convolution steps:
-
+        
+        if params.growth_rate == "multiplicative":
+            n_filters_next = 2 * n_initial_filters
+        else:
+            n_filters_next = n_initial_filters + params.n_initial_filters
+            
         self.net_core = UNetCore3D(
             depth                    = depth,
             in_filters               = n_initial_filters,
-            out_filters              = 2*n_initial_filters,
+            out_filters              = n_filters_next,
             params                   = params)
 
 
