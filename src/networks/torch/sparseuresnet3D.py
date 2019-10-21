@@ -357,22 +357,23 @@ class objectview(object):
         self.__dict__ = d
 
 
-class UResNet(torch.nn.Module):
+class UResNet3D(torch.nn.Module):
 
     def __init__(self, * ,
-            n_initial_filters,
-            batch_norm,
-            use_bias,
-            residual,
-            regularize,
-            depth,
-            blocks_final,
-            blocks_per_layer,
-            blocks_deepest_layer,
-            connections,
-            upsampling,
-            downsampling,
-            shape):
+            n_initial_filters,   # Number of initial filters in the network.
+            batch_norm,          # Use Batch norm?
+            use_bias,            # Use Bias layers?
+            residual,            # Use residual blocks where possible
+            depth,               # How many times to downsample and upsample
+            blocks_final,        # How many blocks just before bottleneck?
+            blocks_per_layer,    # How many blocks to apply at this layer, if not deepest
+            blocks_deepest_layer,# How many blocks at the deepest layer
+            connections,         # What type of connection?
+            upsampling,          # What type of upsampling?
+            downsampling,        # What type of downsampling?
+            shape,               # Data shape
+            growth_rate          # Either multiplicative (doubles) or additive (constant addition))
+            ):
         torch.nn.Module.__init__(self)
 
 
@@ -390,6 +391,7 @@ class UResNet(torch.nn.Module):
             'upsampling'            : upsampling,
             'downsampling'          : downsampling,
             'shape'                 : shape,
+            'growth_rate'           : growth_rate,
             })
 
         # Create the sparse input tensor:
@@ -406,7 +408,11 @@ class UResNet(torch.nn.Module):
             bias=False)
 
 
-
+        if params.growth_rate == "multiplicative":
+            n_filters_next = 2 * n_initial_filters
+        else:
+            n_filters_next = n_initial_filters + params.n_initial_filters
+        
         # Next, build out the convolution steps:
 
         self.net_core = SparseUNetCore(depth=params.depth,

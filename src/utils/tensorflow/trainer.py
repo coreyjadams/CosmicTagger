@@ -9,7 +9,7 @@ import numpy
 
 from ..core                 import flags
 from ..core.trainercore     import trainercore
-from ...networks.tensorflow import uresnet, uresnet3d
+from ...networks.tensorflow import uresnet2D, uresnet3D
 
 FLAGS = flags.FLAGS()
 
@@ -65,7 +65,7 @@ class tf_trainer(trainercore):
         self._metrics = {}
 
         if FLAGS.CONV_MODE == '2D':
-            self._net = uresnet.UResNet(
+            self._net = uresnet2D.UResNet(
                 n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
                 data_format              = FLAGS.DATA_FORMAT,
                 batch_norm               = FLAGS.BATCH_NORM,
@@ -81,7 +81,7 @@ class tf_trainer(trainercore):
                 downsampling             = FLAGS.DOWNSAMPLING,
                 growth_rate              = FLAGS.GROWTH_RATE)
         else:
-            self._net = uresnet3d.UResNet3D(
+            self._net = uresnet3D.UResNet3D(
                 n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
                 data_format              = FLAGS.DATA_FORMAT,
                 batch_norm               = FLAGS.BATCH_NORM,
