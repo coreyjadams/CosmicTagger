@@ -263,7 +263,7 @@ class trainercore(object):
 
         return minibatch_data
 
-    def compute_weights(self, labels, boost_labels = None, weight_mode = 1):
+    def compute_weights(self, labels, boost_labels = None, weight_mode = 2):
         '''
         This is NOT a tensorflow implementation, but a numpy implementation.
         Running on CPUs this might not make a difference.  Running on GPUs
@@ -333,12 +333,18 @@ class trainercore(object):
 
         if weight_mode == 2:
 
-            bkg_weight = 1.7e-7
+            # This mode maintains the weights for everything as if they are unbalanced,
+            # however it gives a mild boost to cosmic pixels, and a medium
+            # boost to neutrino pixels.
+
+            per_pixel_weight = 1./(numpy.prod(FLAGS.SHAPE))
+
+            bkg_weight = per_pixel_weight
             # Now we have the weight values, return it in the proper shape:
             # Prepare output weights:
             weights = numpy.full(values.shape, bkg_weight)
-            weights[values==2] = 0.0001
-            weights[values==1] = 0.001
+            weights[values==1] = 5*per_pixel_weight
+            weights[values==2] = 1.5*per_pixel_weight
 
 
 
@@ -354,7 +360,7 @@ class trainercore(object):
             # Normalize:
             total_weight = numpy.sum(dense_weights)
 
-            print("Total_weight: ", total_weight)
+            # print("Total_weight: ", total_weight)
             dense_weights *= 1./total_weight
 
 
