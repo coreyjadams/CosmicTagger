@@ -321,11 +321,15 @@ class uresnet(FLAGS):
         '''
         FLAGS.check_args(self)
 
-        if self.FRAMEWORK == "tf":
+        if self.FRAMEWORK == "tf" or self.FRAMEWORK == "tensorflow":
             self.FRAMEWORK = "tensorflow"
 
             if self.SPARSE:
                 raise Exception("Can only use sparse convolutions in torch")
+
+            if self.CONV_MODE == "3D":
+                if self.UPSAMPLING == "interpolation":
+                    raise Exception("Interpolation upsampling is not available in 3D in tensorflow.")
 
         if self.FRAMEWORK == "torch":
             if self.DATA_FORMAT == "channels_last":
@@ -336,6 +340,8 @@ class uresnet(FLAGS):
 
             if self.CONV_MODE == "3D":
                 raise Exception("Can not block concats in 3D")
+
+
 
     def _set_defaults(self):
 
