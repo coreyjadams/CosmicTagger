@@ -168,7 +168,7 @@ class tf_trainer(trainercore):
             self._config.intra_op_parallelism_threads = FLAGS.INTRA_OP_PARALLELISM_THREADS
         if FLAGS.COMPUTE_MODE == "GPU":
             self._config.gpu_options.allow_growth = True
-
+            os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = "True"
 
     def initialize(self, io_only=False):
 
@@ -211,6 +211,7 @@ class tf_trainer(trainercore):
 
         # Add the graph to the log file:
         self._main_writer.add_graph(graph)
+
 
         self._sess = tf.Session(config = self._config)
 
