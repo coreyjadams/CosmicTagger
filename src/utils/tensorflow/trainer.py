@@ -79,6 +79,8 @@ class tf_trainer(trainercore):
                 connections              = FLAGS.CONNECTIONS,
                 upsampling               = FLAGS.UPSAMPLING,
                 downsampling             = FLAGS.DOWNSAMPLING,
+                bottleneck_deepest       = FLAGS.BOTTLENECK_DEEPEST,
+                filter_size_deepest      = FLAGS.FILTER_SIZE_DEEPEST,
                 growth_rate              = FLAGS.GROWTH_RATE)
         else:
             self._net = uresnet3D.UResNet3D(
@@ -95,6 +97,8 @@ class tf_trainer(trainercore):
                 connections              = FLAGS.CONNECTIONS,
                 upsampling               = FLAGS.UPSAMPLING,
                 downsampling             = FLAGS.DOWNSAMPLING,
+                bottleneck_deepest       = FLAGS.BOTTLENECK_DEEPEST,
+                filter_size_deepest      = FLAGS.FILTER_SIZE_DEEPEST,
                 growth_rate              = FLAGS.GROWTH_RATE)
 
         self._logits = self._net(self._input['image'], training=FLAGS.TRAINING)

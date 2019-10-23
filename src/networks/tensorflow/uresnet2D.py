@@ -104,7 +104,7 @@ class ConvolutionUpsample(tf.keras.models.Model):
 class ResidualBlock(tf.keras.models.Model):
 
     def __init__(self, *,
-        n_filters, params):
+        n_filters, params, kernel=[3,3], strides=[1,1],):
 
         tf.keras.models.Model.__init__(self)
 
@@ -132,10 +132,14 @@ class ResidualBlock(tf.keras.models.Model):
 
         self.convolution_1 = Block(
             n_filters   = n_filters,
+            kernel      = kernel,
+            strides     = strides,
             params      = params)
 
         self.convolution_2 = Block(
             n_filters   = n_filters_in,
+            kernel      = kernel,
+            strides     = strides,
             activation  = tf.identity,
             params      = params)
 
@@ -159,6 +163,8 @@ class BlockSeries(tf.keras.models.Model):
     def __init__(self, *,
         out_filters,
         n_blocks,
+        kernel  = [3,3],
+        strides = [1,1],
         params):
 
         tf.keras.models.Model.__init__(self)
@@ -169,6 +175,8 @@ class BlockSeries(tf.keras.models.Model):
                 self.blocks.append(
                     Block(
                         n_filters   = out_filters,
+                        kernel      = kernel,
+                        strides     = strides,
                         params      = params
                     )
                  )
@@ -179,6 +187,8 @@ class BlockSeries(tf.keras.models.Model):
                 self.blocks.append(
                     ResidualBlock(
                         n_filters   = out_filters,
+                        kernel      = kernel,
+                        strides     = strides,
                         params      = params
                     )
                  )
@@ -207,19 +217,34 @@ class DeepestBlock(tf.keras.models.Model):
         # The deepest block concats across planes, applies convolutions,
         # Then splits into planes again
 
+        n_filters_bottleneck = params.bottleneck_deepest
+        self.bottleneck = Block(
+                 n_filters  = n_filters_bottleneck,
+                 kernel     = [1,1],
+                 strides    = [1,1],
+                 activation = tf.nn.relu,
+                 params     = params)
 
         self.blocks = BlockSeries(
-            out_filters = 3 * in_filters,
+            out_filters = n_filters_bottleneck,
+            kernel      = [params.filter_size_deepest,params.filter_size_deepest],
             n_blocks    = params.blocks_deepest_layer,
             params      = params)
 
+        self.unbottleneck = Block(
+                n_filters  = 3*in_filters,
+                kernel     = [1,1],
+                strides    = [1,1],
+                activation = tf.nn.relu,
+                params     = params)
 
 
     def call(self, x, training):
 
         x = tf.concat(x, axis=self.channels_axis)
+        x = self.bottleneck(x, training)
         x = self.blocks(x, training)
-
+        x = self.unbottleneck(x, training)
         x = tf.split(x, 3, self.channels_axis)
         return x
 
@@ -469,6 +494,8 @@ class UResNet(tf.keras.models.Model):
                     connections,          # What type of connection?
                     upsampling,           # What type of upsampling?
                     downsampling,         # What type of downsampling?
+                    bottleneck_deepest,
+                    filter_size_deepest,
                     growth_rate           # Either multiplicative (doubles) or additive (constant addition)
                 ):
 
@@ -490,6 +517,8 @@ class UResNet(tf.keras.models.Model):
             'upsampling'            : upsampling,
             'downsampling'          : downsampling,
             'growth_rate'           : growth_rate,
+            'bottleneck_deepest'    : bottleneck_deepest,
+            'filter_size_deepest'   : filter_size_deepest,
             })
 
         if data_format == "channels_first":

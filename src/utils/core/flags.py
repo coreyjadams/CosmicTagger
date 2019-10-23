@@ -66,12 +66,12 @@ class FLAGS(Borg):
         # Parameters controlling training situations
         self.COMPUTE_MODE          = "CPU"
         self.TRAINING              = True
-        self.MINIBATCH_SIZE        = 2
+        self.MINIBATCH_SIZE        = 1
         self.CHECKPOINT_ITERATION  = 100
         self.SUMMARY_ITERATION     = 1
         self.LOGGING_ITERATION     = 1
-        self.LEARNING_RATE         = 0.0003
-        self.ITERATIONS            = 5000
+        self.LEARNING_RATE         = 0.001
+        self.ITERATIONS            = 25000
         self.VERBOSITY             = 0
         self.LOG_DIRECTORY         = './log'
         self.CHECKPOINT_DIRECTORY  = None
@@ -103,7 +103,6 @@ class FLAGS(Borg):
         self.AUX_ITERATION         = 10*self.SUMMARY_ITERATION
 
 
-        self.OPTIMIZER             = "Adam"
         self.REGULARIZE_WEIGHTS    = 0.0001
 
         self.IMAGE_PRODUCER        = "sbndwire"
@@ -170,8 +169,8 @@ class FLAGS(Borg):
                                   help='Period (in steps) to store snapshot of weights [default: {}]'.format(self.CHECKPOINT_ITERATION))
 
         self.train_parser.add_argument('-o', '--optimizer', default=self.OPTIMIZER, type=str,
-            choices=['lars', 'rmsprop', 'adam'],
-            help="Optimizer to use, must be lars, rmsprop, adam [default: {}]".format(self.OPTIMIZER))
+            choices=['rmsprop', 'adam'],
+            help="Optimizer to use, must be rmsprop or adam [default: {}]".format(self.OPTIMIZER))
 
         self.train_parser.add_argument('-rw','--regularize-weights', type=float, default=self.REGULARIZE_WEIGHTS,
             help="Regularization strength for all learned weights [default: {}]".format(self.REGULARIZE_WEIGHTS))
@@ -353,17 +352,19 @@ class uresnet(FLAGS):
         self.USE_BIAS                    = True
         
         # Network Architecture parameters:
-        self.N_INITIAL_FILTERS           = 6
+        self.N_INITIAL_FILTERS           = 16
         self.BLOCKS_PER_LAYER            = 2
-        self.BLOCKS_DEEPEST_LAYER        = 4
-        self.BLOCKS_FINAL                = 2
-        self.NETWORK_DEPTH               = 5
+        self.BLOCKS_DEEPEST_LAYER        = 5
+        self.BLOCKS_FINAL                = 0
+        self.NETWORK_DEPTH               = 6
+        self.FILTER_SIZE_DEEPEST         = 5
+        self.BOTTLENECK_DEEPEST          = 256
         self.CONNECTIONS                 = 'sum'
         self.UPSAMPLING                  = "interpolation"
         self.DOWNSAMPLING                = "max_pooling"
         self.CONV_MODE                   = '2D'
         # Rate at which the number of filters increases at deeper layers
-        self.GROWTH_RATE                 = "multiplicative"
+        self.GROWTH_RATE                 = "additive"
         self.BLOCK_CONCAT                = False
         self.RESIDUAL                    = True
 
@@ -388,7 +389,7 @@ class uresnet(FLAGS):
         # Parameters controlling regularization
         self.REGULARIZE_WEIGHTS          = 0.0001
         self.BALANCE_LOSS                = True
-        self.DATA_FORMAT                 = "channels_first"
+        self.DATA_FORMAT                 = "channels_last"
         # Relevant parameters for running on KNL:
         self.INTER_OP_PARALLELISM_THREADS    = 4
         self.INTRA_OP_PARALLELISM_THREADS    = 64
@@ -478,5 +479,11 @@ class uresnet(FLAGS):
         parser.add_argument('--framework', type=str, choices=['torch','tensorflow', 'tf'], default=self.FRAMEWORK,
             help="Pick to use either torch or tensorflow/tf [default: {}]".format(self.FRAMEWORK))
 
+        parser.add_argument("--bottleneck-deepest", type=int, default=self.BOTTLENECK_DEEPEST,
+            help="Bottleneck size for deepest layer convolution [default: {}]".format(self.FILTER_SIZE_DEEPEST))
+
+
+        parser.add_argument("--filter-size-deepest", type=int, default=self.FILTER_SIZE_DEEPEST,
+            help="Convolutional window size for the deepest layer convolution [default: {}]".format(self.FILTER_SIZE_DEEPEST))
 
         return parser
