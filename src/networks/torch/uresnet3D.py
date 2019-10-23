@@ -436,6 +436,8 @@ class UResNet3D(torch.nn.Module):
                 upsampling,           # What type of upsampling?
                 downsampling,         # What type of downsampling?
                 shape,                # Data shape
+                bottleneck_deepest,   # How many filters to use in combined, deepest convolutions
+                filter_size_deepest,  # What size filter to use in the deepest convolutions
                 growth_rate,          # Either multiplicative (doubles) or additive (constant addition))
             ):
 
@@ -457,6 +459,8 @@ class UResNet3D(torch.nn.Module):
             'downsampling'          : downsampling,
             'shape'                 : shape,
             'growth_rate'           : growth_rate,
+            'bottleneck_deepest'    : bottleneck_deepest,
+            'filter_size_deepest'   : filter_size_deepest,
             })
 
 

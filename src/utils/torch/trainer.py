@@ -60,6 +60,8 @@ class torch_trainer(trainercore):
                 connections              = FLAGS.CONNECTIONS,
                 upsampling               = FLAGS.UPSAMPLING,
                 downsampling             = FLAGS.DOWNSAMPLING,
+                bottleneck_deepest       = FLAGS.BOTTLENECK_DEEPEST,
+                filter_size_deepest      = FLAGS.FILTER_SIZE_DEEPEST,
                 shape                    = FLAGS.SHAPE,
                 growth_rate              = FLAGS.GROWTH_RATE)
 
@@ -77,11 +79,15 @@ class torch_trainer(trainercore):
                 upsampling               = FLAGS.UPSAMPLING,
                 downsampling             = FLAGS.DOWNSAMPLING,
                 shape                    = FLAGS.SHAPE,
+                bottleneck_deepest       = FLAGS.BOTTLENECK_DEEPEST,
+                filter_size_deepest      = FLAGS.FILTER_SIZE_DEEPEST,
                 growth_rate              = FLAGS.GROWTH_RATE)
 
         # self._net.half()
 
         # self._net = trace(self._net, torch.empty(1, 3, 640, 1024).uniform_(0,1))
+
+        print(self._net)
 
         if FLAGS.TRAINING:
             self._net.train(True)

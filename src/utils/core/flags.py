@@ -332,7 +332,8 @@ class uresnet(FLAGS):
 
         if self.FRAMEWORK == "torch":
             if self.DATA_FORMAT == "channels_last":
-                raise Exception("Torch only supports channels first.")
+                print("Torch only supports channels first - switching automatically.")
+                self.DATA_FORMAT = "channels_first"
 
         if self.BLOCK_CONCAT:
             print("Concat blocking is ON!  This is not recommended for a real network.")

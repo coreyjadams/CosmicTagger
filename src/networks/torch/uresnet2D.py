@@ -50,16 +50,16 @@ class Block(nn.Module):
 
 class ResidualBlock(nn.Module):
 
-    def __init__(self, *, inplanes, outplanes, params):
+    def __init__(self, *, inplanes, outplanes, kernel=[3,3], padding=[1,1], params):
         nn.Module.__init__(self)
 
 
         self.conv1 = nn.Conv2d(
             in_channels  = inplanes,
             out_channels = outplanes,
-            kernel_size  = [3, 3],
+            kernel_size  = kernel,
             stride       = [1, 1],
-            padding      = [1, 1],
+            padding      = padding,
             bias         = params.use_bias)
 
 
@@ -72,9 +72,9 @@ class ResidualBlock(nn.Module):
         self.conv2 = nn.Conv2d(
             in_channels  = outplanes,
             out_channels = outplanes,
-            kernel_size  = [3, 3],
+            kernel_size  = kernel,
             stride       = [1, 1],
-            padding      = [1, 1],
+            padding      = padding,
             bias         = params.use_bias)
 
         if self.do_batch_norm:
@@ -161,15 +161,25 @@ class ConvolutionUpsample(nn.Module):
 class BlockSeries(torch.nn.Module):
 
 
-    def __init__(self, *, inplanes, n_blocks, params):
+    def __init__(self, *, inplanes, n_blocks, kernel = [3,3], padding = [1,1], params):
         torch.nn.Module.__init__(self)
 
         if not params.residual:
-            self.blocks = [ Block(inplanes = inplanes, outplanes = inplanes, params = params)
-                                for i in range(n_blocks) ]
+            self.blocks = [ Block(
+                                inplanes  = inplanes, 
+                                outplanes = inplanes, 
+                                kernel    = kernel,
+                                padding   = padding,
+                                params    = params)
+                            for i in range(n_blocks) ]
         else:
-            self.blocks = [ ResidualBlock(inplanes = inplanes, outplanes = inplanes, params = params)
-                                for i in range(n_blocks)]
+            self.blocks = [ ResidualBlock(
+                                inplanes  = inplanes, 
+                                outplanes = inplanes, 
+                                kernel    = kernel,
+                                padding   = padding,
+                                params    = params)
+                            for i in range(n_blocks)]
 
         for i, block in enumerate(self.blocks):
             self.add_module('block_{}'.format(i), block)
@@ -197,7 +207,33 @@ class DeepestBlock(nn.Module):
         #     self.blocks = BlockSeries(inplanes, blocks_deepest_layer, residual = residual,
         #         use_bias=use_bias, batch_norm=batch_norm)
         # else:
-        self.blocks = BlockSeries(inplanes = 3 * inplanes, n_blocks = params.blocks_deepest_layer, params = params)
+        n_filters_bottleneck = params.bottleneck_deepest
+
+
+
+        self.bottleneck = Block(
+                inplanes   = 3*inplanes,
+                outplanes  = n_filters_bottleneck,
+                kernel     = [1,1],
+                padding    = [0,0],
+                params     = params)
+        
+        kernel  = [params.filter_size_deepest, params.filter_size_deepest]
+        padding = [ int((k - 1) / 2) for k in kernel ]
+
+        self.blocks = BlockSeries(
+            inplanes    = n_filters_bottleneck,
+            kernel      = kernel,
+            padding     = padding,
+            n_blocks    = params.blocks_deepest_layer,
+            params      = params)
+
+        self.unbottleneck = Block(
+                inplanes    = n_filters_bottleneck,
+                outplanes   = 3*inplanes,
+                kernel     = [1,1],
+                padding    = [0,0],
+                params     = params)
 
 
 
@@ -208,7 +244,9 @@ class DeepestBlock(nn.Module):
         #     x = [ self.blocks(_x) for _x in x ]
         # else:
         x = torch.cat(x, dim=1)
+        x = self.bottleneck(x)
         x = self.blocks(x)
+        x = self.unbottleneck(x)
         x = torch.chunk(x, chunks=3, dim=1)
 
 
@@ -431,6 +469,8 @@ class UResNet(torch.nn.Module):
                 upsampling,           # What type of upsampling?
                 downsampling,         # What type of downsampling?
                 shape,                # Data shape
+                bottleneck_deepest,   # How many filters to use in combined, deepest convolutions
+                filter_size_deepest,  # What size filter to use in the deepest convolutions
                 growth_rate,          # Either multiplicative (doubles) or additive (constant addition))
             ):
 
@@ -452,6 +492,8 @@ class UResNet(torch.nn.Module):
             'downsampling'          : downsampling,
             'shape'                 : shape,
             'growth_rate'           : growth_rate,
+            'bottleneck_deepest'    : bottleneck_deepest,
+            'filter_size_deepest'   : filter_size_deepest,
             })
 
 

@@ -494,8 +494,8 @@ class UResNet(tf.keras.models.Model):
                     connections,          # What type of connection?
                     upsampling,           # What type of upsampling?
                     downsampling,         # What type of downsampling?
-                    bottleneck_deepest,
-                    filter_size_deepest,
+                    bottleneck_deepest,   # How many filters to use in combined, deepest convolutions
+                    filter_size_deepest,  # What size filter to use in the deepest convolutions
                     growth_rate           # Either multiplicative (doubles) or additive (constant addition)
                 ):
 
