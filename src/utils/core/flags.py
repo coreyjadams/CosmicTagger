@@ -70,7 +70,7 @@ class FLAGS(Borg):
         self.CHECKPOINT_ITERATION  = 100
         self.SUMMARY_ITERATION     = 1
         self.LOGGING_ITERATION     = 1
-        self.LEARNING_RATE         = 0.001
+        self.LEARNING_RATE         = 0.0003
         self.ITERATIONS            = 25000
         self.VERBOSITY             = 0
         self.LOG_DIRECTORY         = './log'
@@ -103,7 +103,7 @@ class FLAGS(Borg):
         self.AUX_ITERATION         = 10*self.SUMMARY_ITERATION
 
 
-        self.REGULARIZE_WEIGHTS    = 0.0001
+        self.REGULARIZE_WEIGHTS    = 0.00001
 
         self.IMAGE_PRODUCER        = "sbndwire"
         self.LABEL_PRODUCER        = "sbnd_cosmicseg"
@@ -351,7 +351,7 @@ class uresnet(FLAGS):
         # Layerwise parameters:
         self.BATCH_NORM                  = True
         self.USE_BIAS                    = True
-        
+
         # Network Architecture parameters:
         self.N_INITIAL_FILTERS           = 16
         self.BLOCKS_PER_LAYER            = 2
@@ -388,7 +388,7 @@ class uresnet(FLAGS):
         self.MODEL_HALF_PRECISION        = False
         self.LOSS_SCALE                  = 1.0
         # Parameters controlling regularization
-        self.REGULARIZE_WEIGHTS          = 0.0001
+        self.REGULARIZE_WEIGHTS          = 0.00001
         self.BALANCE_LOSS                = True
         self.DATA_FORMAT                 = "channels_last"
         # Relevant parameters for running on KNL:
