@@ -81,7 +81,8 @@ class tf_trainer(trainercore):
                 downsampling             = FLAGS.DOWNSAMPLING,
                 bottleneck_deepest       = FLAGS.BOTTLENECK_DEEPEST,
                 filter_size_deepest      = FLAGS.FILTER_SIZE_DEEPEST,
-                growth_rate              = FLAGS.GROWTH_RATE)
+                growth_rate              = FLAGS.GROWTH_RATE,
+                block_concat             = FLAGS.BLOCK_CONCAT)
         else:
             self._net = uresnet3D.UResNet3D(
                 n_initial_filters        = FLAGS.N_INITIAL_FILTERS,

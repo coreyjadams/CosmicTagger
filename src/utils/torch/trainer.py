@@ -63,6 +63,7 @@ class torch_trainer(trainercore):
                 bottleneck_deepest       = FLAGS.BOTTLENECK_DEEPEST,
                 filter_size_deepest      = FLAGS.FILTER_SIZE_DEEPEST,
                 shape                    = FLAGS.SHAPE,
+                block_concat             = FLAGS.BLOCK_CONCAT,
                 growth_rate              = FLAGS.GROWTH_RATE)
 
         else:
