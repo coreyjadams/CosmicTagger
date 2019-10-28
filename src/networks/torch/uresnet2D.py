@@ -209,31 +209,61 @@ class DeepestBlock(nn.Module):
         # else:
         n_filters_bottleneck = params.bottleneck_deepest
 
+        self.block_concat = params.block_concat
+
+        if self.block_concat:
 
 
-        self.bottleneck = Block(
-                inplanes   = 3*inplanes,
-                outplanes  = n_filters_bottleneck,
-                kernel     = [1,1],
-                padding    = [0,0],
-                params     = params)
-        
-        kernel  = [params.filter_size_deepest, params.filter_size_deepest]
-        padding = [ int((k - 1) / 2) for k in kernel ]
+            self.bottleneck = Block(
+                    inplanes   = inplanes,
+                    outplanes  = n_filters_bottleneck,
+                    kernel     = [1,1],
+                    padding    = [0,0],
+                    params     = params)
+            
+            kernel  = [params.filter_size_deepest, params.filter_size_deepest]
+            padding = [ int((k - 1) / 2) for k in kernel ]
 
-        self.blocks = BlockSeries(
-            inplanes    = n_filters_bottleneck,
-            kernel      = kernel,
-            padding     = padding,
-            n_blocks    = params.blocks_deepest_layer,
-            params      = params)
-
-        self.unbottleneck = Block(
+            self.blocks = BlockSeries(
                 inplanes    = n_filters_bottleneck,
-                outplanes   = 3*inplanes,
-                kernel     = [1,1],
-                padding    = [0,0],
-                params     = params)
+                kernel      = kernel,
+                padding     = padding,
+                n_blocks    = params.blocks_deepest_layer,
+                params      = params)
+
+            self.unbottleneck = Block(
+                    inplanes   = n_filters_bottleneck,
+                    outplanes  = inplanes,
+                    kernel     = [1,1],
+                    padding    = [0,0],
+                    params     = params)
+
+
+        else:
+
+            self.bottleneck = Block(
+                    inplanes   = 3*inplanes,
+                    outplanes  = n_filters_bottleneck,
+                    kernel     = [1,1],
+                    padding    = [0,0],
+                    params     = params)
+            
+            kernel  = [params.filter_size_deepest, params.filter_size_deepest]
+            padding = [ int((k - 1) / 2) for k in kernel ]
+
+            self.blocks = BlockSeries(
+                inplanes    = n_filters_bottleneck,
+                kernel      = kernel,
+                padding     = padding,
+                n_blocks    = params.blocks_deepest_layer,
+                params      = params)
+
+            self.unbottleneck = Block(
+                    inplanes   = n_filters_bottleneck,
+                    outplanes  = 3*inplanes,
+                    kernel     = [1,1],
+                    padding    = [0,0],
+                    params     = params)
 
 
 
@@ -243,11 +273,17 @@ class DeepestBlock(nn.Module):
         # if FLAGS.BLOCK_CONCAT:
         #     x = [ self.blocks(_x) for _x in x ]
         # else:
-        x = torch.cat(x, dim=1)
-        x = self.bottleneck(x)
-        x = self.blocks(x)
-        x = self.unbottleneck(x)
-        x = torch.chunk(x, chunks=3, dim=1)
+        if self.block_concat:
+            x = [ self.bottleneck(_x) for _x in x ]
+            x = [ self.blocks(_x) for _x in x ]
+            x = [ self.unbottleneck(_x) for _x in x ]
+        else:
+
+            x = torch.cat(x, dim=1)
+            x = self.bottleneck(x)
+            x = self.blocks(x)
+            x = self.unbottleneck(x)
+            x = torch.chunk(x, chunks=3, dim=1)
 
 
         return x
@@ -471,6 +507,7 @@ class UResNet(torch.nn.Module):
                 shape,                # Data shape
                 bottleneck_deepest,   # How many filters to use in combined, deepest convolutions
                 filter_size_deepest,  # What size filter to use in the deepest convolutions
+                block_concat,         # Prevent concatenations at the deepest layer
                 growth_rate,          # Either multiplicative (doubles) or additive (constant addition))
             ):
 
@@ -494,6 +531,7 @@ class UResNet(torch.nn.Module):
             'growth_rate'           : growth_rate,
             'bottleneck_deepest'    : bottleneck_deepest,
             'filter_size_deepest'   : filter_size_deepest,
+            'block_concat'          : block_concat,
             })
 
 

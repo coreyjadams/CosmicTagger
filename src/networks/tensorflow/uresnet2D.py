@@ -216,36 +216,67 @@ class DeepestBlock(tf.keras.models.Model):
 
         # The deepest block concats across planes, applies convolutions,
         # Then splits into planes again
+        self.block_concat = params.block_concat
+        if self.block_concat:
+            n_filters_bottleneck = params.bottleneck_deepest
+            self.bottleneck = Block(
+                     n_filters  = n_filters_bottleneck,
+                     kernel     = [1,1],
+                     strides    = [1,1],
+                     activation = tf.nn.relu,
+                     params     = params)
 
-        n_filters_bottleneck = params.bottleneck_deepest
-        self.bottleneck = Block(
-                 n_filters  = n_filters_bottleneck,
-                 kernel     = [1,1],
-                 strides    = [1,1],
-                 activation = tf.nn.relu,
-                 params     = params)
+            self.blocks = BlockSeries(
+                out_filters = n_filters_bottleneck,
+                kernel      = [params.filter_size_deepest,params.filter_size_deepest],
+                n_blocks    = params.blocks_deepest_layer,
+                params      = params)
 
-        self.blocks = BlockSeries(
-            out_filters = n_filters_bottleneck,
-            kernel      = [params.filter_size_deepest,params.filter_size_deepest],
-            n_blocks    = params.blocks_deepest_layer,
-            params      = params)
+            self.unbottleneck = Block(
+                    n_filters  = in_filters,
+                    kernel     = [1,1],
+                    strides    = [1,1],
+                    activation = tf.nn.relu,
+                    params     = params)
 
-        self.unbottleneck = Block(
-                n_filters  = 3*in_filters,
-                kernel     = [1,1],
-                strides    = [1,1],
-                activation = tf.nn.relu,
-                params     = params)
+        else:
+            n_filters_bottleneck = params.bottleneck_deepest
+            self.bottleneck = Block(
+                     n_filters  = n_filters_bottleneck,
+                     kernel     = [1,1],
+                     strides    = [1,1],
+                     activation = tf.nn.relu,
+                     params     = params)
+
+            self.blocks = BlockSeries(
+                out_filters = n_filters_bottleneck,
+                kernel      = [params.filter_size_deepest,params.filter_size_deepest],
+                n_blocks    = params.blocks_deepest_layer,
+                params      = params)
+
+            self.unbottleneck = Block(
+                    n_filters  = 3*in_filters,
+                    kernel     = [1,1],
+                    strides    = [1,1],
+                    activation = tf.nn.relu,
+                    params     = params)
 
 
     def call(self, x, training):
 
-        x = tf.concat(x, axis=self.channels_axis)
-        x = self.bottleneck(x, training)
-        x = self.blocks(x, training)
-        x = self.unbottleneck(x, training)
-        x = tf.split(x, 3, self.channels_axis)
+        if not self.block_concat:
+            x = tf.concat(x, axis=self.channels_axis)
+        
+            x = self.bottleneck(x, training)
+            x = self.blocks(x, training)
+            x = self.unbottleneck(x, training)
+            
+            x = tf.split(x, 3, self.channels_axis)
+
+        else:
+            x = [ self.bottleneck(_x, training) for _x in x ]
+            x = [ self.blocks(_x, training) for _x in x ]
+            x = [ self.unbottleneck(_x, training) for _x in x ]
         return x
 
 
@@ -496,6 +527,7 @@ class UResNet(tf.keras.models.Model):
                     downsampling,         # What type of downsampling?
                     bottleneck_deepest,   # How many filters to use in combined, deepest convolutions
                     filter_size_deepest,  # What size filter to use in the deepest convolutions
+                    block_concat,         # Prevent concatenations at the deepest layer
                     growth_rate           # Either multiplicative (doubles) or additive (constant addition)
                 ):
 
@@ -519,6 +551,7 @@ class UResNet(tf.keras.models.Model):
             'growth_rate'           : growth_rate,
             'bottleneck_deepest'    : bottleneck_deepest,
             'filter_size_deepest'   : filter_size_deepest,
+            'block_concat'          : block_concat,
             })
 
         if data_format == "channels_first":
