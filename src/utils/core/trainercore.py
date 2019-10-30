@@ -240,7 +240,7 @@ class trainercore(object):
                     continue
                 minibatch_data[key] = numpy.reshape(minibatch_data[key], minibatch_dims[key])
 
-            if FLAGS.BALANCE_LOSS:
+            if FLAGS.BALANCE_LOSS and FLAGS.FRAMEWORK == "tensorflow":
                 minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
 
 
@@ -343,7 +343,7 @@ class trainercore(object):
             # Now we have the weight values, return it in the proper shape:
             # Prepare output weights:
             weights = numpy.full(values.shape, bkg_weight)
-            weights[values==1] = 5*per_pixel_weight
+            weights[values==1] = 10*per_pixel_weight
             weights[values==2] = 1.5*per_pixel_weight
 
 

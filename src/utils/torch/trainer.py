@@ -88,7 +88,6 @@ class torch_trainer(trainercore):
 
         # self._net = trace(self._net, torch.empty(1, 3, 640, 1024).uniform_(0,1))
 
-        print(self._net)
 
         if FLAGS.TRAINING:
             self._net.train(True)
@@ -106,14 +105,14 @@ class torch_trainer(trainercore):
                     # [1564304000    1570400    6989600]
                     # [0.9945577  0.00099843 0.00444387]
                     # This vector is simplified to be approximate:
-                    weight = torch.tensor([0.001 , 1.        , 0.25], device=device)
+                    weight = torch.tensor([1. , 10.        , 1.5.], device=device)
                 else:
                     # Statistics for the downsampled sparse images (800 samples):
                     # [20273800   908000  5262600]
                     # [0.76665759 0.03433619 0.19900622]
                     # In the sparse case, the ratio of neutrino to cosmic is unchanged,
                     # but the number of noise/bkg is much less
-                    weight = torch.tensor([0.005, 1.        , 0.025], device=device)
+                    weight = torch.tensor([1., 10.        , 1.5.], device=device)
 
         else:
             weight=None
@@ -599,7 +598,7 @@ class torch_trainer(trainercore):
 
         metrics = {}
         io_fetch_time = 0.0
-        
+
         for interior_batch in range(FLAGS.GRADIENT_ACCUMULATION):
 
 
@@ -620,7 +619,7 @@ class torch_trainer(trainercore):
 
 
             loss = self._calculate_loss(labels_image, logits_image)
-        
+
             if verbose: print("Completed loss")
 
             # Compute the gradients for the network parameters:
