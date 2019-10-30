@@ -567,12 +567,12 @@ class UResNet(tf.keras.models.Model):
 
         n_filters = n_initial_filters
         # Next, build out the convolution steps:
-        
+
         if params.growth_rate == "multiplicative":
             n_filters_next = 2 * n_initial_filters
         else:
             n_filters_next = n_initial_filters + params.n_initial_filters
-            
+
         self.net_core = UNetCore(
             depth                    = depth,
             in_filters               = n_initial_filters,
