@@ -42,7 +42,7 @@ def lambda_warmup(epoch):
     elif epoch <= flat_warmup + linear_warmup + full:
         return target
     else:
-        return target * numpy.exp(-0.001*(epoch-(full+linear_warmup+flat_warmup)))
+        return target * numpy.exp(-0.0001*(epoch-(full+linear_warmup+flat_warmup)))
 
 # def lr_increase(step):
 
