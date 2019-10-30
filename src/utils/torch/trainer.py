@@ -464,7 +464,7 @@ class torch_trainer(trainercore):
     def summary_images(self, logits_image, labels_image, saver=""):
 
         # if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
-        if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0:
+        if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0 and not FLAGS.NO_SUMMARY:
 
             for plane in range(3):
                 val, prediction = torch.max(logits_image[plane][0], dim=0)

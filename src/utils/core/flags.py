@@ -69,6 +69,7 @@ class FLAGS(Borg):
         self.MINIBATCH_SIZE        = 1
         self.CHECKPOINT_ITERATION  = 100
         self.SUMMARY_ITERATION     = 1
+        self.NO_SUMMARY_IMAGES     = False
         self.LOGGING_ITERATION     = 1
         self.LEARNING_RATE         = 0.0003
         self.ITERATIONS            = 25000
@@ -163,6 +164,8 @@ class FLAGS(Borg):
                                   help='Initial learning rate [default: {}]'.format(self.LEARNING_RATE))
         self.train_parser.add_argument('-si','--summary-iteration', type=int, default=self.SUMMARY_ITERATION,
                                   help='Period (in steps) to store summary in tensorboard log [default: {}]'.format(self.SUMMARY_ITERATION))
+        self.train_parser.add_argument('--no-summary-images', type=str2bool, default=self.NO_SUMMARY_IMAGES,
+                          help='Skip summary images to save on memory [default: {}]'.format(self.NO_SUMMARY_IMAGES))
         self.train_parser.add_argument('-li','--logging-iteration', type=int, default=self.LOGGING_ITERATION,
                                   help='Period (in steps) to print values to log [default: {}]'.format(self.LOGGING_ITERATION))
         self.train_parser.add_argument('-ci','--checkpoint-iteration', type=int, default=self.CHECKPOINT_ITERATION,

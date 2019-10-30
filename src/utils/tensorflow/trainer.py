@@ -596,6 +596,11 @@ class tf_trainer(trainercore):
         if gs % FLAGS.AUX_ITERATION == 0:
 
 
+            do_summary_images = self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0
+
+            if FLAGS.NO_SUMMARY_IMAGES:
+                do_summary_images = False
+
             # Fetch the next batch of data with larcv
             minibatch_data = self.fetch_next_batch('aux')
 
@@ -609,8 +614,8 @@ class tf_trainer(trainercore):
 
             ops['metrics'] = self._metrics
 
-            if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
-                ops['summary_images'] = self._summary_images
+            # if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
+            #     ops['summary_images'] = self._summary_images
 
 
             ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
@@ -631,7 +636,9 @@ class tf_trainer(trainercore):
             if verbose: print("Completed Log")
 
             self.write_summaries(self._val_writer, ops["summary"], ops["global_step"])
-            if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
+
+
+            if do_summary_images:
                 self.write_summaries(self._val_writer, ops["summary_images"], ops["global_step"])
 
 
@@ -662,6 +669,9 @@ class tf_trainer(trainercore):
         io_fetch_time = 0.0
 
         do_summary_images = self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0
+
+        if FLAGS.NO_SUMMARY_IMAGES:
+            do_summary_images = False
 
         for i in range(FLAGS.GRADIENT_ACCUMULATION):
 
