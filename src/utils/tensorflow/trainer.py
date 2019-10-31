@@ -242,8 +242,8 @@ class tf_trainer(trainercore):
         else:
             file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
 
-
         path = tf.train.latest_checkpoint(file_path)
+
 
         if path is None:
             print("No checkpoint found, starting from scratch")
@@ -790,9 +790,10 @@ class tf_trainer(trainercore):
 
         # These are ops that always run:
         ops = {}
-        ops['logits']  = self._logits
-        ops['softmax'] = self._output['softmax']
-        ops['metrics'] = self._metrics
+        ops['logits']     = self._logits
+        ops['softmax']    = self._output['softmax']
+        ops['prediction'] = self._output['prediction']
+        ops['metrics']    = self._metrics
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
         ops['global_step'] = self._global_step
 
@@ -818,25 +819,56 @@ class tf_trainer(trainercore):
         # Report metrics on the terminal:
         self.log(ops["metrics"], kind="Inference", step=ops["global_step"])
 
+        print(ops["metrics"])
+
 
         # Here is the part where we have to add output:
 
         if FLAGS.AUX_FILE is not None:
 
 
-            for i, label in zip([0,1,2], ['bkg', 'neutrino', 'cosmic']):
-                softmax = []
+            for i, label in zip([1,2], ['neutrino', 'cosmic']):
+                softmax    = []
+                prediction = []
                 for plane in [0,1,2]:
                     if FLAGS.DATA_FORMAT == "channels_first":
                         softmax.append(ops['softmax'][plane][0,i,:,:])
+                        # locs = numpy.where(ops['prediction'][plane][0,:,:]) == i
+                        # prediction.append({
+                        #         'index'  : locs,
+                        #         'values' : ops['prediction'][plane][locs],
+                        #         'shape'  : ops['prediction'][plane].shape
+                        #         }
+                        #     )
                     else:
                         softmax.append(ops['softmax'][plane][0,:,:,i])
 
-                self._larcv_interface.write_output(data=softmax,
-                    datatype='image2d',
-                    producer="seg_{}".format(label),
+                    locs = numpy.where(ops['prediction'][plane][0,:,:] == i)
+                    shape = ops['prediction'][plane][0].shape
+                    locs_flat = numpy.ravel_multi_index(
+                        multi_index = locs,
+                        dims        = shape
+                    )
+                    prediction.append({
+                            'index'  : locs_flat,
+                            'values' : ops['prediction'][plane][0][locs],
+                            'shape'  : shape
+                            }
+                        )
+
+                # self._larcv_interface.write_output(data=softmax,
+                #     datatype='image2d',
+                #     producer="seg_{}".format(label),
+                #     entries=minibatch_data['entries'],
+                #     event_ids=minibatch_data['event_ids'])
+
+                self._larcv_interface.write_output(
+                    data=prediction,
+                    datatype='sparse2d',
+                    producer = 'seg_{}'.format(label),
                     entries=minibatch_data['entries'],
                     event_ids=minibatch_data['event_ids'])
+
 
 
         if verbose: print("Completed Log")

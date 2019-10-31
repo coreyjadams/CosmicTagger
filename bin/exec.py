@@ -59,7 +59,7 @@ def main():
         # time.sleep(0.1)
         start = time.time()
         for i in range(FLAGS.ITERATIONS):
-            mb = model_trainer.fetch_next_batch()
+            mb = model_trainer.fetch_next_batch(force_pop=True)
             end = time.time()
 
             if not FLAGS.DISTRIBUTED:
