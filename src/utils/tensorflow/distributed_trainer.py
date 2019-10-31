@@ -42,7 +42,8 @@ class distributed_trainer(tf_trainer):
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
         # root_rank = hvd.size() - 1
 
-        self._larcv_interface = queue_interface()
+        if not FLAGS.SYNTHETIC:
+            self._larcv_interface = queue_interface()
         self._iteration       = 0
         self._rank            = hvd.rank()
 
