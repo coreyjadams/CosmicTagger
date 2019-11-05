@@ -44,52 +44,52 @@ def lambda_warmup(epoch):
     else:
         return target * numpy.exp(-0.0001*(epoch-(full+linear_warmup+flat_warmup)))
 
-# def lr_increase(step):
+def lr_increase(step):
 
-#     # This function actually ignores the input and uses the global step variable
-#     # This allows it to get the learning rate correct after restore.
+    # This function actually ignores the input and uses the global step variable
+    # This allows it to get the learning rate correct after restore.
 
-#     # For this problem, the dataset size is 1e5.
-#     # So the epoch can be calculated easily:
-#     # epoch = (step * FLAGS.MINIBATCH_SIZE) / (1e5)
+    # For this problem, the dataset size is 1e5.
+    # So the epoch can be calculated easily:
+    # epoch = (step * FLAGS.MINIBATCH_SIZE) / (1e5)
 
-#     base_lr   = FLAGS.LEARNING_RATE
-#     step_size = 5.0
+    base_lr   = FLAGS.LEARNING_RATE
+    step_size = 0.050
 
-#     return 1.0 + step*step_size
+    return 1.0 + step*step_size
 
-# peak_lr = 0.5
-# cycle_len = 0.8
+peak_lr = 0.5
+cycle_len = 0.8
 
-# def one_cycle_clr(step):
+def one_cycle_clr(step):
 
-#     peak = peak_lr / FLAGS.LEARNING_RATE
+    peak = peak_lr / FLAGS.LEARNING_RATE
 
-#     cycle_steps  = int(FLAGS.ITERATIONS*cycle_len)
-#     end_steps = FLAGS.ITERATIONS - cycle_steps
-#     # Which cycle are we in?
+    cycle_steps  = int(FLAGS.ITERATIONS*cycle_len)
+    end_steps = FLAGS.ITERATIONS - cycle_steps
+    # Which cycle are we in?
 
-#     cycle = int(step / cycle_steps)
-#     intra_step = 1.0 * (step % cycle_steps)
+    cycle = int(step / cycle_steps)
+    intra_step = 1.0 * (step % cycle_steps)
 
-#     base_multiplier = 1.0
+    base_multiplier = 1.0
 
-#     if cycle < 1:
-# #         base_multiplier *= 0.5
+    if cycle < 1:
+#         base_multiplier *= 0.5
 
-#         if intra_step > cycle_steps*0.5:
-#             intra_step = cycle_steps - intra_step
+        if intra_step > cycle_steps*0.5:
+            intra_step = cycle_steps - intra_step
 
-#         value = intra_step * (peak) /(0.5*cycle_steps)
+        value = intra_step * (peak) /(0.5*cycle_steps)
 
-#     else:
-#         value = (intra_step / end_steps)*-1.0
+    else:
+        value = (intra_step / end_steps)*-1.0
 
-#     # print("Step: {}, Cycle: {}, base {}, intra_step {}, value: {}, total_scale: {}".format(
-#     #     step, cycle, base_multiplier, intra_step, value, base_multiplier + value)
-#     # )
+    # print("Step: {}, Cycle: {}, base {}, intra_step {}, value: {}, total_scale: {}".format(
+    #     step, cycle, base_multiplier, intra_step, value, base_multiplier + value)
+    # )
 
-#     return base_multiplier + value
+    return base_multiplier + value
 
 
 class distributed_trainer(torch_trainer):
@@ -144,7 +144,7 @@ class distributed_trainer(torch_trainer):
 
 
         self._lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self._opt, lambda_warmup, last_epoch=-1)
+            self._opt, one_cycle_clr, last_epoch=-1)
 
 
         self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())

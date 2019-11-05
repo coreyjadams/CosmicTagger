@@ -22,20 +22,20 @@ class Block3D(nn.Module):
 
     def __init__(self, *, inplanes, outplanes, kernel = [3,3], padding=[1,1], n_planes=1, params):
         nn.Module.__init__(self)
-        
 
+        print("Receive outplanes ", outplanes)
 
         if n_planes == 3:
             stride = [1, 1, 1]
             kernel = [3,] + kernel
-            padding = [1,1,1]
+            padding = [1,] + padding
         else:
             stride = [1, 1, 1]
             kernel = [1,] + kernel
             padding = [0,] + padding
 
         # padding = [0,1,1] if n_planes == 1 else [1,1,1]
-
+        self.outplanes = outplanes
         self.conv = nn.Conv3d(
             in_channels  = inplanes,
             out_channels = outplanes,
@@ -43,25 +43,29 @@ class Block3D(nn.Module):
             stride       = stride,
             padding      = padding,
             bias         = params.use_bias)
+        print(self.conv.weight.shape)
 
         self.do_batch_norm = params.batch_norm
-        
+
         if params.batch_norm:
             self.bn   = nn.BatchNorm3d(outplanes)
 
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
+        print("Block 3D input ", x.shape)
+        print("outplanes: ", self.outplanes)
         out = self.conv(x)
         if self.do_batch_norm:
             out = self.bn(out)
         out = self.relu(out)
+        print("Block 3D output ", out.shape)
         return out
 
 
 class ResidualBlock3D(nn.Module):
 
-    def __init__(self, *, inplanes, outplanes, nplanes=1, params):
+    def __init__(self, *, inplanes, outplanes, n_planes=1, kernel = [3,3], padding=[1,1], params):
         nn.Module.__init__(self)
 
 
@@ -178,10 +182,10 @@ class BlockSeries3D(torch.nn.Module):
         torch.nn.Module.__init__(self)
 
         if not params.residual:
-            self.blocks = [ Block3D(inplanes = inplanes, outplanes = inplanes, 
+            self.blocks = [ Block3D(inplanes = inplanes, outplanes = inplanes,
                 n_planes = n_planes, params = params) for i in range(n_blocks) ]
         else:
-            self.blocks = [ ResidualBlock3D(inplanes = inplanes, outplanes = inplanes, 
+            self.blocks = [ ResidualBlock3D(inplanes = inplanes, outplanes = inplanes,
                 n_planes = n_planes, params = params) for i in range(n_blocks)]
 
         for i, block in enumerate(self.blocks):
@@ -204,39 +208,43 @@ class DeepestBlock3D(nn.Module):
         # The deepest block concats across planes, applies convolutions,
         # Then splits into planes again
 
-        # self.merger = nn.Conv3d(
-        #     in_channels     = inplanes,
-        #     out_channels    = FLAGS.NPLANES*inplanes,
-        #     kernel_size     = [FLAGS.NPLANES,1,1],
-        #     stride          = [1,1,1],
-        #     padding         = [0, 0, 0],
-        #     bias            = False)
 
+        print("params.bottleneck_deepest: ", params.bottleneck_deepest)
+        self.merger = Block3D(
+            outplanes = params.bottleneck_deepest,
+            inplanes  = inplanes,
+            kernel    = [1,1],
+            padding   = [0,0],
+            n_planes  = 3,
+            params    = params
+        )
 
-        self.blocks = BlockSeries3D( 
-            inplanes = inplanes, 
-            n_blocks = params.blocks_deepest_layer, 
-            n_planes = 3,
+        print(self.merger)
+
+        self.blocks = BlockSeries3D(
+            inplanes = params.bottleneck_deepest,
+            n_blocks = params.blocks_deepest_layer,
+            n_planes = 1,
             params   = params,
         )
 
-        # self.splitter = nn.ConvTranspose3d(
-        #     in_channels     = FLAGS.NPLANES*inplanes,
-        #     out_channels    = inplanes,
-        #     kernel_size     = [FLAGS.NPLANES,1,1],
-        #     stride          = [1,1,1],
-        #     padding         = [0, 0, 0],
-        #     bias            = False)
 
 
-
+        self.merger = Block3D(
+            inplanes  = params.bottleneck_deepest,
+            outplanes = inplanes,
+            kernel    = [1,1],
+            padding   = [0,0],
+            n_planes  = 3,
+            params    = params
+        )
 
     def forward(self, x):
-        # x = self.merger(x)
+        print("Deepest block input ", x.shape)
+        x = self.merger(x)
+        print("Deepest block merged ", x.shape)
         x = self.blocks(x)
-        # x = self.splitter(x)
-
-
+        x = self.splitter(x)
         return x
 
 class NoConnection3D(nn.Module):
@@ -301,7 +309,7 @@ class InterpolationUpsample3D(nn.Module):
         nn.Module.__init__(self)
 
 
-        self.up = torch.nn.Upsample(scale_factor=[1,2,2], mode="bilinear")
+        self.up = torch.nn.Upsample(scale_factor=(1,2,2), mode="nearest")
 
         self.bottleneck = Block3D(
             inplanes    = inplanes,
@@ -326,12 +334,12 @@ class UNetCore3D(nn.Module):
         self.depth  = depth
 
         if depth == 0:
-            self.main_module = DeepestBlock3D(inplanes = inplanes, 
+            self.main_module = DeepestBlock3D(inplanes = inplanes,
                                               params   = params)
         else:
             # Residual or convolutional blocks, applied in series:
-            self.down_blocks = BlockSeries3D(inplanes = inplanes, 
-                                             n_blocks = self.layers, 
+            self.down_blocks = BlockSeries3D(inplanes = inplanes,
+                                             n_blocks = self.layers,
                                              n_planes = 1,
                                              params   = params)
 
@@ -339,7 +347,7 @@ class UNetCore3D(nn.Module):
                 n_filters_next = 2 * inplanes
             else:
                 n_filters_next = inplanes + params.n_initial_filters
-                
+
 
             # Down sampling operation:
             # This does change the number of filters from above down-pass blocks
@@ -352,12 +360,12 @@ class UNetCore3D(nn.Module):
                                                outplanes = n_filters_next,
                                                params    = params)
 
-            
+
             # Submodule:
-            self.main_module    = UNetCore3D(depth    = depth-1, 
+            self.main_module    = UNetCore3D(depth    = depth-1,
                                              inplanes = n_filters_next,
                                              params   = params)
-            
+
 
 
             # Upsampling operation:
@@ -378,7 +386,7 @@ class UNetCore3D(nn.Module):
 
             # Residual connection operation:
             if params.connections == "sum":
-                self.connection = SumConnection3()
+                self.connection = SumConnection3D()
             elif params.connections == "concat":
                 self.connection = ConcatConnection3D(inplanes=inplanes, params=params)
             else:

@@ -16,10 +16,10 @@ from ..core.trainercore     import trainercore
 FLAGS = flags.FLAGS()
 
 if FLAGS.SPARSE:
-    from ...networks.torch.sparseuresnet import UResNet3D
+    from ...networks.torch.sparseuresnet3D import UResNet3D
 else:
-    from ...networks.torch.uresnet2D     import UResNet
-    from ...networks.torch.uresnet3D     import UResNet3D
+    from ...networks.torch.uresnet2D       import UResNet
+    from ...networks.torch.uresnet3D       import UResNet3D
 
 
 
@@ -46,8 +46,7 @@ class torch_trainer(trainercore):
 
     def init_network(self):
 
-        if FLAGS.CONV_MODE == "2D":
-
+        if FLAGS.CONV_MODE == "2D" and not FLAGS.SPARSE:
             self._net = UResNet(
                 n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
                 batch_norm               = FLAGS.BATCH_NORM,
@@ -105,19 +104,19 @@ class torch_trainer(trainercore):
                     # [1564304000    1570400    6989600]
                     # [0.9945577  0.00099843 0.00444387]
                     # This vector is simplified to be approximate:
-                    weight = torch.tensor([1. , 10.        , 1.5.], device=device)
+                    weight = torch.tensor([1. , 10.        , 1.5], device=device)
                 else:
                     # Statistics for the downsampled sparse images (800 samples):
                     # [20273800   908000  5262600]
                     # [0.76665759 0.03433619 0.19900622]
                     # In the sparse case, the ratio of neutrino to cosmic is unchanged,
                     # but the number of noise/bkg is much less
-                    weight = torch.tensor([1., 10.        , 1.5.], device=device)
+                    weight = torch.tensor([1., 10.        , 1.5], device=device)
 
         else:
             weight=None
 
-        self._criterion = torch.nn.CrossEntropyLoss(weight=weight)
+        self._criterion = torch.nn.CrossEntropyLoss(weight=weight, reduction='none')
 
         self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
 
@@ -334,6 +333,26 @@ class torch_trainer(trainercore):
         loss = None
         for i in [0,1,2]:
             plane_loss = self._criterion(input=logits[i], target=labels[i])
+
+            # To compute the focal loss, we need to compute the one-hot labels and the
+            # softmax
+            softmax = torch.nn.functional.softmax(logits[i])
+            # print("softmax.shape: ", softmax.shape)
+            # print("labels.shape: ", labels[i].shape)
+            onehot = torch.nn.functional.one_hot(labels[i], num_classes=3)
+            # print("onehot.shape: ", onehot.shape)
+            onehot = onehot.permute([0,3,1,2])
+            # print("onehot.shape: ", onehot.shape)
+
+            scale_factor = onehot * (1 - softmax)**3
+            # print("scale_factor.shape:  ", scale_factor.shape)
+            scale_factor = torch.mean(scale_factor, dim=1)
+            # print("scale_factor.shape:  ", scale_factor.shape)
+            # print("plane_loss.shape: ", plane_loss.shape)
+            # scale_factor /= torch.mean(scale_factor)
+            plane_loss = torch.mean(scale_factor * plane_loss)
+            # print("plane_loss.shape: ", plane_loss.shape)
+
             if loss is None:
                 loss = plane_loss
             else:
@@ -464,7 +483,7 @@ class torch_trainer(trainercore):
     def summary_images(self, logits_image, labels_image, saver=""):
 
         # if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
-        if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0 and not FLAGS.NO_SUMMARY:
+        if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0 and not FLAGS.NO_SUMMARY_IMAGES:
 
             for plane in range(3):
                 val, prediction = torch.max(logits_image[plane][0], dim=0)
