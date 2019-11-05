@@ -25,6 +25,8 @@ floating_point_format = tf.float32
 integer_format = tf.int64
 
 
+
+
 class tf_trainer(trainercore):
     '''
     This is the tensorflow version of the trainer
@@ -232,6 +234,14 @@ class tf_trainer(trainercore):
         #     log_step_count_steps  = FLAGS.LOGGING_ITERATION,
         #     save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
 
+    def init_learning_rate(self):
+        self._learning_rate = tf.placeholder(tf.float32, shape=[])
+        self._base_learning_rate = FLAGS.LEARNING_RATE
+
+        # The current learning rate is always fed into the feed dict
+        self._current_learning_rate = self._base_learning_rate
+
+
 
     def restore_model(self):
         ''' This function attempts to restore the model from file
@@ -341,14 +351,14 @@ class tf_trainer(trainercore):
         if 'RMS' in FLAGS.OPTIMIZER.upper():
             # Use RMS prop:
             tf.logging.info("Selected optimizer is RMS Prop")
-            self._opt = tf.train.RMSPropOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.train.RMSPropOptimizer(self._learning_rate)
         elif 'LARS' in FLAGS.OPTIMIZER.upper():
             tf.logging.info("Selected optimizer is LARS")
-            self._opt = tf.contrib.opt.LARSOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.contrib.opt.LARSOptimizer(self._learning_rate)
         else:
             # default is Adam:
             tf.logging.info("Using default Adam optimizer")
-            self._opt = tf.train.AdamOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.train.AdamOptimizer(self._learning_rate)
 
         self._global_step = tf.train.get_or_create_global_step()
 
@@ -387,18 +397,38 @@ class tf_trainer(trainercore):
                     labels = split_labels[p],
                     logits = logits[p]
                 )
-                # print("loss[p].shape: ", loss[p].shape)
 
-                # multiple (elementwise) the weights for the loss function:
-                if FLAGS.BALANCE_LOSS:
-                    # print("split_weights[p].shape: ", split_weights[p].shape)
-                    loss[p] = tf.multiply(loss[p], split_weights[p])
-                    # print(" post mult. loss[p].shape: ", loss[p].shape)
+                # Compute this as focal loss:
+                s      = tf.nn.softmax(logits[p], axis = self._channels_dim)
+                labels = tf.one_hot(indices=split_labels[p], depth=3, axis=self._channels_dim)
 
-                    # Because we have a weighting function, this is a summed reduction:
-                    loss[p] = tf.reduce_sum(loss[p])
-                else:
-                    loss[p] = tf.reduce_mean(loss[p])
+                balance_term = (1-s)**2
+                balance_term *= labels
+                balance_term = tf.reduce_sum(balance_term, axis=self._channels_dim)
+                # print("balance_term.shape: ", balance_term.shape)
+                # L = -labels * ( (1-s)**2 * tf.log(s))
+                # print("L.shape: ", L.shape)
+                # L = tf.reduce_sum(L, axis=self._channels_dim)
+                # print("L.shape: ", L.shape)
+
+                loss[p] *= balance_term
+
+
+                loss[p] = tf.reduce_mean(loss[p])
+
+# #
+#                 # print("loss[p].shape: ", loss[p].shape)
+#
+#                 # multiple (elementwise) the weights for the loss function:
+#                 if FLAGS.BALANCE_LOSS:
+#                     # print("split_weights[p].shape: ", split_weights[p].shape)
+#                     loss[p] = tf.multiply(loss[p], split_weights[p])
+#                     # print(" post mult. loss[p].shape: ", loss[p].shape)
+#
+#                     # Because we have a weighting function, this is a summed reduction:
+#                     loss[p] = tf.reduce_sum(loss[p])
+#                 else:
+#                     loss[p] = tf.reduce_mean(loss[p])
 
                 self._metrics["cross_entropy/Loss_plane_{}".format(p)] = loss[p]
                 # tf.summary.scalar("Loss_plane_{}".format(p),loss[p])
@@ -614,8 +644,8 @@ class tf_trainer(trainercore):
 
             ops['metrics'] = self._metrics
 
-            # if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
-            #     ops['summary_images'] = self._summary_images
+            if do_summary_images:
+                ops['summary_images'] = self._summary_images
 
 
             ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
@@ -900,6 +930,8 @@ class tf_trainer(trainercore):
 
         '''
         fd = dict()
+
+        fd[self._learning_rate] = self._current_learning_rate
 
         for key in inputs:
             if key == "entries" or key == "event_ids": continue

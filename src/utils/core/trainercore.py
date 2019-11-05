@@ -94,7 +94,7 @@ class trainercore(object):
 
             self._larcv_interface.prepare_manager('primary', io_config, FLAGS.MINIBATCH_SIZE, data_keys, color)
 
-            self._larcv_interface.prepare_next('primary')
+            # self._larcv_interface.prepare_next('primary')
 
             # All of the additional tools are in case there is a test set up:
             if FLAGS.AUX_FILE is not None:
@@ -170,7 +170,7 @@ class trainercore(object):
         # Using the sparse IO techniques, we have to manually set the dimensions for the input.
 
         # Fortunately, everything we need is in the FLAGS object and io object:
-
+        print(io_dims)
         local_minibatch_size = io_dims['image'][0]
 
 
@@ -192,10 +192,6 @@ class trainercore(object):
     def set_compute_parameters(self):
         pass
 
-
-        self._criterion = torch.nn.CrossEntropyLoss(weight=weight)
-
-        self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
 
     def log(self, metrics, kind, step):
 
@@ -231,6 +227,7 @@ class trainercore(object):
 
 
             # This brings up the current data
+            self._larcv_interface.prepare_next(mode)
             minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=pop,fetch_meta_data=metadata)
             minibatch_dims = self._larcv_interface.fetch_minibatch_dims(mode)
 
@@ -251,7 +248,6 @@ class trainercore(object):
                 minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['image'])
                 minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
             # This preparse the next batch of data:
-            self._larcv_interface.prepare_next(mode)
 
         else:
             minibatch_data = {}
