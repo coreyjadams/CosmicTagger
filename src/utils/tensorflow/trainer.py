@@ -912,6 +912,8 @@ class tf_trainer(trainercore):
 
     def batch_process(self, verbose=True):
 
+        start = time.time()
+        post_one_time = None
         # Run iterations
         for self._iteration in range(FLAGS.ITERATIONS):
             if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
@@ -927,5 +929,13 @@ class tf_trainer(trainercore):
             else:
                 raise Exception("Don't know what to do with mode ", FLAGS.MODE)
 
+            if post_one_time is None:
+                post_one_time = time.time()
+
         if FLAGS.MODE == 'inference':
             self._larcv_interface._writer.finalize()
+
+        end = time.time()
+
+        print("Total time to batch_process: ", end - start)
+        print("Total time to batch process except first iteration: ", end - post_one_time)
