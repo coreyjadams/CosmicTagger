@@ -826,6 +826,10 @@ class tf_trainer(trainercore):
 
         if FLAGS.AUX_FILE is not None:
 
+            if FLAGS.DATA_FORMAT == "channels_last":
+                locs = [ numpy.where(minibatch_data['image'][0,:,:,i] != 0) for i in [0,1,2]]
+            else:
+                locs = [ numpy.where(minibatch_data['image'][0,i,:,:] != 0) for i in [0,1,2]]
 
             for i, label in zip([1,2], ['neutrino', 'cosmic']):
                 softmax    = []
@@ -843,15 +847,14 @@ class tf_trainer(trainercore):
                     else:
                         softmax.append(ops['softmax'][plane][0,:,:,i])
 
-                    locs = numpy.where(ops['prediction'][plane][0,:,:] == i)
                     shape = ops['prediction'][plane][0].shape
                     locs_flat = numpy.ravel_multi_index(
-                        multi_index = locs,
+                        multi_index = locs[plane],
                         dims        = shape
                     )
                     prediction.append({
                             'index'  : locs_flat,
-                            'values' : ops['prediction'][plane][0][locs],
+                            'values' : ops['prediction'][plane][0][locs[plane]],
                             'shape'  : shape
                             }
                         )
