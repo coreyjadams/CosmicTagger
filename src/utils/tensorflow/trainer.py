@@ -612,10 +612,10 @@ class tf_trainer(trainercore):
             ops['global_step'] = self._global_step
             ops['summary'] = self._summary_basic
 
-            ops['metrics'] = self._metrics
+            if do_summary_images:
+                ops["summary_images"] = self._summary_images
 
-            # if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
-            #     ops['summary_images'] = self._summary_images
+            ops['metrics'] = self._metrics
 
 
             ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
