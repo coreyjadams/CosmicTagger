@@ -2,6 +2,8 @@ import os
 import sys
 import time
 import tempfile
+import copy
+
 from collections import OrderedDict
 
 import numpy
@@ -37,6 +39,10 @@ class trainercore(object):
             else:
                 mode = 'random_blocks'
             self._larcv_interface = queueloader.queue_interface(random_access_mode=mode)
+        else:
+            self.synthetic_images = None
+            self.synthetic_labels = None
+
         self._iteration       = 0
         self._global_step     = -1
         self._val_writer      = None
@@ -254,17 +260,43 @@ class trainercore(object):
             # This preparse the next batch of data:
 
         else:
+
+            # For synthetic data, we can preload the data:
+            if self.synthetic_images is None:
+                self.prepare_data(dataset_n_entries=12)
+
             minibatch_data = {}
-            minibatch_data['image'] = numpy.random.random_sample(self._dims['image'])
-            minibatch_data['label'] = numpy.random.randint(
-                low=0, high=3, size=self._dims['image'])
-            minibatch_data['weight'] = numpy.random.random_sample(self._dims['image'])
+            if self.synthetic_index + self._dims['image'][0] > len(self.synthetic_images):
+                self.synthetic_index = 0
 
+            lower_index = self.synthetic_index
+            upper_index = self.synthetic_index + FLAGS.MINIBATCH_SIZE
 
+            minibatch_data['image']  = self.synthetic_images[lower_index:upper_index]
+            minibatch_data['label']  = self.synthetic_labels[lower_index:upper_index]
+            minibatch_data['weight'] = self.synthetic_weight[lower_index:upper_index]
+
+            self.synthetic_index += 1
+            
         return minibatch_data
 
+    def prepare_data(self, dataset_n_entries):
+
+        self.synthetic_index = 0
+
+        shape = copy.copy(self._dims['image'])
+        shape[0] = dataset_n_entries
+
+        self.synthetic_images = numpy.random.random_sample(shape)
+        self.synthetic_weight = numpy.random.random_sample(shape)
+        self.synthetic_labels = numpy.random.randint(low=0, high=3, size=shape)
+
+
+
+
     def compute_weights(self, labels):
-        '''
+
+      '''
         This is NOT a tensorflow implementation, but a numpy implementation.
         Running on CPUs this might not make a difference.  Running on GPUs
         it might be good to move this to a GPU, but I suspect it's not needed.
