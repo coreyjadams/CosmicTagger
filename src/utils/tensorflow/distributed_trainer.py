@@ -186,7 +186,7 @@ class distributed_trainer(tf_trainer):
         # For the calculations, we need to set some constants:
 
         core_learning_rate = tf.constant(base_learning_rate*numpy.sqrt(hvd.size()), dtype=tf.float32)
-        initial_learning_rate = tf.constant(0.0001, dtype=tf.float32)
+        initial_learning_rate = tf.constant(0.0000001, dtype=tf.float32)
         warmup_steps = tf.constant(warmup_steps, dtype = tf.float32)
 
 
@@ -213,6 +213,8 @@ class distributed_trainer(tf_trainer):
         # self._summary_basic = tf.summary.merge([lr_summary, self._summary_basic])
 
         return this_learning_rate
+
+
 
 
     # def metrics(self, metrics):

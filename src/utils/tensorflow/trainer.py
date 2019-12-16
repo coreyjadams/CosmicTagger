@@ -138,7 +138,7 @@ class tf_trainer(trainercore):
             self._output['prediction'] = [ tf.argmax(x, axis=self._channels_dim) for x in self._logits]
 
 
-            self._accuracy = self._calculate_accuracy(logits=self._output, labels=self._input['label'])
+            self._accuracy = self._calculate_accuracy(logits=self._output, input=self._input,)
 
             # Create the loss function
             if FLAGS.BALANCE_LOSS:
@@ -253,18 +253,6 @@ class tf_trainer(trainercore):
         self._saver.restore(self._sess, path)
 
         return True
-
-        # with open(checkpoint_file_path, 'r') as _ckp:
-        #     for line in _ckp.readlines():
-        #         if line.startswith("latest: "):
-        #             chkp_file = line.replace("latest: ", "").rstrip('\n')
-        #             chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
-        #             print("Restoring weights from ", chkp_file)
-        #             break
-
-        # state = torch.load(chkp_file)
-        # return state
-
 
     def checkpoint(self, global_step):
 
@@ -424,7 +412,7 @@ class tf_trainer(trainercore):
             return total_loss
 
 
-    def _calculate_accuracy(self, logits, labels):
+    def _calculate_accuracy(self, logits, input):
         ''' Calculate the accuracy.
 
             Images received here are not sparse but dense.
@@ -433,6 +421,11 @@ class tf_trainer(trainercore):
         '''
 
         # Compare how often the input label and the output prediction agree:
+
+        labels = input['label']
+        images = input['image']
+
+
 
         n_planes = 3
 
@@ -443,7 +436,7 @@ class tf_trainer(trainercore):
             cosmic_iou       = [None]*n_planes
 
             split_labels = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(labels, n_planes, self._channels_dim)]
-
+            split_images = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(images, n_planes, self._channels_dim)]
 
             for p in range(n_planes):
 
@@ -451,29 +444,36 @@ class tf_trainer(trainercore):
                         tf.cast(tf.equal(logits['prediction'][p], split_labels[p]), floating_point_format)
                     )
                 # Find the non zero split_labels:
-                non_zero_indices = tf.not_equal(split_labels[p], tf.constant(0, split_labels[p].dtype))
+                non_zero_indices = tf.not_equal(split_images[p], tf.constant(0, split_labels[p].dtype))
+
+                print(non_zero_indices.shape)
 
                 # Find the neutrino indices:
                 # Sometimes, there are no neutrino indexes in the image.  This leads to a NaN
                 # in the calculation of the neutrino accuracy.
                 # This is an open issue to resolve.
-                neutrino_indices = tf.equal(split_labels[p], tf.constant(1, split_labels[p].dtype))
+                neutrino_indices = tf.equal(split_labels[p], tf.constant(self.NEUTRINO_INDEX, split_labels[p].dtype))
 
                 # Find the cosmic indices:
-                cosmic_indices = tf.equal(split_labels[p], tf.constant(2, split_labels[p].dtype))
+                cosmic_indices = tf.equal(split_labels[p], tf.constant(self.COSMIC_INDEX, split_labels[p].dtype))
 
+                # Mask the out zero-image pixels in the labels and logits:
                 non_zero_logits = tf.boolean_mask(logits['prediction'][p], non_zero_indices)
                 non_zero_labels = tf.boolean_mask(split_labels[p], non_zero_indices)
 
+                # Mask out and keep only neutrino pixels:
                 neutrino_logits = tf.boolean_mask(logits['prediction'][p], neutrino_indices)
                 neutrino_labels = tf.boolean_mask(split_labels[p], neutrino_indices)
 
+                # Find which pixels are predicted as neutrino:
                 predicted_neutrino_indices = tf.equal(logits['prediction'][p],
-                    tf.constant(1, split_labels[p].dtype))
+                    tf.constant(self.NEUTRINO_INDEX, split_labels[p].dtype))
+
+                # Find which pixels are predicted as cosmic:
                 predicted_cosmic_indices = tf.equal(logits['prediction'][p],
-                    tf.constant(2, split_labels[p].dtype))
+                    tf.constant(self.COSMIC_INDEX, split_labels[p].dtype))
 
-
+                # Compute the intersection of all pixels predicted as neutrino:
                 neutrino_intersection = tf.math.logical_and(predicted_neutrino_indices, neutrino_indices)
                 neutrino_union = tf.math.logical_or(predicted_neutrino_indices, neutrino_indices)
 
@@ -854,7 +854,7 @@ class tf_trainer(trainercore):
                     )
                     prediction.append({
                             'index'  : locs_flat,
-                            'values' : ops['prediction'][plane][0][locs[plane]],
+                            'values' : ops['softmax'][plane][0][locs[plane]],
                             'shape'  : shape
                             }
                         )

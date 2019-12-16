@@ -72,7 +72,7 @@ def larcvsparse_to_scnsparse_2d(input_array):
     # the tuple format required for sparseconvnet
 
     # First, we can split off the features (which is the pixel value)
-    # and the indexes (which is everythin else)
+    # and the indexes (which is everything else)
 
     # To handle the multiplane networks, we have to split this into
     # n_planes and pass it out as a list

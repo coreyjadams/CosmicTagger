@@ -18,6 +18,8 @@ if not FLAGS.SYNTHETIC:
 
 import datetime
 
+
+
 class trainercore(object):
     '''
     This class is the core interface for training.  Each function to
@@ -25,6 +27,9 @@ class trainercore(object):
     a NotImplemented error.
 
     '''
+    NEUTRINO_INDEX = 1
+    COSMIC_INDEX   = 2
+    
     def __init__(self,):
         if not FLAGS.SYNTHETIC:
             if FLAGS.MODE == 'inference':
