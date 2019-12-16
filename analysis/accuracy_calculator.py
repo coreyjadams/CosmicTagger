@@ -129,7 +129,7 @@ class AccuracyCalculator(object):
                 neutrino_truth = label_values == NEUTRINO_LABEL_VALUE
                 cosmic_truth = label_values == COSMIC_LABEL_VALUE
 
-                
+
                 # print(numpy.sum(neutrino_truth))
                 # print(numpy.sum(cosmic_truth))
 
@@ -168,7 +168,7 @@ class AccuracyCalculator(object):
                 cosmic_union        = numpy.sum(numpy.logical_or(cosmic_prediction_locs, cosmic_truth))
 
                 cosmic_iou = cosmic_intersection / cosmic_union
-                
+
                 # print()
                 # print("Neutrino IoU: ", neutrino_iou)
                 # print("Cosmic IoU: ", cosmic_iou)
@@ -182,11 +182,11 @@ class AccuracyCalculator(object):
                 neutrino_pred_x, neutrino_pred_y = numpy.unravel_index(pred_indexes[neutrino_prediction_locs], shape=[640,1024])
                 neutrino_true_x, neutrino_true_y = numpy.unravel_index(label_indexes[neutrino_truth], shape=[640,1024])
 
-                mean_x = numpy.mean(neutrino_true_x)
-                mean_y = numpy.mean(neutrino_true_y)
+                mean_x = numpy.mean(neutrino_pred_x)
+                mean_y = numpy.mean(neutrino_pred_y)
 
-                std_x = numpy.std(neutrino_true_x)
-                std_y = numpy.std(neutrino_true_y)                
+                std_x = numpy.std(neutrino_pred_x)
+                std_y = numpy.std(neutrino_pred_y)
 
 
                 data[i]['n_neut_true'][plane] = numpy.sum(neutrino_locs)
@@ -207,12 +207,11 @@ class AccuracyCalculator(object):
 if __name__ == "__main__":
     folder = "/Users/corey.adams//data/cosmic_tagging_downsample/"
     # _file  = "cosmic_tagging_downsample_test_sparse_output_biggerbatch.h5"
-    # _file  = "cosmic_tagging_downsample_test_sparse_output_biggerbatch_2.h5"
-    _file  = "cosmic_tagging_downsample_test_sparse_output_baseline_fullbalance_2.h5"
+    _file  = "cosmic_tagging_downsample_test_sparse_output_biggerbatch_2.h5"
+    # _file  = "cosmic_tagging_downsample_test_sparse_output_baseline_fullbalance_2.h5"
     # _file  = "cosmic_tagging_downsample_dev_sparse_output.h5"
     acc_calc = AccuracyCalculator(folder + _file)
     d = acc_calc.loop(max_i = 7000)
     # print(d)
 
     numpy.save(folder + _file.replace(".h5", ".npy"), d)
-
