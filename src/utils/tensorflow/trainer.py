@@ -626,10 +626,10 @@ class tf_trainer(trainercore):
             ops['global_step'] = self._global_step
             ops['summary'] = self._summary_basic
 
-            ops['metrics'] = self._metrics
-
             if do_summary_images:
-                ops['summary_images'] = self._summary_images
+                ops["summary_images"] = self._summary_images
+
+            ops['metrics'] = self._metrics
 
 
             ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
@@ -840,6 +840,10 @@ class tf_trainer(trainercore):
 
         if FLAGS.AUX_FILE is not None:
 
+            if FLAGS.DATA_FORMAT == "channels_last":
+                locs = [ numpy.where(minibatch_data['image'][0,:,:,i] != 0) for i in [0,1,2]]
+            else:
+                locs = [ numpy.where(minibatch_data['image'][0,i,:,:] != 0) for i in [0,1,2]]
 
             for i, label in zip([1,2], ['neutrino', 'cosmic']):
                 softmax    = []
@@ -857,15 +861,14 @@ class tf_trainer(trainercore):
                     else:
                         softmax.append(ops['softmax'][plane][0,:,:,i])
 
-                    locs = numpy.where(ops['prediction'][plane][0,:,:] == i)
                     shape = ops['prediction'][plane][0].shape
                     locs_flat = numpy.ravel_multi_index(
-                        multi_index = locs,
+                        multi_index = locs[plane],
                         dims        = shape
                     )
                     prediction.append({
                             'index'  : locs_flat,
-                            'values' : ops['prediction'][plane][0][locs],
+                            'values' : ops['prediction'][plane][0][locs[plane]],
                             'shape'  : shape
                             }
                         )
@@ -928,6 +931,8 @@ class tf_trainer(trainercore):
 
     def batch_process(self, verbose=True):
 
+        start = time.time()
+        post_one_time = None
         # Run iterations
         for self._iteration in range(FLAGS.ITERATIONS):
             if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
@@ -943,5 +948,13 @@ class tf_trainer(trainercore):
             else:
                 raise Exception("Don't know what to do with mode ", FLAGS.MODE)
 
+            if post_one_time is None:
+                post_one_time = time.time()
+
         if FLAGS.MODE == 'inference':
             self._larcv_interface._writer.finalize()
+
+        end = time.time()
+
+        print("Total time to batch_process: ", end - start)
+        print("Total time to batch process except first iteration: ", end - post_one_time)
