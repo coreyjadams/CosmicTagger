@@ -332,7 +332,7 @@ class torch_trainer(trainercore):
 
             elif FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
                 #split the weights across the plane dimension:
-                plane_loss = torch.mean(weights[:,i,:,:] * plane_loss)
+                plane_loss = torch.sum(weights[:,i,:,:] * plane_loss)
             else:
                 plane_loss = torch.mean(plane_loss)
 
