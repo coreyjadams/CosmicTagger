@@ -221,6 +221,8 @@ class distributed_trainer(tf_trainer):
         return this_learning_rate
 
 
+
+
     # def metrics(self, metrics):
     #     # Here, we can allreduce the metrics.
 
