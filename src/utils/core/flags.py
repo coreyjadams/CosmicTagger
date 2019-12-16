@@ -112,6 +112,8 @@ class FLAGS(Borg):
         self.SHAPE                 = [640, 1024]
 
 
+
+
         self.SYNTHETIC             = False
 
     def _add_default_io_configuration(self, parser):
@@ -383,16 +385,16 @@ class uresnet(FLAGS):
         # Parameters to control the network training
         ##################################################################
         # Parameters controlling regularization
-        self.BALANCE_LOSS                = True
         self.OPTIMIZER                   = "Adam"
         self.VERBOSITY                   = 0
         # Run with half precision:
         self.INPUT_HALF_PRECISION        = False
         self.MODEL_HALF_PRECISION        = False
         self.LOSS_SCALE                  = 1.0
+        self.LOSS_BALANCE_SCHEME         = "none"
+
         # Parameters controlling regularization
         self.REGULARIZE_WEIGHTS          = 0.00001
-        self.BALANCE_LOSS                = True
         self.DATA_FORMAT                 = "channels_last"
         # Relevant parameters for running on KNL:
         self.INTER_OP_PARALLELISM_THREADS    = 4
@@ -430,9 +432,8 @@ class uresnet(FLAGS):
         parser.add_argument('--connections', type=str, choices=['sum', 'concat', 'none'], default=self.CONNECTIONS,
             help="Connect shortcuts with sums, concat+bottleneck, or no connections [default: {}]".format(self.CONNECTIONS))
 
-        parser.add_argument('-bl','--balance-loss', type=str2bool, default=self.BALANCE_LOSS,
-            help="Turn on or off weight balancing across classes [default: {}]".format(self.BALANCE_LOSS))
-
+        parser.add_argument('--loss-balance-scheme', type=str, choices=['none', 'focal', 'even', 'light'], default=self.LOSS_BALANCE_SCHEME,
+            help="Way to compute weights for balancing the loss. [default: {}]".format(self.LOSS_BALANCE_SCHEME))
 
         parser.add_argument('-df','--data-format', type=str, default=self.DATA_FORMAT,
             help="Channels format in the tensor shape [default: {}]".format(self.DATA_FORMAT))

@@ -92,31 +92,8 @@ class torch_trainer(trainercore):
             self._net.train(True)
 
         # Here we set up weights using the aggregate metrics for the dataset:
-        if FLAGS.BALANCE_LOSS:
-            if FLAGS.COMPUTE_MODE == "GPU":
-                device = torch.device('cuda')
-            else:
-                device = torch.device('cpu')
 
-            if FLAGS.SHAPE == [640, 1024]:
-                if not FLAGS.SPARSE:
-                    # Statistics for the downsampled dense images (800 samples):
-                    # [1564304000    1570400    6989600]
-                    # [0.9945577  0.00099843 0.00444387]
-                    # This vector is simplified to be approximate:
-                    weight = torch.tensor([1. , 10.        , 1.5], device=device)
-                else:
-                    # Statistics for the downsampled sparse images (800 samples):
-                    # [20273800   908000  5262600]
-                    # [0.76665759 0.03433619 0.19900622]
-                    # In the sparse case, the ratio of neutrino to cosmic is unchanged,
-                    # but the number of noise/bkg is much less
-                    weight = torch.tensor([1., 10.        , 1.5], device=device)
-
-        else:
-            weight=None
-
-        self._criterion = torch.nn.CrossEntropyLoss(weight=weight, reduction='none')
+        self._criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
         self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
 
@@ -318,12 +295,11 @@ class torch_trainer(trainercore):
 
 
 
-    def _calculate_loss(self, labels, logits):
+    def _calculate_loss(self, labels, logits, weights = None):
         ''' Calculate the loss.
 
         returns a single scalar for the optimizer to use.
         '''
-
 
         # To apply the loss function, we have to convert the sparse tensors
         # to dense tensors.  We can take a version of the labels, however,
@@ -334,24 +310,32 @@ class torch_trainer(trainercore):
         for i in [0,1,2]:
             plane_loss = self._criterion(input=logits[i], target=labels[i])
 
-            # To compute the focal loss, we need to compute the one-hot labels and the
-            # softmax
-            softmax = torch.nn.functional.softmax(logits[i])
-            # print("softmax.shape: ", softmax.shape)
-            # print("labels.shape: ", labels[i].shape)
-            onehot = torch.nn.functional.one_hot(labels[i], num_classes=3)
-            # print("onehot.shape: ", onehot.shape)
-            onehot = onehot.permute([0,3,1,2])
-            # print("onehot.shape: ", onehot.shape)
+            if FLAGS.LOSS_BALANCE_SCHEME == "focal":
+                # To compute the focal loss, we need to compute the one-hot labels and the
+                # softmax
+                softmax = torch.nn.functional.softmax(logits[i])
+                # print("softmax.shape: ", softmax.shape)
+                # print("labels.shape: ", labels[i].shape)
+                onehot = torch.nn.functional.one_hot(labels[i], num_classes=3).float()
+                # print("onehot.shape: ", onehot.shape)
+                onehot = onehot.permute([0,3,1,2])
+                # print("onehot.shape: ", onehot.shape)
 
-            scale_factor = onehot * (1 - softmax)**3
-            # print("scale_factor.shape:  ", scale_factor.shape)
-            scale_factor = torch.mean(scale_factor, dim=1)
-            # print("scale_factor.shape:  ", scale_factor.shape)
-            # print("plane_loss.shape: ", plane_loss.shape)
-            # scale_factor /= torch.mean(scale_factor)
-            plane_loss = torch.mean(scale_factor * plane_loss)
-            # print("plane_loss.shape: ", plane_loss.shape)
+                scale_factor = onehot * (1 - softmax)**3
+                # print("scale_factor.shape:  ", scale_factor.shape)
+                scale_factor = torch.mean(scale_factor, dim=1)
+                # print("scale_factor.shape:  ", scale_factor.shape)
+                # print("plane_loss.shape: ", plane_loss.shape)
+                # scale_factor /= torch.mean(scale_factor)
+                plane_loss = torch.mean(scale_factor * plane_loss)
+                # print("plane_loss.shape: ", plane_loss.shape)
+
+            elif FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
+                #split the weights across the plane dimension:
+                plane_loss = torch.mean(weights[:,i,:,:] * plane_loss)
+            else:
+                plane_loss = torch.mean(plane_loss)
+
 
             if loss is None:
                 loss = plane_loss
@@ -562,7 +546,7 @@ class torch_trainer(trainercore):
             if key == 'entries' or key == 'event_ids':
                 continue
             if FLAGS.SPARSE:
-                if key == 'weight': continue
+                # if key == 'weight': continue
                 if key == 'image':
                     minibatch_data[key] = (
                             torch.tensor(minibatch_data[key][0]).long(),
@@ -572,6 +556,9 @@ class torch_trainer(trainercore):
                 elif key == 'label':
                     minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
             else:
+                if key == 'weight':
+                    if FLAGS.LOSS_BALANCE_SCHEME == "none" or FLAGS.LOSS_BALANCE_SCHEME == "focal":
+                        continue
                 # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 if FLAGS.INPUT_HALF_PRECISION:
@@ -637,7 +624,7 @@ class torch_trainer(trainercore):
             # Compute the loss based on the logits
 
 
-            loss = self._calculate_loss(labels_image, logits_image)
+            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
 
             if verbose: print("Completed loss")
 
@@ -724,7 +711,7 @@ class torch_trainer(trainercore):
             logits_image, labels_image = self.forward_pass(minibatch_data)
 
             # Compute the loss based on the logits
-            loss = self._calculate_loss(labels_image, logits_image)
+            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
 
 
             # Compute any necessary metrics:
@@ -850,7 +837,7 @@ class torch_trainer(trainercore):
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss
-            loss = self._calculate_loss(labels_image, logits_image)
+            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
 
             # Compute the metrics for this iteration:
             print("computing metrics for entry ", minibatch_data['entries'][0])
