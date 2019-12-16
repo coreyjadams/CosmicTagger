@@ -16,10 +16,10 @@ from ..core.trainercore     import trainercore
 FLAGS = flags.FLAGS()
 
 if FLAGS.SPARSE:
-    from ...networks.torch.sparseuresnet import UResNet3D
+    from ...networks.torch.sparseuresnet3D import UResNet3D
 else:
-    from ...networks.torch.uresnet2D     import UResNet
-    from ...networks.torch.uresnet3D     import UResNet3D
+    from ...networks.torch.uresnet2D       import UResNet
+    from ...networks.torch.uresnet3D       import UResNet3D
 
 
 
@@ -46,8 +46,7 @@ class torch_trainer(trainercore):
 
     def init_network(self):
 
-        if FLAGS.CONV_MODE == "2D":
-
+        if FLAGS.CONV_MODE == "2D" and not FLAGS.SPARSE:
             self._net = UResNet(
                 n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
                 batch_norm               = FLAGS.BATCH_NORM,
@@ -93,31 +92,8 @@ class torch_trainer(trainercore):
             self._net.train(True)
 
         # Here we set up weights using the aggregate metrics for the dataset:
-        if FLAGS.BALANCE_LOSS:
-            if FLAGS.COMPUTE_MODE == "GPU":
-                device = torch.device('cuda')
-            else:
-                device = torch.device('cpu')
 
-            if FLAGS.SHAPE == [640, 1024]:
-                if not FLAGS.SPARSE:
-                    # Statistics for the downsampled dense images (800 samples):
-                    # [1564304000    1570400    6989600]
-                    # [0.9945577  0.00099843 0.00444387]
-                    # This vector is simplified to be approximate:
-                    weight = torch.tensor([1. , 10.        , 1.5.], device=device)
-                else:
-                    # Statistics for the downsampled sparse images (800 samples):
-                    # [20273800   908000  5262600]
-                    # [0.76665759 0.03433619 0.19900622]
-                    # In the sparse case, the ratio of neutrino to cosmic is unchanged,
-                    # but the number of noise/bkg is much less
-                    weight = torch.tensor([1., 10.        , 1.5.], device=device)
-
-        else:
-            weight=None
-
-        self._criterion = torch.nn.CrossEntropyLoss(weight=weight)
+        self._criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
         self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
 
@@ -319,12 +295,11 @@ class torch_trainer(trainercore):
 
 
 
-    def _calculate_loss(self, labels, logits):
+    def _calculate_loss(self, labels, logits, weights = None):
         ''' Calculate the loss.
 
         returns a single scalar for the optimizer to use.
         '''
-
 
         # To apply the loss function, we have to convert the sparse tensors
         # to dense tensors.  We can take a version of the labels, however,
@@ -334,6 +309,34 @@ class torch_trainer(trainercore):
         loss = None
         for i in [0,1,2]:
             plane_loss = self._criterion(input=logits[i], target=labels[i])
+
+            if FLAGS.LOSS_BALANCE_SCHEME == "focal":
+                # To compute the focal loss, we need to compute the one-hot labels and the
+                # softmax
+                softmax = torch.nn.functional.softmax(logits[i])
+                # print("softmax.shape: ", softmax.shape)
+                # print("labels.shape: ", labels[i].shape)
+                onehot = torch.nn.functional.one_hot(labels[i], num_classes=3).float()
+                # print("onehot.shape: ", onehot.shape)
+                onehot = onehot.permute([0,3,1,2])
+                # print("onehot.shape: ", onehot.shape)
+
+                scale_factor = onehot * (1 - softmax)**3
+                # print("scale_factor.shape:  ", scale_factor.shape)
+                scale_factor = torch.mean(scale_factor, dim=1)
+                # print("scale_factor.shape:  ", scale_factor.shape)
+                # print("plane_loss.shape: ", plane_loss.shape)
+                # scale_factor /= torch.mean(scale_factor)
+                plane_loss = torch.mean(scale_factor * plane_loss)
+                # print("plane_loss.shape: ", plane_loss.shape)
+
+            elif FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
+                #split the weights across the plane dimension:
+                plane_loss = torch.mean(weights[:,i,:,:] * plane_loss)
+            else:
+                plane_loss = torch.mean(plane_loss)
+
+
             if loss is None:
                 loss = plane_loss
             else:
@@ -383,11 +386,11 @@ class torch_trainer(trainercore):
 
             # To compute the IoU, we use torch bytetensors which are similar to numpy masks.
             non_zero_locations       = labels[plane] != 0
-            neutrino_label_locations = labels[plane] == 1
-            cosmic_label_locations   = labels[plane] == 2
+            neutrino_label_locations = labels[plane] == self.NEUTRINO_INDEX
+            cosmic_label_locations   = labels[plane] == self.COSMIC_INDEX
 
-            neutrino_prediction_locations = predicted_label == 1
-            cosmic_prediction_locations   = predicted_label == 2
+            neutrino_prediction_locations = predicted_label == self.NEUTRINO_INDEX
+            cosmic_prediction_locations   = predicted_label == self.COSMIC_INDEX
 
 
             non_zero_accuracy = torch.mean(correct[non_zero_locations])
@@ -464,7 +467,7 @@ class torch_trainer(trainercore):
     def summary_images(self, logits_image, labels_image, saver=""):
 
         # if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
-        if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0 and not FLAGS.NO_SUMMARY:
+        if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0 and not FLAGS.NO_SUMMARY_IMAGES:
 
             for plane in range(3):
                 val, prediction = torch.max(logits_image[plane][0], dim=0)
@@ -543,7 +546,7 @@ class torch_trainer(trainercore):
             if key == 'entries' or key == 'event_ids':
                 continue
             if FLAGS.SPARSE:
-                if key == 'weight': continue
+                # if key == 'weight': continue
                 if key == 'image':
                     minibatch_data[key] = (
                             torch.tensor(minibatch_data[key][0]).long(),
@@ -553,6 +556,9 @@ class torch_trainer(trainercore):
                 elif key == 'label':
                     minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
             else:
+                if key == 'weight':
+                    if FLAGS.LOSS_BALANCE_SCHEME == "none" or FLAGS.LOSS_BALANCE_SCHEME == "focal":
+                        continue
                 # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 if FLAGS.INPUT_HALF_PRECISION:
@@ -618,7 +624,7 @@ class torch_trainer(trainercore):
             # Compute the loss based on the logits
 
 
-            loss = self._calculate_loss(labels_image, logits_image)
+            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
 
             if verbose: print("Completed loss")
 
@@ -705,7 +711,7 @@ class torch_trainer(trainercore):
             logits_image, labels_image = self.forward_pass(minibatch_data)
 
             # Compute the loss based on the logits
-            loss = self._calculate_loss(labels_image, logits_image)
+            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
 
 
             # Compute any necessary metrics:
@@ -831,7 +837,7 @@ class torch_trainer(trainercore):
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss
-            loss = self._calculate_loss(labels_image, logits_image)
+            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
 
             # Compute the metrics for this iteration:
             print("computing metrics for entry ", minibatch_data['entries'][0])

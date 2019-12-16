@@ -84,6 +84,12 @@ class distributed_trainer(tf_trainer):
         if hvd.rank() == 0:
             self.print_network_info()
 
+        self.init_global_step()
+        with tf.variable_scope("hvd"):
+
+            # In the distributed case, we may want a learning rate behavior:
+            self._learning_rate = self.generate_learning_rate(FLAGS.LEARNING_RATE, self._global_step)
+
 
 
         self.init_optimizer()
@@ -143,7 +149,7 @@ class distributed_trainer(tf_trainer):
             #     tf.summary.scalar(key, self._metrics[key])
 
             # In the distributed case, we may want a learning rate behavior:
-            self._lr = self.generate_learning_rate(FLAGS.LEARNING_RATE, self._global_step)
+            self._learning_rate = self.generate_learning_rate(FLAGS.LEARNING_RATE, self._global_step)
 
 
 
@@ -172,7 +178,7 @@ class distributed_trainer(tf_trainer):
     def generate_learning_rate(self,
         base_learning_rate,
         global_step,
-        warmup_steps = 100,
+        warmup_steps = 1000,
         decay_after_step=4500):
 
         ''' Compute the peak learning rate, the start point, and such
@@ -186,7 +192,7 @@ class distributed_trainer(tf_trainer):
         # For the calculations, we need to set some constants:
 
         core_learning_rate = tf.constant(base_learning_rate*numpy.sqrt(hvd.size()), dtype=tf.float32)
-        initial_learning_rate = tf.constant(0.0001, dtype=tf.float32)
+        initial_learning_rate = tf.constant(0.000001, dtype=tf.float32)
         warmup_steps = tf.constant(warmup_steps, dtype = tf.float32)
 
 
@@ -195,7 +201,7 @@ class distributed_trainer(tf_trainer):
 
         # First, have to decide what state we are in.
 
-        scaled_learning_rate = initial_learning_rate +  core_learning_rate * tf.cast(global_step, tf.float32) / warmup_steps
+        scaled_learning_rate = initial_learning_rate +  core_learning_rate * (tf.cast(global_step, tf.float32) / warmup_steps)
 
         # Warm up phase:
         this_learning_rate = tf.math.minimum(scaled_learning_rate, core_learning_rate)
@@ -213,6 +219,8 @@ class distributed_trainer(tf_trainer):
         # self._summary_basic = tf.summary.merge([lr_summary, self._summary_basic])
 
         return this_learning_rate
+
+
 
 
     # def metrics(self, metrics):

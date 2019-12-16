@@ -25,6 +25,8 @@ floating_point_format = tf.float32
 integer_format = tf.int64
 
 
+
+
 class tf_trainer(trainercore):
     '''
     This is the tensorflow version of the trainer
@@ -57,7 +59,7 @@ class tf_trainer(trainercore):
             'io_time' : tf.placeholder(floating_point_format, (), name="io_fetch_time")
         })
 
-        if FLAGS.BALANCE_LOSS:
+        if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
             self._input['weight'] = tf.placeholder(floating_point_format, self._dims['label'], name="input_weight")
 
         # Build the network object, forward pass only:
@@ -138,10 +140,10 @@ class tf_trainer(trainercore):
             self._output['prediction'] = [ tf.argmax(x, axis=self._channels_dim) for x in self._logits]
 
 
-            self._accuracy = self._calculate_accuracy(logits=self._output, labels=self._input['label'])
+            self._accuracy = self._calculate_accuracy(logits=self._output, input=self._input,)
 
             # Create the loss function
-            if FLAGS.BALANCE_LOSS:
+            if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light" :
                 self._loss = self._calculate_loss(
                     labels = self._input['label'],
                     logits = self._logits,
@@ -182,7 +184,7 @@ class tf_trainer(trainercore):
 
         self._initialize_io()
 
-
+        self.init_global_step()
 
         if io_only:
             return
@@ -232,6 +234,9 @@ class tf_trainer(trainercore):
         #     log_step_count_steps  = FLAGS.LOGGING_ITERATION,
         #     save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
 
+    def init_learning_rate(self):
+        self._learning_rate = FLAGS.LEARNING_RATE
+
 
     def restore_model(self):
         ''' This function attempts to restore the model from file
@@ -253,18 +258,6 @@ class tf_trainer(trainercore):
         self._saver.restore(self._sess, path)
 
         return True
-
-        # with open(checkpoint_file_path, 'r') as _ckp:
-        #     for line in _ckp.readlines():
-        #         if line.startswith("latest: "):
-        #             chkp_file = line.replace("latest: ", "").rstrip('\n')
-        #             chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
-        #             print("Restoring weights from ", chkp_file)
-        #             break
-
-        # state = torch.load(chkp_file)
-        # return state
-
 
     def checkpoint(self, global_step):
 
@@ -334,23 +327,26 @@ class tf_trainer(trainercore):
         if FLAGS.AUX_FILE is not None:
             self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
 
+    def init_global_step(self):
+        self._global_step = tf.train.get_or_create_global_step()
 
 
     def init_optimizer(self):
 
+        self.init_learning_rate()
+
         if 'RMS' in FLAGS.OPTIMIZER.upper():
             # Use RMS prop:
             tf.logging.info("Selected optimizer is RMS Prop")
-            self._opt = tf.train.RMSPropOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.train.RMSPropOptimizer(self._learning_rate)
         elif 'LARS' in FLAGS.OPTIMIZER.upper():
             tf.logging.info("Selected optimizer is LARS")
-            self._opt = tf.contrib.opt.LARSOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.contrib.opt.LARSOptimizer(self._learning_rate)
         else:
             # default is Adam:
             tf.logging.info("Using default Adam optimizer")
-            self._opt = tf.train.AdamOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.train.AdamOptimizer(self._learning_rate)
 
-        self._global_step = tf.train.get_or_create_global_step()
 
 
         # self._train_op = self._opt.minimize(self._loss, self._global_step)
@@ -363,6 +359,8 @@ class tf_trainer(trainercore):
 
             self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.trainable_variables()),
                 global_step = self._global_step)
+
+
 
     def _calculate_loss(self, labels, logits, weight=None):
         ''' Calculate the loss.
@@ -387,28 +385,32 @@ class tf_trainer(trainercore):
                     labels = split_labels[p],
                     logits = logits[p]
                 )
-                # print("loss[p].shape: ", loss[p].shape)
 
-                # multiple (elementwise) the weights for the loss function:
-                if FLAGS.BALANCE_LOSS:
-                    # print("split_weights[p].shape: ", split_weights[p].shape)
-                    loss[p] = tf.multiply(loss[p], split_weights[p])
-                    # print(" post mult. loss[p].shape: ", loss[p].shape)
-
-                    # Because we have a weighting function, this is a summed reduction:
-                    loss[p] = tf.reduce_sum(loss[p])
-                else:
+                # Now, we apply a weight to the loss if necessary:
+                if FLAGS.LOSS_BALANCE_SCHEME == "none":
                     loss[p] = tf.reduce_mean(loss[p])
+                elif FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
+                    loss[p] = tf.multiply(loss[p], split_weights[p])
+                    loss[p] = tf.reduce_sum(loss[p])
+                elif FLAGS.LOSS_BALANCE_SCHEME == "focal":
+
+                    # Compute this as focal loss:
+                    s      = tf.nn.softmax(logits[p], axis = self._channels_dim)
+                    labels = tf.one_hot(indices=split_labels[p], depth=3, axis=self._channels_dim)
+
+                    balance_term = (1-s)**2
+                    balance_term *= labels
+                    balance_term = tf.reduce_sum(balance_term, axis=self._channels_dim)
+                    loss[p] *= balance_term
+                    loss[p] = tf.reduce_mean(loss[p])
+
+
 
                 self._metrics["cross_entropy/Loss_plane_{}".format(p)] = loss[p]
                 # tf.summary.scalar("Loss_plane_{}".format(p),loss[p])
 
             # We do use the *mean* across planes:
             total_loss = tf.reduce_mean(loss)
-            #
-            # if tf.is_nan(total_loss):
-            #     print("Loss is NaN, ending training early")
-            #     raise Exception("Loss is Nan, ending training early.  Occured on entry ", minibatch_data['entries'])
 
             # # If desired, add weight regularization loss:
             # if FLAGS.REGULARIZE_WEIGHTS != 0.0:
@@ -424,7 +426,7 @@ class tf_trainer(trainercore):
             return total_loss
 
 
-    def _calculate_accuracy(self, logits, labels):
+    def _calculate_accuracy(self, logits, input):
         ''' Calculate the accuracy.
 
             Images received here are not sparse but dense.
@@ -433,6 +435,11 @@ class tf_trainer(trainercore):
         '''
 
         # Compare how often the input label and the output prediction agree:
+
+        labels = input['label']
+        images = input['image']
+
+
 
         n_planes = 3
 
@@ -443,7 +450,7 @@ class tf_trainer(trainercore):
             cosmic_iou       = [None]*n_planes
 
             split_labels = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(labels, n_planes, self._channels_dim)]
-
+            split_images = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(images, n_planes, self._channels_dim)]
 
             for p in range(n_planes):
 
@@ -451,29 +458,36 @@ class tf_trainer(trainercore):
                         tf.cast(tf.equal(logits['prediction'][p], split_labels[p]), floating_point_format)
                     )
                 # Find the non zero split_labels:
-                non_zero_indices = tf.not_equal(split_labels[p], tf.constant(0, split_labels[p].dtype))
+                non_zero_indices = tf.not_equal(split_images[p], tf.constant(0, split_labels[p].dtype))
+
+                print(non_zero_indices.shape)
 
                 # Find the neutrino indices:
                 # Sometimes, there are no neutrino indexes in the image.  This leads to a NaN
                 # in the calculation of the neutrino accuracy.
                 # This is an open issue to resolve.
-                neutrino_indices = tf.equal(split_labels[p], tf.constant(1, split_labels[p].dtype))
+                neutrino_indices = tf.equal(split_labels[p], tf.constant(self.NEUTRINO_INDEX, split_labels[p].dtype))
 
                 # Find the cosmic indices:
-                cosmic_indices = tf.equal(split_labels[p], tf.constant(2, split_labels[p].dtype))
+                cosmic_indices = tf.equal(split_labels[p], tf.constant(self.COSMIC_INDEX, split_labels[p].dtype))
 
+                # Mask the out zero-image pixels in the labels and logits:
                 non_zero_logits = tf.boolean_mask(logits['prediction'][p], non_zero_indices)
                 non_zero_labels = tf.boolean_mask(split_labels[p], non_zero_indices)
 
+                # Mask out and keep only neutrino pixels:
                 neutrino_logits = tf.boolean_mask(logits['prediction'][p], neutrino_indices)
                 neutrino_labels = tf.boolean_mask(split_labels[p], neutrino_indices)
 
+                # Find which pixels are predicted as neutrino:
                 predicted_neutrino_indices = tf.equal(logits['prediction'][p],
-                    tf.constant(1, split_labels[p].dtype))
+                    tf.constant(self.NEUTRINO_INDEX, split_labels[p].dtype))
+
+                # Find which pixels are predicted as cosmic:
                 predicted_cosmic_indices = tf.equal(logits['prediction'][p],
-                    tf.constant(2, split_labels[p].dtype))
+                    tf.constant(self.COSMIC_INDEX, split_labels[p].dtype))
 
-
+                # Compute the intersection of all pixels predicted as neutrino:
                 neutrino_intersection = tf.math.logical_and(predicted_neutrino_indices, neutrino_indices)
                 neutrino_union = tf.math.logical_or(predicted_neutrino_indices, neutrino_indices)
 
@@ -612,10 +626,10 @@ class tf_trainer(trainercore):
             ops['global_step'] = self._global_step
             ops['summary'] = self._summary_basic
 
-            ops['metrics'] = self._metrics
+            if do_summary_images:
+                ops["summary_images"] = self._summary_images
 
-            # if self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0:
-            #     ops['summary_images'] = self._summary_images
+            ops['metrics'] = self._metrics
 
 
             ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
@@ -854,7 +868,7 @@ class tf_trainer(trainercore):
                     )
                     prediction.append({
                             'index'  : locs_flat,
-                            'values' : ops['prediction'][plane][0][locs[plane]],
+                            'values' : ops['softmax'][plane][0][locs[plane]],
                             'shape'  : shape
                             }
                         )
@@ -904,6 +918,8 @@ class tf_trainer(trainercore):
         '''
         fd = dict()
 
+        # fd[self._learning_rate] = self._base_learning_rate
+
         for key in inputs:
             if key == "entries" or key == "event_ids": continue
 
@@ -915,6 +931,8 @@ class tf_trainer(trainercore):
 
     def batch_process(self, verbose=True):
 
+        start = time.time()
+        post_one_time = None
         # Run iterations
         for self._iteration in range(FLAGS.ITERATIONS):
             if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
@@ -930,5 +948,13 @@ class tf_trainer(trainercore):
             else:
                 raise Exception("Don't know what to do with mode ", FLAGS.MODE)
 
+            if post_one_time is None:
+                post_one_time = time.time()
+
         if FLAGS.MODE == 'inference':
             self._larcv_interface._writer.finalize()
+
+        end = time.time()
+
+        print("Total time to batch_process: ", end - start)
+        print("Total time to batch process except first iteration: ", end - post_one_time)
