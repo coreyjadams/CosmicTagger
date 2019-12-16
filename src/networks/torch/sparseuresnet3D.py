@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import sparseconvnet as scn
 
-from .uresnet2d import BlockSeries, Block
 from src import utils
 
 '''UResNet is implemented recursively here.
@@ -27,6 +26,7 @@ class SparseBlock(nn.Module):
     def __init__(self, *, inplanes, outplanes, nplanes=1, params):
 
         nn.Module.__init__(self)
+        print(nplanes)
 
         self.conv1 = scn.SubmanifoldConvolution(dimension=3,
             nIn=inplanes,
@@ -203,19 +203,19 @@ class SparseDeepestBlock(nn.Module):
 
         self.merger = scn.Convolution(dimension=3,
             nIn             = inplanes,
-            nOut            = 3*inplanes,
+            nOut            = params.bottleneck_deepest,
             filter_size     = [3,1,1],
             filter_stride   = [1,1,1],
             bias            = params.use_bias)
 
 
-        self.blocks = SparseBlockSeries(inplanes = 3*inplanes,
+        self.blocks = SparseBlockSeries(inplanes = params.bottleneck_deepest,
                                         n_blocks =  params.blocks_deepest_layer,
                                         n_planes = 1,
                                         params   = params)
 
         self.splitter = scn.Deconvolution(dimension=3,
-            nIn             = 3*inplanes,
+            nIn             = params.bottleneck_deepest,
             nOut            = inplanes,
             filter_size     = [3,1,1],
             filter_stride   = [1,1,1],
@@ -259,10 +259,6 @@ class ConcatConnection(nn.Module):
                             bias        = params.use_bias)
 
     def forward(self, x, residual):
-        print(type(x))
-        print(type(residual))
-
-
         x = self.concat([x, residual])
         return self.bottleneck(x)
 
@@ -283,23 +279,27 @@ class SparseUNetCore(nn.Module):
                                                  n_blocks = params.blocks_per_layer,
                                                  params   = params)
 
-            n_filters_next_layer = inplanes * 2
+
+            if params.growth_rate == "multiplicative":
+                n_filters_next = 2 * inplanes
+            else:
+                n_filters_next = inplanes + params.n_initial_filters
 
 
             # Down sampling operation:
             self.downsample  = SparseConvolutionDownsample(inplanes  = inplanes,
-                                                           outplanes = n_filters_next_layer,
+                                                           outplanes = n_filters_next,
                                                            nplanes   = 1,
                                                            params    = params)
 
             # Submodule:
             self.main_module = SparseUNetCore(depth    = depth-1,
-                                              inplanes = n_filters_next_layer,
+                                              inplanes = n_filters_next,
                                               params   = params)
 
 
             # Upsampling operation:
-            self.upsample    = SparseConvolutionUpsample(inplanes = n_filters_next_layer,
+            self.upsample    = SparseConvolutionUpsample(inplanes = n_filters_next,
                                                          outplanes = inplanes,
                                                          params = params)
 
@@ -371,7 +371,9 @@ class UResNet3D(torch.nn.Module):
             connections,         # What type of connection?
             upsampling,          # What type of upsampling?
             downsampling,        # What type of downsampling?
+            bottleneck_deepest,  # How many filters to use in combined, deepest convolutions
             shape,               # Data shape
+            filter_size_deepest, # What size filter to use in the deepest convolutions
             growth_rate          # Either multiplicative (doubles) or additive (constant addition))
             ):
         torch.nn.Module.__init__(self)
@@ -382,7 +384,6 @@ class UResNet3D(torch.nn.Module):
             'batch_norm'            : batch_norm,
             'use_bias'              : use_bias,
             'residual'              : residual,
-            'regularize'            : regularize,
             'depth'                 : depth,
             'blocks_final'          : blocks_final,
             'blocks_per_layer'      : blocks_per_layer,
@@ -392,6 +393,8 @@ class UResNet3D(torch.nn.Module):
             'downsampling'          : downsampling,
             'shape'                 : shape,
             'growth_rate'           : growth_rate,
+            'bottleneck_deepest'    : bottleneck_deepest,
+            'filter_size_deepest'   : filter_size_deepest
             })
 
         # Create the sparse input tensor:
@@ -412,7 +415,7 @@ class UResNet3D(torch.nn.Module):
             n_filters_next = 2 * n_initial_filters
         else:
             n_filters_next = n_initial_filters + params.n_initial_filters
-        
+
         # Next, build out the convolution steps:
 
         self.net_core = SparseUNetCore(depth=params.depth,

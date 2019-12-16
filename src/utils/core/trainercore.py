@@ -94,7 +94,7 @@ class trainercore(object):
 
             self._larcv_interface.prepare_manager('primary', io_config, FLAGS.MINIBATCH_SIZE, data_keys, color)
 
-            self._larcv_interface.prepare_next('primary')
+            # self._larcv_interface.prepare_next('primary')
 
             # All of the additional tools are in case there is a test set up:
             if FLAGS.AUX_FILE is not None:
@@ -170,7 +170,6 @@ class trainercore(object):
         # Using the sparse IO techniques, we have to manually set the dimensions for the input.
 
         # Fortunately, everything we need is in the FLAGS object and io object:
-
         local_minibatch_size = io_dims['image'][0]
 
 
@@ -192,10 +191,6 @@ class trainercore(object):
     def set_compute_parameters(self):
         pass
 
-
-        self._criterion = torch.nn.CrossEntropyLoss(weight=weight)
-
-        self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
 
     def log(self, metrics, kind, step):
 
@@ -231,6 +226,7 @@ class trainercore(object):
 
 
             # This brings up the current data
+            self._larcv_interface.prepare_next(mode)
             minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=pop,fetch_meta_data=metadata)
             minibatch_dims = self._larcv_interface.fetch_minibatch_dims(mode)
 
@@ -240,8 +236,8 @@ class trainercore(object):
                     continue
                 minibatch_data[key] = numpy.reshape(minibatch_data[key], minibatch_dims[key])
 
-            if FLAGS.BALANCE_LOSS and FLAGS.FRAMEWORK == "tensorflow":
-                minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
+            # if FLAGS.LOSS_BALANCE_SCHEME != "none":
+            minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
 
 
             if not FLAGS.SPARSE:
@@ -251,7 +247,6 @@ class trainercore(object):
                 minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['image'])
                 minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
             # This preparse the next batch of data:
-            self._larcv_interface.prepare_next(mode)
 
         else:
             minibatch_data = {}
@@ -263,7 +258,7 @@ class trainercore(object):
 
         return minibatch_data
 
-    def compute_weights(self, labels, boost_labels = None, weight_mode = 2):
+    def compute_weights(self, labels):
         '''
         This is NOT a tensorflow implementation, but a numpy implementation.
         Running on CPUs this might not make a difference.  Running on GPUs
@@ -279,10 +274,13 @@ class trainercore(object):
 
 
         # weight modes:
-        # 1 - No loss balancing, just run normally
-        # 2 - Constant loss balancing: each class is given a weight, but the whole event is normalized
-        # 3 - Dynamic loss balancing:  each class is weighted such that it contributes 1/3 of the total weight.
-        # 4 - THere is no 4
+        # "none" - No loss balancing, just run normally
+        # "light" - Constant loss balancing: each class is given a weight, but the whole event is normalized
+        # "even" - Dynamic loss balancing:  each class is weighted such that it contributes 1/3 of the total weight.
+        # "focal" - Compute the focal loss, which is done in the framework loss functions
+
+        if FLAGS.LOSS_BALANCE_SCHEME == "focal": return None
+        if FLAGS.LOSS_BALANCE_SCHEME == "none": return None
 
         x_coords = labels[:,:,:,1]
         y_coords = labels[:,:,:,0]
@@ -312,7 +310,7 @@ class trainercore(object):
         # Correct the empty pixel values in the count:
         counts[0] = n_pixels - counts[1] - counts[2]
 
-        if weight_mode == 1:
+        if FLAGS.LOSS_BALANCE_SCHEME == "even":
 
             # Now we have the weight values, return it in the proper shape:
             # Prepare output weights:
@@ -325,13 +323,13 @@ class trainercore(object):
             weights[values==1] = class_weights[1]
 
             if FLAGS.DATA_FORMAT == "channels_first":
-                dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight)
+                dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,plane_index,y_index,x_index] = weights
             else:
-                dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], bkg_weight)
+                dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,y_index,x_index,plane_index] = weights
 
-        if weight_mode == 2:
+        if FLAGS.LOSS_BALANCE_SCHEME == "light":
 
             # This mode maintains the weights for everything as if they are unbalanced,
             # however it gives a mild boost to cosmic pixels, and a medium
@@ -342,19 +340,15 @@ class trainercore(object):
             bkg_weight = per_pixel_weight
             # Now we have the weight values, return it in the proper shape:
             # Prepare output weights:
-            weights = numpy.full(values.shape, bkg_weight)
+            weights = numpy.full(values.shape, bkg_weight,dtype=numpy.float32)
             weights[values==1] = 10*per_pixel_weight
             weights[values==2] = 1.5*per_pixel_weight
 
-
-
-
-
             if FLAGS.DATA_FORMAT == "channels_first":
-                dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight)
+                dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,plane_index,y_index,x_index] = weights
             else:
-                dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], bkg_weight)
+                dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,y_index,x_index,plane_index] = weights
 
             # Normalize:
@@ -362,9 +356,6 @@ class trainercore(object):
 
             # print("Total_weight: ", total_weight)
             dense_weights *= 1./total_weight
-
-
-
 
         # # Normalize the weights to sum to 1 for each event:
         return dense_weights
