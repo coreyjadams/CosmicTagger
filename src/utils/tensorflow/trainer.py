@@ -25,6 +25,8 @@ floating_point_format = tf.float32
 integer_format = tf.int64
 
 
+
+
 class tf_trainer(trainercore):
     '''
     This is the tensorflow version of the trainer
@@ -57,7 +59,7 @@ class tf_trainer(trainercore):
             'io_time' : tf.placeholder(floating_point_format, (), name="io_fetch_time")
         })
 
-        if FLAGS.BALANCE_LOSS:
+        if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
             self._input['weight'] = tf.placeholder(floating_point_format, self._dims['label'], name="input_weight")
 
         # Build the network object, forward pass only:
@@ -141,7 +143,7 @@ class tf_trainer(trainercore):
             self._accuracy = self._calculate_accuracy(logits=self._output, labels=self._input['label'])
 
             # Create the loss function
-            if FLAGS.BALANCE_LOSS:
+            if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light" :
                 self._loss = self._calculate_loss(
                     labels = self._input['label'],
                     logits = self._logits,
@@ -182,7 +184,7 @@ class tf_trainer(trainercore):
 
         self._initialize_io()
 
-
+        self.init_global_step()
 
         if io_only:
             return
@@ -231,6 +233,9 @@ class tf_trainer(trainercore):
         #     checkpoint_dir        = checkpoint_dir,
         #     log_step_count_steps  = FLAGS.LOGGING_ITERATION,
         #     save_checkpoint_steps = FLAGS.CHECKPOINT_ITERATION)
+
+    def init_learning_rate(self):
+        self._learning_rate = FLAGS.LEARNING_RATE
 
 
     def restore_model(self):
@@ -334,23 +339,26 @@ class tf_trainer(trainercore):
         if FLAGS.AUX_FILE is not None:
             self._val_writer = tf.summary.FileWriter(logdir=FLAGS.LOG_DIRECTORY+"/test/")
 
+    def init_global_step(self):
+        self._global_step = tf.train.get_or_create_global_step()
 
 
     def init_optimizer(self):
 
+        self.init_learning_rate()
+
         if 'RMS' in FLAGS.OPTIMIZER.upper():
             # Use RMS prop:
             tf.logging.info("Selected optimizer is RMS Prop")
-            self._opt = tf.train.RMSPropOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.train.RMSPropOptimizer(self._learning_rate)
         elif 'LARS' in FLAGS.OPTIMIZER.upper():
             tf.logging.info("Selected optimizer is LARS")
-            self._opt = tf.contrib.opt.LARSOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.contrib.opt.LARSOptimizer(self._learning_rate)
         else:
             # default is Adam:
             tf.logging.info("Using default Adam optimizer")
-            self._opt = tf.train.AdamOptimizer(FLAGS.LEARNING_RATE)
+            self._opt = tf.train.AdamOptimizer(self._learning_rate)
 
-        self._global_step = tf.train.get_or_create_global_step()
 
 
         # self._train_op = self._opt.minimize(self._loss, self._global_step)
@@ -363,6 +371,8 @@ class tf_trainer(trainercore):
 
             self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.trainable_variables()),
                 global_step = self._global_step)
+
+
 
     def _calculate_loss(self, labels, logits, weight=None):
         ''' Calculate the loss.
@@ -387,28 +397,32 @@ class tf_trainer(trainercore):
                     labels = split_labels[p],
                     logits = logits[p]
                 )
-                # print("loss[p].shape: ", loss[p].shape)
 
-                # multiple (elementwise) the weights for the loss function:
-                if FLAGS.BALANCE_LOSS:
-                    # print("split_weights[p].shape: ", split_weights[p].shape)
-                    loss[p] = tf.multiply(loss[p], split_weights[p])
-                    # print(" post mult. loss[p].shape: ", loss[p].shape)
-
-                    # Because we have a weighting function, this is a summed reduction:
-                    loss[p] = tf.reduce_sum(loss[p])
-                else:
+                # Now, we apply a weight to the loss if necessary:
+                if FLAGS.LOSS_BALANCE_SCHEME == "none":
                     loss[p] = tf.reduce_mean(loss[p])
+                elif FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
+                    loss[p] = tf.multiply(loss[p], split_weights[p])
+                    loss[p] = tf.reduce_sum(loss[p])
+                elif FLAGS.LOSS_BALANCE_SCHEME == "focal":
+
+                    # Compute this as focal loss:
+                    s      = tf.nn.softmax(logits[p], axis = self._channels_dim)
+                    labels = tf.one_hot(indices=split_labels[p], depth=3, axis=self._channels_dim)
+
+                    balance_term = (1-s)**2
+                    balance_term *= labels
+                    balance_term = tf.reduce_sum(balance_term, axis=self._channels_dim)
+                    loss[p] *= balance_term
+                    loss[p] = tf.reduce_mean(loss[p])
+
+
 
                 self._metrics["cross_entropy/Loss_plane_{}".format(p)] = loss[p]
                 # tf.summary.scalar("Loss_plane_{}".format(p),loss[p])
 
             # We do use the *mean* across planes:
             total_loss = tf.reduce_mean(loss)
-            #
-            # if tf.is_nan(total_loss):
-            #     print("Loss is NaN, ending training early")
-            #     raise Exception("Loss is Nan, ending training early.  Occured on entry ", minibatch_data['entries'])
 
             # # If desired, add weight regularization loss:
             # if FLAGS.REGULARIZE_WEIGHTS != 0.0:
@@ -903,6 +917,8 @@ class tf_trainer(trainercore):
 
         '''
         fd = dict()
+
+        # fd[self._learning_rate] = self._base_learning_rate
 
         for key in inputs:
             if key == "entries" or key == "event_ids": continue

@@ -11,7 +11,7 @@ class Block(tf.keras.models.Model):
                  n_filters,
                  kernel  = [3,3],
                  strides = [1,1],
-                 activation = tf.nn.relu,
+                 activation = tf.nn.leaky_relu,
                  params):
 
         tf.keras.models.Model.__init__(self)
@@ -59,7 +59,7 @@ class ConvolutionUpsample(tf.keras.models.Model):
         n_filters,
         kernel  = (2,2),
         strides = (2,2),
-        activation = tf.nn.relu,
+        activation = tf.nn.leaky_relu,
         params):
 
         tf.keras.models.Model.__init__(self)
@@ -108,26 +108,6 @@ class ResidualBlock(tf.keras.models.Model):
 
         tf.keras.models.Model.__init__(self)
 
-        '''This is an all-in-one implementation of a residual block
-
-        It can perform bottlenecking or not.
-
-        Arguments:
-            n_filters {int} -- number of filters
-        Keyword Arguments:
-            strides {tuple} -- [description] (default: {(1,1)})
-            batch_norm {bool} -- [description] (default: {True})
-            activation {[type]} -- [description] (default: {tf.nn.relu})
-            name {str} -- [description] (default: {""})
-            data_format {str} -- [description] (default: {"channels_first"})
-            use_bias {bool} -- [description] (default: {False})
-            regularize {number} -- [description] (default: {0.0})
-            bottleneck {number} -- [description] (default: {64})
-            reuse {bool} -- [description] (default: {False})
-        '''
-
-
-
         n_filters_in = n_filters
 
         self.convolution_1 = Block(
@@ -154,7 +134,7 @@ class ResidualBlock(tf.keras.models.Model):
 
         x = y + x
 
-        return tf.nn.relu(x)
+        return tf.nn.leaky_relu(x)
 
 
 class BlockSeries(tf.keras.models.Model):
@@ -223,7 +203,6 @@ class DeepestBlock(tf.keras.models.Model):
                      n_filters  = n_filters_bottleneck,
                      kernel     = [1,1],
                      strides    = [1,1],
-                     activation = tf.nn.relu,
                      params     = params)
 
             self.blocks = BlockSeries(
@@ -236,7 +215,6 @@ class DeepestBlock(tf.keras.models.Model):
                     n_filters  = in_filters,
                     kernel     = [1,1],
                     strides    = [1,1],
-                    activation = tf.nn.relu,
                     params     = params)
 
         else:
@@ -245,7 +223,6 @@ class DeepestBlock(tf.keras.models.Model):
                      n_filters  = n_filters_bottleneck,
                      kernel     = [1,1],
                      strides    = [1,1],
-                     activation = tf.nn.relu,
                      params     = params)
 
             self.blocks = BlockSeries(
@@ -258,7 +235,6 @@ class DeepestBlock(tf.keras.models.Model):
                     n_filters  = 3*in_filters,
                     kernel     = [1,1],
                     strides    = [1,1],
-                    activation = tf.nn.relu,
                     params     = params)
 
 
@@ -266,11 +242,11 @@ class DeepestBlock(tf.keras.models.Model):
 
         if not self.block_concat:
             x = tf.concat(x, axis=self.channels_axis)
-        
+
             x = self.bottleneck(x, training)
             x = self.blocks(x, training)
             x = self.unbottleneck(x, training)
-            
+
             x = tf.split(x, 3, self.channels_axis)
 
         else:
@@ -562,7 +538,7 @@ class UResNet(tf.keras.models.Model):
         self.initial_convolution = Block(
             n_filters   = n_initial_filters,
             kernel      = [7,7],
-            activation  = tf.nn.relu,
+            activation  = tf.nn.leaky_relu,
             params      = params)
 
         n_filters = n_initial_filters

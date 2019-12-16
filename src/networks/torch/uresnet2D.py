@@ -38,7 +38,7 @@ class Block(nn.Module):
         if self.do_batch_norm:
             self.bn   = nn.BatchNorm2d(outplanes)
 
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.LeakyReLU(inplace=True)
 
     def forward(self, x):
         out = self.conv(x)
@@ -67,7 +67,7 @@ class ResidualBlock(nn.Module):
         if self.do_batch_norm:
             self.bn1 = nn.BatchNorm2d(outplanes)
 
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.LeakyReLU(inplace=True)
 
         self.conv2 = nn.Conv2d(
             in_channels  = outplanes,
@@ -118,7 +118,7 @@ class ConvolutionDownsample(nn.Module):
         self.do_batch_norm = params.batch_norm
         if self.do_batch_norm:
             self.bn   = nn.BatchNorm2d(outplanes)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.LeakyReLU(inplace=True)
 
     def forward(self, x):
         out = self.conv(x)
@@ -146,7 +146,7 @@ class ConvolutionUpsample(nn.Module):
         self.do_batch_norm = params.batch_norm
         if self.do_batch_norm:
             self.bn   = nn.BatchNorm2d(outplanes)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.LeakyReLU(inplace=True)
 
     def forward(self, x):
 
@@ -166,16 +166,16 @@ class BlockSeries(torch.nn.Module):
 
         if not params.residual:
             self.blocks = [ Block(
-                                inplanes  = inplanes, 
-                                outplanes = inplanes, 
+                                inplanes  = inplanes,
+                                outplanes = inplanes,
                                 kernel    = kernel,
                                 padding   = padding,
                                 params    = params)
                             for i in range(n_blocks) ]
         else:
             self.blocks = [ ResidualBlock(
-                                inplanes  = inplanes, 
-                                outplanes = inplanes, 
+                                inplanes  = inplanes,
+                                outplanes = inplanes,
                                 kernel    = kernel,
                                 padding   = padding,
                                 params    = params)
@@ -220,7 +220,7 @@ class DeepestBlock(nn.Module):
                     kernel     = [1,1],
                     padding    = [0,0],
                     params     = params)
-            
+
             kernel  = [params.filter_size_deepest, params.filter_size_deepest]
             padding = [ int((k - 1) / 2) for k in kernel ]
 
@@ -247,7 +247,7 @@ class DeepestBlock(nn.Module):
                     kernel     = [1,1],
                     padding    = [0,0],
                     params     = params)
-            
+
             kernel  = [params.filter_size_deepest, params.filter_size_deepest]
             padding = [ int((k - 1) / 2) for k in kernel ]
 
@@ -394,7 +394,7 @@ class UNetCore(nn.Module):
                 n_filters_next = 2 * inplanes
             else:
                 n_filters_next = inplanes + params.n_initial_filters
-            
+
             # Down sampling operation:
             # This does change the number of filters from above down-pass blocks
             if params.downsampling == "convolutional":
@@ -568,13 +568,13 @@ class UResNet(torch.nn.Module):
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
 
 
-        # # Configure initialization:
-        # for m in self.modules():
-        #     if isinstance(m, nn.Conv2d):
-        #         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-        #     elif isinstance(m, nn.BatchNorm2d):
-        #         nn.init.constant_(m.weight, 1)
-        #         nn.init.constant_(m.bias, 0)
+        # Configure initialization:
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, input_tensor):
 
