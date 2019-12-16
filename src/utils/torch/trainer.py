@@ -383,11 +383,11 @@ class torch_trainer(trainercore):
 
             # To compute the IoU, we use torch bytetensors which are similar to numpy masks.
             non_zero_locations       = labels[plane] != 0
-            neutrino_label_locations = labels[plane] == 1
-            cosmic_label_locations   = labels[plane] == 2
+            neutrino_label_locations = labels[plane] == self.NEUTRINO_INDEX
+            cosmic_label_locations   = labels[plane] == self.COSMIC_INDEX
 
-            neutrino_prediction_locations = predicted_label == 1
-            cosmic_prediction_locations   = predicted_label == 2
+            neutrino_prediction_locations = predicted_label == self.NEUTRINO_INDEX
+            cosmic_prediction_locations   = predicted_label == self.COSMIC_INDEX
 
 
             non_zero_accuracy = torch.mean(correct[non_zero_locations])
