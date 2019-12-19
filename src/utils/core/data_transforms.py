@@ -32,10 +32,9 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
         output_array = numpy.zeros((batch_size, dense_shape[0], dense_shape[1], n_planes), dtype=numpy.float32)
 
 
-    x_coords = input_array[:,:,:,1]
-    y_coords = input_array[:,:,:,0]
+    x_coords = input_array[:,:,:,0]
+    y_coords = input_array[:,:,:,1]
     val_coords = input_array[:,:,:,2]
-
 
 
     filled_locs = val_coords != -999
@@ -48,7 +47,7 @@ def larcvsparse_to_dense_2d(input_array, dense_shape):
     values  = val_coords[batch_index, plane_index, voxel_index]
     x_index = numpy.int32(x_coords[batch_index, plane_index, voxel_index])
     y_index = numpy.int32(y_coords[batch_index, plane_index, voxel_index])
-
+    #
     # print(numpy.min(x_index))
     # print(numpy.min(y_index))
     # print()

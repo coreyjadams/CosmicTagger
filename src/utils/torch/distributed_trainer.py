@@ -58,7 +58,7 @@ def lr_increase(step):
 
     return 1.0 + step*step_size
 
-peak_lr = 0.5
+peak_lr = 0.01
 cycle_len = 0.8
 
 def one_cycle_clr(step):
