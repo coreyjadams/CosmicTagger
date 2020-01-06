@@ -9,10 +9,7 @@ network_dir = os.path.dirname(network_dir)
 network_dir = network_dir.rstrip("test/io/")
 sys.path.insert(0,network_dir)
 
-
-from src.networks.torch import uresnet2D
 from src.utils.core import flags
-
 
 import torch
 
