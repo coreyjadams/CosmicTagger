@@ -11,13 +11,13 @@ os:
 
 before_install:
   - sudo apt-get update
-  - sudo apt-get install cmake libhdf5-serial-dev python-dev swig3.0 openmpi-bin libopenmpi-dev
+  - sudo apt-get install cmake libhdf5-serial-dev python-dev swig3.0 
   - echo -e "machine github.com\n  login $GITHUB_TOKEN" > ~/.netrc
   - git lfs pull
 
 install:
   - pip install scikit-build
-  - pip install mpi4py
+  # - pip install mpi4py
   - pip install -r requirements.txt
   - echo $PYTHONPATH
   - echo $LD_LIBRARY_PATH
