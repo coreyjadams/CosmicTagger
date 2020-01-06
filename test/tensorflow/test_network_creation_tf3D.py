@@ -3,14 +3,16 @@ import pytest
 import os, sys
 
 
-# Add the local folder to the import path:
+# Add the src folder to the import path:
 network_dir = os.path.dirname(os.path.abspath(__file__))
 network_dir = os.path.dirname(network_dir)
 network_dir = network_dir.rstrip("test/")
 sys.path.insert(0,network_dir)
 
+print(network_dir)
 
-from src.networks.tensorflow import uresnet2D
+
+from src.networks.tensorflow import uresnet3D
 from src.utils.core import flags
 
 
@@ -52,7 +54,9 @@ def test_build_network(connections, residual, shape, batch_norm, use_bias,
     FLAGS.UPSAMPLING           = upsampling
     FLAGS.DATA_FORMAT          = data_format
     FLAGS.N_INITIAL_FILTERS    = n_initial_filters
-    FLAGS.CONV_MODE            = "2D"
+    FLAGS.CONV_MODE            = "3D"
+
+
     FLAGS.MODE = "CI"
 
     FLAGS.dump_config()
@@ -60,7 +64,7 @@ def test_build_network(connections, residual, shape, batch_norm, use_bias,
     from src.utils.tensorflow import trainer
     trainer = trainer.tf_trainer()
     # trainer = trainercore.trainercore()
-    trainer._initialize_io()
     trainer.init_network()
+
 
     return True

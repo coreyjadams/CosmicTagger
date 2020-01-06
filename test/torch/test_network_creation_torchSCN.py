@@ -6,15 +6,13 @@ import os, sys
 # Add the local folder to the import path:
 network_dir = os.path.dirname(os.path.abspath(__file__))
 network_dir = os.path.dirname(network_dir)
-network_dir = network_dir.rstrip("test/")
 sys.path.insert(0,network_dir)
 
 
-from src.networks.tensorflow import uresnet2D
 from src.utils.core import flags
 
 
-import tensorflow as tf
+import torch
 
 @pytest.mark.parametrize('connections', ['sum', 'concat', 'none'])
 @pytest.mark.parametrize('residual', [True, False])
@@ -35,6 +33,9 @@ import tensorflow as tf
 def test_build_network(connections, residual, shape, batch_norm, use_bias,
     blocks_deepest_layer, blocks_per_layer, network_depth, blocks_final, 
     downsampling, upsampling, data_format, n_initial_filters):
+    from src.networks.torch import sparseuresnet3D
+
+
     FLAGS = flags.uresnet()
     FLAGS._set_defaults()
     FLAGS.SYNTHETIC=True
@@ -52,15 +53,12 @@ def test_build_network(connections, residual, shape, batch_norm, use_bias,
     FLAGS.UPSAMPLING           = upsampling
     FLAGS.DATA_FORMAT          = data_format
     FLAGS.N_INITIAL_FILTERS    = n_initial_filters
-    FLAGS.CONV_MODE            = "2D"
+
     FLAGS.MODE = "CI"
 
     FLAGS.dump_config()
 
-    from src.utils.tensorflow import trainer
-    trainer = trainer.tf_trainer()
+    from src.utils.torch import trainer
+    trainer = trainer.torch_trainer()
     # trainer = trainercore.trainercore()
-    trainer._initialize_io()
     trainer.init_network()
-
-    return True
