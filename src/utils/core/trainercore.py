@@ -29,9 +29,9 @@ class trainercore(object):
     a NotImplemented error.
 
     '''
-    NEUTRINO_INDEX = 1
-    COSMIC_INDEX   = 2
-    
+    NEUTRINO_INDEX = 2
+    COSMIC_INDEX   = 1
+
     def __init__(self,):
         if not FLAGS.SYNTHETIC:
             if FLAGS.MODE == 'inference':
@@ -277,7 +277,7 @@ class trainercore(object):
             minibatch_data['weight'] = self.synthetic_weight[lower_index:upper_index]
 
             self.synthetic_index += 1
-            
+
         return minibatch_data
 
     def prepare_data(self, dataset_n_entries):
@@ -296,7 +296,7 @@ class trainercore(object):
 
     def compute_weights(self, labels):
 
-      '''
+        '''
         This is NOT a tensorflow implementation, but a numpy implementation.
         Running on CPUs this might not make a difference.  Running on GPUs
         it might be good to move this to a GPU, but I suspect it's not needed.
@@ -319,8 +319,8 @@ class trainercore(object):
         if FLAGS.LOSS_BALANCE_SCHEME == "focal": return None
         if FLAGS.LOSS_BALANCE_SCHEME == "none": return None
 
-        x_coords = labels[:,:,:,1]
-        y_coords = labels[:,:,:,0]
+        x_coords = labels[:,:,:,0]
+        y_coords = labels[:,:,:,1]
         val_coords = labels[:,:,:,2]
 
 
@@ -339,7 +339,7 @@ class trainercore(object):
 
         # Make sure that if the number of counts is 0 for neutrinos, we fix that
         if len(counts) < 3:
-            counts = numpy.insert(counts, 1, 0.1)
+            counts = numpy.insert(counts, self.NEUTRINO_INDEX, 0.1)
 
         # This computes the *real* number
         # Multiply by 3 planes:
@@ -356,8 +356,8 @@ class trainercore(object):
             bkg_weight = class_weights[0]
 
             weights = numpy.full(values.shape, bkg_weight)
-            weights[values==2] = class_weights[2]
-            weights[values==1] = class_weights[1]
+            weights[values==self.COSMIC_INDEX]   = class_weights[self.COSMIC_INDEX]
+            weights[values==self.NEUTRINO_INDEX] = class_weights[self.NEUTRINO_INDEX]
 
             if FLAGS.DATA_FORMAT == "channels_first":
                 dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight,dtype=numpy.float32)
@@ -378,8 +378,8 @@ class trainercore(object):
             # Now we have the weight values, return it in the proper shape:
             # Prepare output weights:
             weights = numpy.full(values.shape, bkg_weight,dtype=numpy.float32)
-            weights[values==1] = 10*per_pixel_weight
-            weights[values==2] = 1.5*per_pixel_weight
+            weights[values==self.COSMIC_INDEX]   = 1.5 * per_pixel_weight
+            weights[values==self.NEUTRINO_INDEX] = 10  * per_pixel_weight
 
             if FLAGS.DATA_FORMAT == "channels_first":
                 dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight,dtype=numpy.float32)

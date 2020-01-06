@@ -332,7 +332,7 @@ class torch_trainer(trainercore):
 
             elif FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
                 #split the weights across the plane dimension:
-                plane_loss = torch.mean(weights[:,i,:,:] * plane_loss)
+                plane_loss = torch.sum(weights[:,i,:,:] * plane_loss)
             else:
                 plane_loss = torch.mean(plane_loss)
 
@@ -471,32 +471,29 @@ class torch_trainer(trainercore):
 
             for plane in range(3):
                 val, prediction = torch.max(logits_image[plane][0], dim=0)
-                # This is a reshape and H/W swap:
+                # This is a reshape to add the required channels dimension:
                 prediction = prediction.view(
                     [1, prediction.shape[-2], prediction.shape[-1]]
                     ).float()
 
 
-
-                #TODO - need to address this function here!!!
-
-
-                labels = labels_image[plane][0].view(
-                    [1, labels_image[plane][0].shape[-2], labels_image[plane][0].shape[-1]]
+                labels = labels_image[plane][0]
+                labels =labels.view(
+                    [1,labels.shape[-2],labels.shape[-1]]
                     ).float()
 
-                # The images are in the format (Plane, W, H)
+                # The images are in the format (Plane, H, W)
                 # Need to transpose the last two dims in order to meet the (CHW) ordering
                 # of tensorboardX
 
 
                 # Values get mapped to gray scale, so put them in the range (0,1)
-                labels[labels == 1] = 0.5
-                labels[labels == 2] = 1.0
+                labels[labels == self.COSMIC_INDEX] = 0.5
+                labels[labels == self.NEUTRINO_INDEX] = 1.0
 
 
-                prediction[prediction == 1] = 0.5
-                prediction[prediction == 2] = 1.0
+                prediction[prediction == self.COSMIC_INDEX] = 0.5
+                prediction[prediction == self.NEUTRINO_INDEX] = 1.0
 
 
                 if saver == "test":
