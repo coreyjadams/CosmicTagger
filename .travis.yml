@@ -28,5 +28,5 @@ branchs:
     - master
 
 script: 
-  - pytest -m "not distributed_test" tests/
+  - pytest tests/
   - mpiexec -n 2 pytest -m distributed_test tests/
