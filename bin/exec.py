@@ -15,11 +15,12 @@ sys.path.insert(0,network_dir)
 from src.utils.core import flags
 
 
-def main():
+def main(skip_parsing=False):
 
     # If you extend the flags class, change this line!
     FLAGS = flags.uresnet()
-    FLAGS.parse_args()
+    if not skip_parsing:
+        FLAGS.parse_args()
     # FLAGS.dump_config()
 
 
