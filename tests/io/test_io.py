@@ -11,8 +11,6 @@ sys.path.insert(0,network_dir)
 
 from src.utils.core import flags
 
-import torch
-
 @pytest.mark.io
 def test_io():
     
@@ -20,14 +18,14 @@ def test_io():
 
 
     file_path = network_dir + "/example_data/"
-    file_path += "cosmic_tagging_dev.h5"
+    file_path += "cosmic_tagging_light.h5"
 
     # flags is a singleton, meaning we can edit here and it will pick up changes
     FLAGS = flags.uresnet()
     FLAGS._set_defaults()
     FLAGS.FILE = file_path
     FLAGS.MODE = 'iotest'
-    FLAGS.ITERATIONS = 10
+    FLAGS.ITERATIONS = 2
 
     main(skip_parsing = True)
 
