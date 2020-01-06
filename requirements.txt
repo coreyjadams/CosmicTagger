@@ -1,5 +1,5 @@
 numpy
 h5py
-larcv=3.2
+larcv
 tensorflow
 torch
