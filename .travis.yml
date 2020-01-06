@@ -12,8 +12,6 @@ os:
 before_install:
   - sudo apt-get update
   - sudo apt-get install cmake libhdf5-serial-dev python-dev swig3.0 
-  - echo -e "machine github.com\n  login $GITHUB_TOKEN" > ~/.netrc
-  - git lfs pull
 
 install:
   - pip install scikit-build
