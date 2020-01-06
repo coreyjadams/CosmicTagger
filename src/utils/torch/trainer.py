@@ -61,7 +61,7 @@ class torch_trainer(trainercore):
                 downsampling             = FLAGS.DOWNSAMPLING,
                 bottleneck_deepest       = FLAGS.BOTTLENECK_DEEPEST,
                 filter_size_deepest      = FLAGS.FILTER_SIZE_DEEPEST,
-                shape                    = FLAGS.SHAPE,
+                shape                    = self.image_shape,
                 block_concat             = FLAGS.BLOCK_CONCAT,
                 growth_rate              = FLAGS.GROWTH_RATE)
 
@@ -78,7 +78,7 @@ class torch_trainer(trainercore):
                 connections              = FLAGS.CONNECTIONS,
                 upsampling               = FLAGS.UPSAMPLING,
                 downsampling             = FLAGS.DOWNSAMPLING,
-                shape                    = FLAGS.SHAPE,
+                shape                    = self.image_shape,
                 bottleneck_deepest       = FLAGS.BOTTLENECK_DEEPEST,
                 filter_size_deepest      = FLAGS.FILTER_SIZE_DEEPEST,
                 growth_rate              = FLAGS.GROWTH_RATE)
@@ -569,9 +569,19 @@ class torch_trainer(trainercore):
 
         minibatch_data = self.to_torch(minibatch_data)
 
+        # This step applies downsampling as necessary:
+        if FLAGS.DOWNSAMPLE_IMAGES != 0:
+            kernel = 2**FLAGS.DOWNSAMPLE_IMAGES
+            minibatch_data['image'] = torch.nn.functional.avg_pool2d(minibatch_data['image'], kernel)
+            minibatch_data['label'] = torch.nn.functional.max_pool2d(minibatch_data['label'], kernel)
+            if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
+                minibatch_data['weight'] = torch.nn.functional.max_pool2d(minibatch_data['weight'], kernel)
+
+
         # Run a forward pass of the model on the input image:
         logits_image = self._net(minibatch_data['image'])
         labels_image = minibatch_data['label']
+
 
         labels_image = labels_image.long()
         labels_image = torch.chunk(labels_image, chunks=3, dim=1)

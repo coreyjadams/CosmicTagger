@@ -51,16 +51,29 @@ class tf_trainer(trainercore):
 
         # We have to make placeholders for input objects:
 
-        self._input = dict()
+        self._raw_input = dict()
 
-        self._input.update({
-            'image' :  tf.placeholder(floating_point_format, self._dims['image'], name="input_image"),
-            'label' :  tf.placeholder(integer_format,        self._dims['label'], name="input_label"),
+        self._raw_input.update({
+            'image' :  tf.placeholder(floating_point_format, self._raw_dims['image'], name="input_image"),
+            'label' :  tf.placeholder(integer_format,        self._raw_dims['label'], name="input_label"),
             'io_time' : tf.placeholder(floating_point_format, (), name="io_fetch_time")
         })
 
         if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
-            self._input['weight'] = tf.placeholder(floating_point_format, self._dims['label'], name="input_weight")
+            self._input['weight'] = tf.placeholder(floating_point_format, self._raw_dims['label'], name="input_weight")
+
+        # To accomodate flexible downsampling, we build the downsampling layers into the network:
+        if FLAGS.DOWNSAMPLE_IMAGES != 0:
+
+            kernel = 2**FLAGS.DOWNSAMPLE_IMAGES
+            self._input = {}
+            self._input['image'] = tf.keras.layers.AveragePooling2D(pool_size=kernel)(self._raw_input['image'])
+            self._input['label'] = tf.keras.layers.MaxPool2D(pool_size=kernel)(self._raw_input['label'])
+            if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
+                self._input['weight'] = tf.keras.layers.MaxPool2D(kernel)(self._raw_input['weight'])
+        else:
+            # Point the inputs to the right spot:
+            self._input = self._raw_input
 
         # Build the network object, forward pass only:
 
@@ -455,10 +468,12 @@ class tf_trainer(trainercore):
             for p in range(n_planes):
 
                 total_accuracy[p] = tf.reduce_mean(
-                        tf.cast(tf.equal(logits['prediction'][p], split_labels[p]), floating_point_format)
+                        tf.cast(tf.equal(logits['prediction'][p], 
+                            split_labels[p]), floating_point_format)
                     )
                 # Find the non zero split_labels:
-                non_zero_indices = tf.not_equal(split_images[p], tf.constant(0, split_labels[p].dtype))
+                non_zero_indices = tf.not_equal(split_images[p], 
+                    tf.constant(0, split_images[p].dtype))
 
                 print(non_zero_indices.shape)
 
@@ -466,10 +481,12 @@ class tf_trainer(trainercore):
                 # Sometimes, there are no neutrino indexes in the image.  This leads to a NaN
                 # in the calculation of the neutrino accuracy.
                 # This is an open issue to resolve.
-                neutrino_indices = tf.equal(split_labels[p], tf.constant(self.NEUTRINO_INDEX, split_labels[p].dtype))
+                neutrino_indices = tf.equal(split_labels[p], 
+                    tf.constant(self.NEUTRINO_INDEX, split_labels[p].dtype))
 
                 # Find the cosmic indices:
-                cosmic_indices = tf.equal(split_labels[p], tf.constant(self.COSMIC_INDEX, split_labels[p].dtype))
+                cosmic_indices = tf.equal(split_labels[p], 
+                    tf.constant(self.COSMIC_INDEX, split_labels[p].dtype))
 
                 # Mask the out zero-image pixels in the labels and logits:
                 non_zero_logits = tf.boolean_mask(logits['prediction'][p], non_zero_indices)
@@ -682,7 +699,7 @@ class tf_trainer(trainercore):
         self._sess.run(self._zero_gradients)
         io_fetch_time = 0.0
 
-        do_summary_images = self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0
+        do_summary_images = self._iteration != 0 and self._iteration % 1*FLAGS.SUMMARY_ITERATION == 0
 
         if FLAGS.NO_SUMMARY_IMAGES:
             do_summary_images = False
@@ -924,7 +941,7 @@ class tf_trainer(trainercore):
             if key == "entries" or key == "event_ids": continue
 
             if inputs[key] is not None:
-                fd.update({self._input[key] : inputs[key]})
+                fd.update({self._raw_input[key] : inputs[key]})
 
         return fd
 

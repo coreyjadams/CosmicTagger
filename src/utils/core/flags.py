@@ -109,9 +109,7 @@ class FLAGS(Borg):
         self.IMAGE_PRODUCER        = "sbndwire"
         self.LABEL_PRODUCER        = "sbnd_cosmicseg"
 
-        self.SHAPE                 = [640, 1024]
-
-
+        self.DOWNSAMPLE_IMAGES     = 0
 
 
         self.SYNTHETIC             = False
@@ -226,8 +224,9 @@ class FLAGS(Borg):
             help='Name of the label producer in the files [default: {}]'.format(self.LABEL_PRODUCER))
 
 
-        parser.add_argument('--shape', default=self.SHAPE, type=int, nargs="+",
-            help='Dense shape of the images [default: {}]'.format(self.SHAPE))
+        parser.add_argument('-ds', '--downsample-images', default=self.DOWNSAMPLE_IMAGES, type=int,
+            help='Dense downsampling of the images.  This is the number of downsamples applied \
+            (0 == none, 1 == once ...) [default: {}]'.format(self.DOWNSAMPLE_IMAGES))
 
         parser.add_argument('--verbosity', default=self.VERBOSITY, type=int,
             help='Verbosity of python calls [default: {}]'.format(self.VERBOSITY))

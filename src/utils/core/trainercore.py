@@ -32,6 +32,9 @@ class trainercore(object):
     NEUTRINO_INDEX = 2
     COSMIC_INDEX   = 1
 
+    FULL_RESOLUTION_H = 1280
+    FULL_RESOLUTION_W = 2048
+
     def __init__(self,):
         if not FLAGS.SYNTHETIC:
             if FLAGS.MODE == 'inference':
@@ -58,14 +61,21 @@ class trainercore(object):
 
     def _initialize_io(self, color=None):
 
+        # Compute the realized image shape:
+        self.full_image_shape = [self.FULL_RESOLUTION_H, self.FULL_RESOLUTION_W]
+        ds = 2**FLAGS.DOWNSAMPLE_IMAGES
+
+        self.image_shape = [ int(i / ds) for i in self.full_image_shape ]
 
         if not FLAGS.SYNTHETIC:
 
-            # This is a dummy placeholder, you must check this yourself:
-            if 640 in FLAGS.SHAPE:
-                max_voxels = 35000
-            else:
-                max_voxels = 70000
+            max_voxels = 50000
+
+            # # This is a dummy placeholder, you must check this yourself:
+            # if 640 in FLAGS.SHAPE:
+            #     max_voxels = 35000
+            # else:
+            #     max_voxels = 70000
 
             # Use the templates to generate a configuration string, which we store into a temporary file
             if FLAGS.TRAINING:
@@ -79,7 +89,7 @@ class trainercore(object):
                     input_file      = FLAGS.FILE,
                     data_producer   = FLAGS.IMAGE_PRODUCER,
                     label_producer  = FLAGS.LABEL_PRODUCER,
-                    max_voxels      =max_voxels)
+                    max_voxels      = max_voxels)
 
 
             # Generate a named temp file:
@@ -162,14 +172,14 @@ class trainercore(object):
             io_dims = {}
             if FLAGS.DATA_FORMAT == "channels_first":
                 io_dims['image'] = numpy.asarray(
-                    [FLAGS.MINIBATCH_SIZE, 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]])
+                    [FLAGS.MINIBATCH_SIZE, 3, self.image_shape[0], self.image_shape[1]])
                 io_dims['label'] = numpy.asarray(
-                    [FLAGS.MINIBATCH_SIZE, 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]])
+                    [FLAGS.MINIBATCH_SIZE, 3, self.image_shape[0], self.image_shape[1]])
             else:
                 io_dims['image'] = numpy.asarray(
-                    [FLAGS.MINIBATCH_SIZE, FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3])
+                    [FLAGS.MINIBATCH_SIZE, self.image_shape[0], self.image_shape[1], 3])
                 io_dims['label'] = numpy.asarray(
-                    [FLAGS.MINIBATCH_SIZE, FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3])
+                    [FLAGS.MINIBATCH_SIZE, self.image_shape[0], self.image_shape[1], 3])
 
 
         if FLAGS.DATA_FORMAT == "channels_last":
@@ -177,6 +187,7 @@ class trainercore(object):
         else:
             self._channels_dim = 1
 
+        self._raw_dims = {}
         self._dims = {}
         # Using the sparse IO techniques, we have to manually set the dimensions for the input.
 
@@ -184,10 +195,20 @@ class trainercore(object):
         local_minibatch_size = io_dims['image'][0]
 
 
+        # Use this for the raw dimensions:
         if FLAGS.DATA_FORMAT == "channels_first":
-            shape = [local_minibatch_size,] + [3,] + FLAGS.SHAPE
+            shape = [local_minibatch_size,] + [3,] + self.full_image_shape
         else:
-            shape = [local_minibatch_size,] + FLAGS.SHAPE + [3,]
+            shape = [local_minibatch_size,] + self.full_image_shape + [3,]
+
+        self._raw_dims['image'] = numpy.asarray(shape)
+        self._raw_dims['label'] = numpy.asarray(shape)
+
+        # And this for the dimensions passed to and from the network:
+        if FLAGS.DATA_FORMAT == "channels_first":
+            shape = [local_minibatch_size,] + [3,] + self.image_shape
+        else:
+            shape = [local_minibatch_size,] + self.image_shape + [3,]
 
         self._dims['image'] = numpy.asarray(shape)
         self._dims['label'] = numpy.asarray(shape)
@@ -251,13 +272,19 @@ class trainercore(object):
             minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
 
 
+
+
             if not FLAGS.SPARSE:
-                minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['image'], dense_shape=FLAGS.SHAPE)
-                minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
+                minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(
+                    minibatch_data['image'], dense_shape=self.full_image_shape)
+                minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(
+                    minibatch_data['label'], dense_shape=self.full_image_shape)
             else:
-                minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(minibatch_data['image'])
-                minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(minibatch_data['label'], dense_shape=FLAGS.SHAPE)
-            # This preparse the next batch of data:
+                minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(
+                    minibatch_data['image'])
+                minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(
+                    minibatch_data['label'], dense_shape=self.full_image_shape)
+
 
         else:
 
@@ -343,7 +370,7 @@ class trainercore(object):
 
         # This computes the *real* number
         # Multiply by 3 planes:
-        n_pixels = batch_size * 3* numpy.prod(FLAGS.SHAPE)
+        n_pixels = batch_size * 3* numpy.prod(self.image_shape)
         # Correct the empty pixel values in the count:
         counts[0] = n_pixels - counts[1] - counts[2]
 
@@ -360,10 +387,10 @@ class trainercore(object):
             weights[values==self.NEUTRINO_INDEX] = class_weights[self.NEUTRINO_INDEX]
 
             if FLAGS.DATA_FORMAT == "channels_first":
-                dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight,dtype=numpy.float32)
+                dense_weights = numpy.full([labels.shape[0], 3, self.image_shape[0], self.image_shape[1]], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,plane_index,y_index,x_index] = weights
             else:
-                dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], bkg_weight,dtype=numpy.float32)
+                dense_weights = numpy.full([labels.shape[0], self.image_shape[0], self.image_shape[1], 3], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,y_index,x_index,plane_index] = weights
 
         if FLAGS.LOSS_BALANCE_SCHEME == "light":
@@ -372,7 +399,7 @@ class trainercore(object):
             # however it gives a mild boost to cosmic pixels, and a medium
             # boost to neutrino pixels.
 
-            per_pixel_weight = 1./(numpy.prod(FLAGS.SHAPE))
+            per_pixel_weight = 1./(numpy.prod(self.image_shape))
 
             bkg_weight = per_pixel_weight
             # Now we have the weight values, return it in the proper shape:
@@ -382,10 +409,10 @@ class trainercore(object):
             weights[values==self.NEUTRINO_INDEX] = 10  * per_pixel_weight
 
             if FLAGS.DATA_FORMAT == "channels_first":
-                dense_weights = numpy.full([labels.shape[0], 3, FLAGS.SHAPE[0], FLAGS.SHAPE[1]], bkg_weight,dtype=numpy.float32)
+                dense_weights = numpy.full([labels.shape[0], 3, self.image_shape[0], self.image_shape[1]], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,plane_index,y_index,x_index] = weights
             else:
-                dense_weights = numpy.full([labels.shape[0], FLAGS.SHAPE[0], FLAGS.SHAPE[1], 3], bkg_weight,dtype=numpy.float32)
+                dense_weights = numpy.full([labels.shape[0], self.image_shape[0], self.image_shape[1], 3], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,y_index,x_index,plane_index] = weights
 
             # Normalize:
