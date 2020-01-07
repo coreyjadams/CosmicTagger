@@ -481,6 +481,7 @@ class UResNet3D(tf.keras.models.Model):
                     blocks_final,         # How many blocks just before bottleneck?
                     blocks_deepest_layer, # How many blocks at the deepest layer
                     blocks_per_layer,     # How many blocks to apply at this layer, if not deepest
+                    bottleneck_deepest,   # TODO - IMPLEMENT THIS
                     connections,          # What type of connection?
                     upsampling,           # What type of upsampling?
                     downsampling,         # What type of downsampling?

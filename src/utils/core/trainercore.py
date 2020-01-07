@@ -311,7 +311,7 @@ class trainercore(object):
 
         self.synthetic_index = 0
 
-        shape = copy.copy(self._dims['image'])
+        shape = copy.copy(self._raw_dims['image'])
         shape[0] = dataset_n_entries
 
         self.synthetic_images = numpy.random.random_sample(shape)

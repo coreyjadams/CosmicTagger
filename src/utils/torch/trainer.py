@@ -562,7 +562,9 @@ class torch_trainer(trainercore):
                     minibatch_data[key] = minibatch_data[key].half()
         if FLAGS.SYNTHETIC:
             minibatch_data['image'] = minibatch_data['image'].float()
-            minibatch_data['weight'] = minibatch_data['weight'].float()
+            minibatch_data['label'] = minibatch_data['label']
+            if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
+                minibatch_data['weight'] = minibatch_data['weight'].float()
         return minibatch_data
 
     def forward_pass(self, minibatch_data):
@@ -573,14 +575,24 @@ class torch_trainer(trainercore):
         if FLAGS.DOWNSAMPLE_IMAGES != 0:
             kernel = 2**FLAGS.DOWNSAMPLE_IMAGES
             minibatch_data['image'] = torch.nn.functional.avg_pool2d(minibatch_data['image'], kernel)
+
+            # Here is something fun.  For CPU, need to cast to float first:
+            if FLAGS.COMPUTE_MODE == "CPU":
+                minibatch_data['label'] = minibatch_data['label'].float()
             minibatch_data['label'] = torch.nn.functional.max_pool2d(minibatch_data['label'], kernel)
+            # And, cast back to long:
+            if FLAGS.COMPUTE_MODE == "CPU":
+                minibatch_data['label'] = minibatch_data['label'].long()
+
             if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
                 minibatch_data['weight'] = torch.nn.functional.max_pool2d(minibatch_data['weight'], kernel)
 
 
+        print(minibatch_data['image'].shape)
         # Run a forward pass of the model on the input image:
         logits_image = self._net(minibatch_data['image'])
         labels_image = minibatch_data['label']
+        print(logits_image[0].shape)
 
 
         labels_image = labels_image.long()
