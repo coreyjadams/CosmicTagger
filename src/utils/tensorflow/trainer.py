@@ -969,7 +969,7 @@ class tf_trainer(trainercore):
                 post_one_time = time.time()
 
         if FLAGS.MODE == 'inference':
-            self._larcv_interface._writer.finalize()
+            self._larcv_interface.finalize()
 
         end = time.time()
 

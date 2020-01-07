@@ -357,7 +357,7 @@ class InterpolationUpsample(nn.Module):
         nn.Module.__init__(self)
 
 
-        self.up = torch.nn.Upsample(scale_factor=2, mode="bilinear")
+        self.up = torch.nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
 
         self.bottleneck = Block(
             inplanes    = inplanes,

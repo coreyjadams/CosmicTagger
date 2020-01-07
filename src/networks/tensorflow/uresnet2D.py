@@ -328,8 +328,7 @@ class InterpolationUpsample(tf.keras.models.Model):
 
         self.up = tf.keras.layers.UpSampling2D(size=2,
                     data_format=params.data_format,
-                    interpolation="bilinear",
-                    align_corners=False)
+                    interpolation="bilinear")
 
         self.bottleneck = Block(
             n_filters   = n_filters,

@@ -27,5 +27,5 @@ branchs:
     - master
 
 script: 
-  - pytest tests/io/
+  - pytest -m "not full" tests/
   # - mpiexec -n 2 pytest -m distributed_test tests/

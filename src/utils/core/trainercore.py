@@ -301,7 +301,7 @@ class trainercore(object):
 
             minibatch_data['image']  = self.synthetic_images[lower_index:upper_index]
             minibatch_data['label']  = self.synthetic_labels[lower_index:upper_index]
-            minibatch_data['weight'] = self.synthetic_weight[lower_index:upper_index]
+            minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
 
             self.synthetic_index += 1
 
