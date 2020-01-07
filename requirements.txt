@@ -3,4 +3,5 @@ h5py
 larcv
 tensorflow==1.14.0
 torch==1.3
+PIL # Needed for tensorboardX
 tensorboardX
