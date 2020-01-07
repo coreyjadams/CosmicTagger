@@ -31,6 +31,7 @@ In general, this network has a suite of parameters available.  For example, runn
  CONV_MODE.....................: 2D
  DATA_FORMAT...................: channels_first
  DISTRIBUTED...................: False
+ DOWNSAMPLE_IMAGES.............: 1
  DOWNSAMPLING..................: convolutional
  FILE..........................: /Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging_downsample_train_sparse.h5
  FRAMEWORK.....................: torch
@@ -55,7 +56,6 @@ In general, this network has a suite of parameters available.  For example, runn
  OPTIMIZER.....................: Adam
  REGULARIZE_WEIGHTS............: 0.0001
  RESIDUAL......................: False
- SHAPE.........................: [640, 1024]
  SPARSE........................: False
  SUMMARY_ITERATION.............: 1
  SYNTHETIC.....................: False
@@ -70,7 +70,9 @@ The parameters are all controlled via argparse, and so are easy to inspect.  The
 
 ## Datasets
 
-The data for this network is in larcv3 format (https://github.com/DeepLearnPhysics/larcv3).  Currently, data is available in a downsampled version (HxW == 640x1024) of 3 images per training sample.  Full resolution data is being processed and will be available soon.
+The data for this network is in larcv3 format (https://github.com/DeepLearnPhysics/larcv3).  Currently, data is available in full resolution (HxW == 1280x2048) of 3 images per training sample.  This image size is large, and the network is large, so to accomodate older hardware or smaller GPUs this can be run with a reduced image size.  The datasets are kept at full resolution but a downsampling operation is applied prior to feeding images and labels to the network.
+
+The UNet design is symmetric and does downsampling/upsampling by factors of 2.  So, in order to preserve the proper sizes during the upsampling sets, it's important that the smallest resolution image reached by the network is not odd dimensions.  Concretely, this means that the sum of `NETWORK_DEPTH` and `DOWNSAMPLE_IMAGES` must be less than 8.
 
 The training dataset is 43075 images.  The testing set, used to monitor overfitting during training, is 7362 images.  The validation set is O(15k) images.
 
@@ -78,9 +80,9 @@ The training dataset is 43075 images.  The testing set, used to monitor overfitt
 
 The dataformat for these images is sparse.  Images are stored as a flat array of indexes and values, where index is mapped to a 2D index that is unraveled to a coordinate pair.  Each image is stored consecutively in file, and because of the non-uniform size of the sparse data there are mapping algorithms to go into the file, read the correct sequence of (index, value) pairs, and convert to (image, x, y, value) tuples.
 
-During training, memory will buffer for each minibatch in a current and next buffer.  Since each image is not uniform size, the memory buffer is slightly larger than the largest image in the datasets.  For the fullres data, this is about 80k pixels.  For downsampled data, this is about 35k.  Larcv3 handles reading from file and buffering into memory.
+During training, memory will buffer for each minibatch in a current and next buffer.  Since each image is not uniform size, the memory buffer is slightly larger than the largest image in the datasets.  For the fullres data, this is about 50k pixels.  Larcv3 handles reading from file and buffering into memory.
 
-In distributed mode, each worker will read it's own data from the central file, and the entries to read are coordinated by the master rank.
+In distributed mode, each worker will read it's own data from the central file, and the entries to read in are coordinated by the master rank.
 
 ## Frameworks
 
@@ -100,7 +102,7 @@ The sparse implementation of this network requires sparsehash, and SparseConvNet
 
 In all cases, there is a general python executable in `bin/exec.py`.  This takes several important arguments and many minor arguments.  Important arguments are:
 
-`python bin/exec.py mode [-d] [--sparse] --file /path/to/file.h5 -i 100 -mb 8 `
+`python bin/exec.py mode [-d] --file /path/to/file.h5 -i 100 -mb 8 `
 
 mode is either `train` or `iotest` (or inference, but untested in this repo).  `-d` toggles distributed training, which will work even on one node and if python is executed by mpirun or aprun, will work.  `-i` is the number of iterations, and `-mb` is the minibatch size.  All other arguments can be seen in by calling `python bin/exec.py --help`
 
@@ -109,8 +111,7 @@ This is a memory intesive network with the dense models.  Typically, 1 image in 
 # Analysis Metrics
 
 There are several analysis metrics that are used to judge the quality of the training:
- 1) Overall Accuracy of Segmentation labels. Each pixel should be labeled as cosmic, neutrino, or background.  Because the images are very sparse, this metric should easily exceed 99.9% accuracy.
+ 1) Overall Accuracy of Segmentation labels. Each pixel should be labeled as cosmic, neutrino, or background.  Because the images are very sparse, this metric should easily exceed 99.9%+ accuracy.
  2) Non-background Accuracy: of all pixels with a label != bkg, what is the accuracy? This should acheive > 95%
- 3) Neutrino Accuracy: of all pixels with label == neutrino, what is the accuracy?  This should acheive > 90%, though is an ill-posed question for some interactions where the neutrino did not deposit energy.
- 4) Cosmic IoU: what is the IoU of all pixels predicted cosmic and all pixels labeled cosmic?  This should acheive > 90%
- 5) Neutrino IoU: Same definition as 4 but for neutrinos.  This should acheive > 70%.
+ 3) Cosmic IoU: what is the IoU of all pixels predicted cosmic and all pixels labeled cosmic?  This should acheive > 90%
+ 4) Neutrino IoU: Same definition as 4 but for neutrinos.  This should acheive > 70%.
