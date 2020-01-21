@@ -89,7 +89,7 @@ In distributed mode, each worker will read it's own data from the central file, 
 ### Tensorflow
 
 With tensorflow, the model is available and implemented with 2D convolutions and 3D convolutions.  The 3D convolution implementation differs slightly from the 2D implementation: at the deepest layer, the 2D implementation concatenates across planes, and then performs shared convolutions.  The 3D implementation uses convolutions of [1,3,3] to emulate 2D convolutions throughout the network, but at the deepest layer uses [3,3,3] convolutions instead.
- 
+
 ### Pytorch
 
 This model is available in pytorch on the branch `torch`.  As much as possible, the structure of the model is identical to the tensorflow model.  Like the tensorflow models, the 3D model in pytorch is slightly different from the 2D model.

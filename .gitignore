@@ -7,6 +7,7 @@ __pycache__/
 *.output
 *.error
 *.cobaltlog
+*.qsub
 
 # C extensions
 *.so

@@ -205,10 +205,12 @@ class AccuracyCalculator(object):
         return data
 
 if __name__ == "__main__":
-    folder = "/Users/corey.adams//data/cosmic_tagging_downsample/"
+    # folder = "/Users/corey.adams//data/cosmic_tagging_downsample/"
+    folder = "/gpfs/jlse-fs0/users/cadams/datasets/cosmic_tagging_downsample/"
     # _file  = "cosmic_tagging_downsample_test_sparse_output_biggerbatch.h5"
     _file  = "cosmic_tagging_downsample_test_sparse_output_biggerbatch_2.h5"
     # _file  = "cosmic_tagging_downsample_test_sparse_output_baseline_fullbalance_2.h5"
+
     # _file  = "cosmic_tagging_downsample_dev_sparse_output.h5"
     acc_calc = AccuracyCalculator(folder + _file)
     d = acc_calc.loop(max_i = 7000)
