@@ -26,7 +26,6 @@ integer_format = tf.int64
 
 
 
-
 class tf_trainer(trainercore):
     '''
     This is the tensorflow version of the trainer
@@ -64,13 +63,13 @@ class tf_trainer(trainercore):
 
         # To accomodate flexible downsampling, we build the downsampling layers into the network:
         if FLAGS.DOWNSAMPLE_IMAGES != 0:
-
-            kernel = 2**FLAGS.DOWNSAMPLE_IMAGES
-            self._input = {}
-            self._input['image'] = tf.keras.layers.AveragePooling2D(pool_size=kernel)(self._raw_input['image'])
-            self._input['label'] = tf.keras.layers.MaxPool2D(pool_size=kernel)(self._raw_input['label'])
-            if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
-                self._input['weight'] = tf.keras.layers.MaxPool2D(kernel)(self._raw_input['weight'])
+            with tf.variable_scope("image_scaling"):
+                kernel = 2**FLAGS.DOWNSAMPLE_IMAGES
+                self._input = {}
+                self._input['image'] = tf.keras.layers.AveragePooling2D(pool_size=kernel, trainable=False)(self._raw_input['image'])
+                self._input['label'] = tf.keras.layers.MaxPool2D(pool_size=kernel, trainable=False)(self._raw_input['label'])
+                if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
+                    self._input['weight'] = tf.keras.layers.MaxPool2D(kernel, trainable=False)(self._raw_input['weight'])
         else:
             # Point the inputs to the right spot:
             self._input = self._raw_input
@@ -223,9 +222,9 @@ class tf_trainer(trainercore):
 
         if FLAGS.MODE != "inference":
 
-            self._summary_basic = tf.summary.merge_all()
+            self._summary_basic  = tf.summary.merge_all()
             self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
-
+            self.create_model_summaries()
 
         self.set_compute_parameters()
 
@@ -468,24 +467,23 @@ class tf_trainer(trainercore):
             for p in range(n_planes):
 
                 total_accuracy[p] = tf.reduce_mean(
-                        tf.cast(tf.equal(logits['prediction'][p], 
+                        tf.cast(tf.equal(logits['prediction'][p],
                             split_labels[p]), floating_point_format)
                     )
                 # Find the non zero split_labels:
-                non_zero_indices = tf.not_equal(split_images[p], 
+                non_zero_indices = tf.not_equal(split_images[p],
                     tf.constant(0, split_images[p].dtype))
 
-                print(non_zero_indices.shape)
 
                 # Find the neutrino indices:
                 # Sometimes, there are no neutrino indexes in the image.  This leads to a NaN
                 # in the calculation of the neutrino accuracy.
                 # This is an open issue to resolve.
-                neutrino_indices = tf.equal(split_labels[p], 
+                neutrino_indices = tf.equal(split_labels[p],
                     tf.constant(self.NEUTRINO_INDEX, split_labels[p].dtype))
 
                 # Find the cosmic indices:
-                cosmic_indices = tf.equal(split_labels[p], 
+                cosmic_indices = tf.equal(split_labels[p],
                     tf.constant(self.COSMIC_INDEX, split_labels[p].dtype))
 
                 # Mask the out zero-image pixels in the labels and logits:
@@ -599,14 +597,31 @@ class tf_trainer(trainercore):
         return tf.summary.merge(images)
 
 
+    def create_model_summaries(self):
+        # # return
+        # optimizer = tf.train.AdamOptimizer(..)
+        # grads = optimizer.compute_gradients(loss)
+        # weights = self._net.trainable_variables
+        # weight_sum_op = _accum_gradients
+        # with tf.variable_scope)
+        hist = []
 
+        self._accum_vars,
+        for var, grad in zip(tf.trainable_variables(), self._accum_gradients):
+            print(var)
+            name = var.name.replace("/",".")
+            hist.append(tf.summary.histogram(name, var))
+            hist.append(tf.summary.histogram(name  + "/grad/", grad))
+        # grad_summ_op = tf.summary.merge([tf.summary.histogram("%s-grad" % g[1].name, g[0]) for g in grads])
+        # grad_vals = sess.run(fetches=grad_summ_op, feed_dict = feed_dict)
+        self.model_summary = tf.summary.merge(hist)
+        # self.model_summary = tf.compat.v1.summary.merge(hist)
 
     def on_step_end(self):
         pass
 
     def on_epoch_end(self):
         pass
-
     def write_summaries(self, writer, summary, global_step):
         # This function is isolated here to allow the distributed version
         # to intercept these calls and only write summaries from one rank
@@ -721,7 +736,7 @@ class tf_trainer(trainercore):
             # Run the summary only once:
             if i == 0:
                 ops['summary']           = self._summary_basic
-
+                ops['graph_summary']     = self.model_summary
                 # Add the images, but only once:
                 if do_summary_images:
                     ops['summary_images'] = self._summary_images
@@ -739,6 +754,7 @@ class tf_trainer(trainercore):
             # Grab the summaries if we need to write them:
             if i == 0:
                 summaries = ops['summary']
+                graph_summary = ops['graph_summary']
                 if do_summary_images:
                     summary_images = ops['summary_images']
 
@@ -772,10 +788,12 @@ class tf_trainer(trainercore):
 
         if verbose: print("Completed Log")
 
+        self.write_summaries(self._main_writer, graph_summary, ops["global_step"])
+
+
         self.write_summaries(self._main_writer, summaries, ops["global_step"])
         if do_summary_images:
             self.write_summaries(self._main_writer, summary_images, ops["global_step"])
-
 
         # Create some extra summary information:
         extra_summary = tf.Summary(

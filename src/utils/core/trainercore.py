@@ -41,7 +41,7 @@ class trainercore(object):
                 mode = 'serial_access'
             else:
                 mode = 'random_blocks'
-            self._larcv_interface = queueloader.queue_interface(random_access_mode=mode)
+            self._larcv_interface = queueloader.queue_interface(random_access_mode=mode, seed=0)
         else:
             self.synthetic_images = None
             self.synthetic_labels = None

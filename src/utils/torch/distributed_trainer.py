@@ -58,6 +58,9 @@ def lr_increase(step):
 
     return 1.0 + step*step_size
 
+def flat_lr(step):
+    return 1.0
+
 peak_lr = 0.01
 cycle_len = 0.8
 
@@ -144,7 +147,7 @@ class distributed_trainer(torch_trainer):
 
 
         self._lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self._opt, one_cycle_clr, last_epoch=-1)
+            self._opt, flat_lr, last_epoch=-1)
 
 
         self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())

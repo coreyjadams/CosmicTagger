@@ -172,7 +172,7 @@ class FLAGS(Borg):
                                   help='Period (in steps) to store snapshot of weights [default: {}]'.format(self.CHECKPOINT_ITERATION))
 
         self.train_parser.add_argument('-o', '--optimizer', default=self.OPTIMIZER, type=str,
-            choices=['rmsprop', 'adam'],
+            choices=['rmsprop', 'adam', 'sgd'],
             help="Optimizer to use, must be rmsprop or adam [default: {}]".format(self.OPTIMIZER))
 
         self.train_parser.add_argument('-rw','--regularize-weights', type=float, default=self.REGULARIZE_WEIGHTS,
@@ -362,7 +362,7 @@ class uresnet(FLAGS):
         self.BLOCKS_DEEPEST_LAYER        = 5
         self.BLOCKS_FINAL                = 0
         self.NETWORK_DEPTH               = 6
-        self.FILTER_SIZE_DEEPEST         = 5
+        self.FILTER_SIZE_DEEPEST         = 3
         self.BOTTLENECK_DEEPEST          = 256
         self.CONNECTIONS                 = 'sum'
         self.UPSAMPLING                  = "interpolation"

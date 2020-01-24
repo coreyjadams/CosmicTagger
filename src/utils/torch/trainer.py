@@ -7,6 +7,12 @@ from collections import OrderedDict
 import numpy
 
 import torch
+torch.manual_seed(0)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+
 # from torch.jit import trace
 
 from ..core                 import flags
@@ -115,6 +121,7 @@ class torch_trainer(trainercore):
         for name, var in self._net.named_parameters():
             n_trainable_parameters += numpy.prod(var.shape)
             # print(name, var.shape)
+
         print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
 
         self.init_optimizer()
@@ -149,6 +156,12 @@ class torch_trainer(trainercore):
                 self._opt = torch.optim.Adam(self._net.parameters())
             else:
                 self._opt = torch.optim.Adam(self._net.parameters(), FLAGS.LEARNING_RATE)
+        elif FLAGS.OPTIMIZER == "rmsprop":
+            # Create an optimizer:
+            if FLAGS.LEARNING_RATE <= 0:
+                self._opt = torch.optim.RMSprop(self._net.parameters())
+            else:
+                self._opt = torch.optim.RMSprop(self._net.parameters(), FLAGS.LEARNING_RATE)
         else:
             # Create an optimizer:
             if FLAGS.LEARNING_RATE <= 0:
@@ -510,6 +523,21 @@ class torch_trainer(trainercore):
 
         return
 
+    def graph_summary(self):
+
+        if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
+        # if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0 and not FLAGS.NO_SUMMARY_IMAGES:
+            for name, param in self._net.named_parameters():
+
+                self._saver.add_histogram(f"{name}/weights",
+                    param, self._global_step)
+                self._saver.add_histogram(f"{name}/grad",
+                    param.grad, self._global_step)
+                # self._saver.add_histogram(f"{name}/ratio",
+                #     param.grad / param, self._global_step)
+
+        return
+
 
     def increment_global_step(self):
 
@@ -558,22 +586,27 @@ class torch_trainer(trainercore):
                         continue
                 # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
-                if FLAGS.INPUT_HALF_PRECISION:
-                    minibatch_data[key] = minibatch_data[key].half()
         if FLAGS.SYNTHETIC:
             minibatch_data['image'] = minibatch_data['image'].float()
             minibatch_data['label'] = minibatch_data['label']
             if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
                 minibatch_data['weight'] = minibatch_data['weight'].float()
+
+        self.downsample_images(minibatch_data)
+        self.reduce_precision(minibatch_data)
+
         return minibatch_data
 
-    def forward_pass(self, minibatch_data):
+    def reduce_precision(self, minibatch_data):
+        if FLAGS.INPUT_HALF_PRECISION:
+            minibatch_data['image'] = minibatch_data['image'].half()
 
-        minibatch_data = self.to_torch(minibatch_data)
 
+    def downsample_images(self, minibatch_data):
         # This step applies downsampling as necessary:
         if FLAGS.DOWNSAMPLE_IMAGES != 0:
             kernel = 2**FLAGS.DOWNSAMPLE_IMAGES
+
             minibatch_data['image'] = torch.nn.functional.avg_pool2d(minibatch_data['image'], kernel)
 
             # Here is something fun.  For CPU, need to cast to float first:
@@ -588,11 +621,14 @@ class torch_trainer(trainercore):
                 minibatch_data['weight'] = torch.nn.functional.max_pool2d(minibatch_data['weight'], kernel)
 
 
-        print(minibatch_data['image'].shape)
+    def forward_pass(self, minibatch_data):
+
+        minibatch_data = self.to_torch(minibatch_data)
+
+
         # Run a forward pass of the model on the input image:
         logits_image = self._net(minibatch_data['image'])
         labels_image = minibatch_data['label']
-        print(logits_image[0].shape)
 
 
         labels_image = labels_image.long()
@@ -655,6 +691,8 @@ class torch_trainer(trainercore):
                 for param in self._net.parameters():
                     param.grad /= FLAGS.LOSS_SCALE
 
+
+
             if verbose: print("Completed backward pass")
 
 
@@ -696,6 +734,7 @@ class torch_trainer(trainercore):
 
         self.summary(metrics, saver="train")
         self.summary_images(logits_image, labels_image, saver="train")
+        # self.graph_summary()
         if verbose: print("Summarized")
 
 

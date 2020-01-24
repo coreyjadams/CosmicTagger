@@ -445,9 +445,9 @@ class UNetCore(nn.Module):
         # at the correct time.
         if self.depth != 0:
 
-            x = [ self.down_blocks(_x) for _x in x ]
-
             residual = x
+
+            x = [ self.down_blocks(_x) for _x in x ]
 
             # perform the downsampling operation:
             x = [ self.downsample(_x) for _x in x ]
@@ -466,13 +466,13 @@ class UNetCore(nn.Module):
             # perform the downsampling operation:
             x = [ self.upsample(_x) for _x in x ]
 
+            # Connect with the residual if necessary:
+            for i in range(len(x)):
+                x[i] = self.connection(x[i], residual=residual[i])
 
             # Apply the convolutional steps:
             x = [ self.up_blocks(_x) for _x in x ]
 
-            # Connect with the residual if necessary:
-            for i in range(len(x)):
-                x[i] = self.connection(x[i], residual=residual[i])
 
 
         #
@@ -537,8 +537,8 @@ class UResNet(torch.nn.Module):
 
         self.initial_convolution = Block(
             inplanes  = 1,
-            kernel    = [7,7],
-            padding   = [3,3],
+            kernel    = [5,5],
+            padding   = [2,2],
             outplanes = n_initial_filters,
             params    = params)
 
@@ -567,11 +567,14 @@ class UResNet(torch.nn.Module):
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
 
-
+        #
         # Configure initialization:
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.xavier_uniform_(m.weight.data)
+                # nn.init.xavier_uniform_(m.bias.data)
+                if params.use_bias:
+                    nn.init.constant_(m.bias.data,0)
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
