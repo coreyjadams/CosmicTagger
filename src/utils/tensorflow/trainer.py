@@ -224,7 +224,7 @@ class tf_trainer(trainercore):
 
             self._summary_basic  = tf.summary.merge_all()
             self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
-            self.create_model_summaries()
+            # self.create_model_summaries()
 
         self.set_compute_parameters()
 
@@ -736,7 +736,7 @@ class tf_trainer(trainercore):
             # Run the summary only once:
             if i == 0:
                 ops['summary']           = self._summary_basic
-                ops['graph_summary']     = self.model_summary
+                # ops['graph_summary']     = self.model_summary
                 # Add the images, but only once:
                 if do_summary_images:
                     ops['summary_images'] = self._summary_images
@@ -754,7 +754,7 @@ class tf_trainer(trainercore):
             # Grab the summaries if we need to write them:
             if i == 0:
                 summaries = ops['summary']
-                graph_summary = ops['graph_summary']
+                # graph_summary = ops['graph_summary']
                 if do_summary_images:
                     summary_images = ops['summary_images']
 
@@ -788,7 +788,7 @@ class tf_trainer(trainercore):
 
         if verbose: print("Completed Log")
 
-        self.write_summaries(self._main_writer, graph_summary, ops["global_step"])
+        # self.write_summaries(self._main_writer, graph_summary, ops["global_step"])
 
 
         self.write_summaries(self._main_writer, summaries, ops["global_step"])

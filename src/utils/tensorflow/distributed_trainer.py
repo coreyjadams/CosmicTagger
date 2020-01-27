@@ -44,8 +44,12 @@ class distributed_trainer(tf_trainer):
 
         if not FLAGS.SYNTHETIC:
             self._larcv_interface = queue_interface()
+        else:
+            self.synthetic_images = None
+            self.synthetic_labels = None
         self._iteration       = 0
         self._rank            = hvd.rank()
+        self.local_minibatch_size = int(FLAGS.MINIBATCH_SIZE / hvd.size())
 
         self._val_writer      = None
 
