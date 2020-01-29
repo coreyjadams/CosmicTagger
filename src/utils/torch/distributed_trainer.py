@@ -114,12 +114,15 @@ class distributed_trainer(torch_trainer):
         if FLAGS.COMPUTE_MODE == "GPU":
             os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
-
-        self._larcv_interface = queue_interface()
+        if not FLAGS.SYNTHETIC:
+            self._larcv_interface = queue_interface()
+        else:
+            self.synthetic_images = None
+            self.synthetic_labels = None
         self._iteration       = 0
         self._rank            = hvd.rank()
         self._cleanup         = []
-
+        self.local_minibatch_size = int(FLAGS.MINIBATCH_SIZE / hvd.size())
 
         # Make sure that 'LEARNING_RATE' and 'TRAINING'
         # are in net network parameters:

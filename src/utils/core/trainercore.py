@@ -297,7 +297,14 @@ class trainercore(object):
                 self.synthetic_index = 0
 
             lower_index = self.synthetic_index
+            # if FLAGS.DISTRIBUTED:
+            #     upper_index = self.synthetic_index + self.local_minibatch_size
+            # else:
             upper_index = self.synthetic_index + FLAGS.MINIBATCH_SIZE
+
+            # print(lower_index)
+            # print(upper_index)
+
 
             minibatch_data['image']  = self.synthetic_images[lower_index:upper_index]
             minibatch_data['label']  = self.synthetic_labels[lower_index:upper_index]
