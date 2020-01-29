@@ -714,7 +714,7 @@ class tf_trainer(trainercore):
         self._sess.run(self._zero_gradients)
         io_fetch_time = 0.0
 
-        do_summary_images = self._iteration != 0 and self._iteration % 1*FLAGS.SUMMARY_ITERATION == 0
+        do_summary_images = self._iteration != 0 and self._iteration % 50*FLAGS.SUMMARY_ITERATION == 0
 
         if FLAGS.NO_SUMMARY_IMAGES:
             do_summary_images = False

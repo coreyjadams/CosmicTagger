@@ -334,13 +334,15 @@ class torch_trainer(trainercore):
                 onehot = onehot.permute([0,3,1,2])
                 # print("onehot.shape: ", onehot.shape)
 
-                scale_factor = onehot * (1 - softmax)**3
+                scale_factor = onehot * (1 - softmax)**2
                 # print("scale_factor.shape:  ", scale_factor.shape)
                 scale_factor = torch.mean(scale_factor, dim=1)
                 # print("scale_factor.shape:  ", scale_factor.shape)
-                # print("plane_loss.shape: ", plane_loss.shape)
-                # scale_factor /= torch.mean(scale_factor)
-                plane_loss = torch.mean(scale_factor * plane_loss)
+                # print("Scale Factor sum: ", torch.sum(scale_factor))
+                # print("plane_loss pre mean: ", torch.mean(plane_loss))
+                # scale_factor /= torch.sum(scale_factor)
+                plane_loss = torch.sum(scale_factor * plane_loss)
+                # print("plane_loss post mean: ", torch.mean(plane_loss))
                 # print("plane_loss.shape: ", plane_loss.shape)
 
             elif FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
@@ -624,7 +626,6 @@ class torch_trainer(trainercore):
     def forward_pass(self, minibatch_data):
 
         minibatch_data = self.to_torch(minibatch_data)
-
 
         # Run a forward pass of the model on the input image:
         logits_image = self._net(minibatch_data['image'])

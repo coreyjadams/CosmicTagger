@@ -179,7 +179,7 @@ class distributed_trainer(tf_trainer):
         base_learning_rate,
         global_step,
         warmup_steps = 1000,
-        decay_after_step=4500):
+        decay_after_step=20000):
 
         ''' Compute the peak learning rate, the start point, and such
         '''

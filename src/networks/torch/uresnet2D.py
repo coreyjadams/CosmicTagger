@@ -570,6 +570,8 @@ class UResNet(torch.nn.Module):
         #
         # Configure initialization:
         for m in self.modules():
+            # if isinstance(m, nn.Conv2d):
+                # nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight.data)
                 # nn.init.xavier_uniform_(m.bias.data)

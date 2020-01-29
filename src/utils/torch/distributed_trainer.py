@@ -26,6 +26,8 @@ from .trainer import torch_trainer
 
 import tensorboardX
 
+def flat_lr(step):
+    return 1.0
 
 def lambda_warmup(epoch):
     # Constant terms:

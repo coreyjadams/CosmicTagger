@@ -384,7 +384,7 @@ class uresnet(FLAGS):
         # Parameters to control the network training
         ##################################################################
         # Parameters controlling regularization
-        self.OPTIMIZER                   = "Adam"
+        self.OPTIMIZER                   = "rmsprop"
         self.VERBOSITY                   = 0
         # Run with half precision:
         self.INPUT_HALF_PRECISION        = False

@@ -387,10 +387,10 @@ class trainercore(object):
             weights[values==self.NEUTRINO_INDEX] = class_weights[self.NEUTRINO_INDEX]
 
             if FLAGS.DATA_FORMAT == "channels_first":
-                dense_weights = numpy.full([labels.shape[0], 3, self.image_shape[0], self.image_shape[1]], bkg_weight,dtype=numpy.float32)
+                dense_weights = numpy.full([labels.shape[0], 3, self.full_image_shape[0], self.full_image_shape[1]], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,plane_index,y_index,x_index] = weights
             else:
-                dense_weights = numpy.full([labels.shape[0], self.image_shape[0], self.image_shape[1], 3], bkg_weight,dtype=numpy.float32)
+                dense_weights = numpy.full([labels.shape[0], self.full_image_shape[0], self.full_image_shape[1], 3], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,y_index,x_index,plane_index] = weights
 
         if FLAGS.LOSS_BALANCE_SCHEME == "light":
@@ -409,10 +409,10 @@ class trainercore(object):
             weights[values==self.NEUTRINO_INDEX] = 10  * per_pixel_weight
 
             if FLAGS.DATA_FORMAT == "channels_first":
-                dense_weights = numpy.full([labels.shape[0], 3, self.image_shape[0], self.image_shape[1]], bkg_weight,dtype=numpy.float32)
+                dense_weights = numpy.full([labels.shape[0], 3, self.full_image_shape[0], self.full_image_shape[1]], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,plane_index,y_index,x_index] = weights
             else:
-                dense_weights = numpy.full([labels.shape[0], self.image_shape[0], self.image_shape[1], 3], bkg_weight,dtype=numpy.float32)
+                dense_weights = numpy.full([labels.shape[0], self.full_image_shape[0], self.full_image_shape[1], 3], bkg_weight,dtype=numpy.float32)
                 dense_weights[batch_index,y_index,x_index,plane_index] = weights
 
             # Normalize:
