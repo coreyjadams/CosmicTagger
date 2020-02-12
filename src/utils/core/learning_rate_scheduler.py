@@ -1,23 +1,18 @@
-import os
-import sys
-import time
-import tempfile
-from collections import OrderedDict
-
 import numpy
 
-from .      import flags
-from .      import data_transforms
-from ...io  import io_templates
+'''
 
-FLAGS = flags.FLAGS()
+The philosophy of this learning rate scheduler is:
 
+- Particularly with distributed learning, varying the learning rate is important
+- The interface for the learning rate variations are clunky in both TF and torch
+- I can wrap their interfaces around a more flexible class suited for this, and
+  use a custom class to handle intracies in a way that is identical between torch
+  and tf.
+- we use the initial_step to allow restarting
 
-if not FLAGS.SYNTHETIC:
-    from larcv import queueloader
-
-import datetime
-
+[description]
+'''
 
 class learning_rate_scheduler(object):
     '''
@@ -32,6 +27,7 @@ class learning_rate_scheduler(object):
         batch_size           = None,
         dataset_size         = None,
         learning_schedule    = None,
+        initial_step         = 0,
     ):
 
 
@@ -44,6 +40,8 @@ class learning_rate_scheduler(object):
         if learning_schedule is not in schedule_options:
             raise Exception("Learning rate schedule must be in the following: ", schedule_options)
 
+
+        self.current_step = initial_step
 
         # We need to know the total run length either in terms of iterations or epochs
         # total_epochs = total_run_iterations * (dataset_size / batch_size)

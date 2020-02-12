@@ -1,8 +1,5 @@
 import tensorflow as tf
 
-class objectview(object):
-    def __init__(self, d):
-        self.__dict__ = d
 
 
 class Block(tf.keras.models.Model):
@@ -30,7 +27,7 @@ class Block(tf.keras.models.Model):
             activation          = None,
             use_bias            = params.use_bias,
             data_format         = params.data_format,
-            kernel_regularizer  = tf.keras.regularizers.l2(l=params.regularize)
+            kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
 
 
@@ -78,7 +75,7 @@ class ConvolutionUpsample(tf.keras.models.Model):
             activation          = None,
             use_bias            = params.use_bias,
             data_format         = params.data_format,
-            kernel_regularizer  = tf.keras.regularizers.l2(l=params.regularize)
+            kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
 
         self.activation = activation
@@ -488,81 +485,40 @@ class UNetCore(tf.keras.models.Model):
 
 class UResNet(tf.keras.models.Model):
 
-    def __init__(self, *, n_initial_filters,
-                    data_format,          # Channels first or channels last
-                    batch_norm,           # Use Batch norm?
-                    regularize,           # Apply weight regularization?
-                    depth,                # How many times to downsample and upsample
-                    residual,             # Use residual blocks where possible
-                    use_bias,             # Use Bias layers?
-                    blocks_final,         # How many blocks just before bottleneck?
-                    blocks_deepest_layer, # How many blocks at the deepest layer
-                    blocks_per_layer,     # How many blocks to apply at this layer, if not deepest
-                    connections,          # What type of connection?
-                    upsampling,           # What type of upsampling?
-                    downsampling,         # What type of downsampling?
-                    bottleneck_deepest,   # How many filters to use in combined, deepest convolutions
-                    filter_size_deepest,  # What size filter to use in the deepest convolutions
-                    block_concat,         # Prevent concatenations at the deepest layer
-                    growth_rate           # Either multiplicative (doubles) or additive (constant addition)
-                ):
+    def __init__(self, params):
 
         tf.keras.models.Model.__init__(self)
 
-
-        params = objectview({
-            'n_initial_filters'     : n_initial_filters,
-            'data_format'           : data_format,
-            'batch_norm'            : batch_norm,
-            'use_bias'              : use_bias,
-            'residual'              : residual,
-            'regularize'            : regularize,
-            'depth'                 : depth,
-            'blocks_final'          : blocks_final,
-            'blocks_per_layer'      : blocks_per_layer,
-            'blocks_deepest_layer'  : blocks_deepest_layer,
-            'connections'           : connections,
-            'upsampling'            : upsampling,
-            'downsampling'          : downsampling,
-            'growth_rate'           : growth_rate,
-            'bottleneck_deepest'    : bottleneck_deepest,
-            'filter_size_deepest'   : filter_size_deepest,
-            'block_concat'          : block_concat,
-            })
-
-        if data_format == "channels_first":
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
         
         self.initial_convolution = Block(
-            n_filters   = n_initial_filters,
+            n_filters   = params.n_initial_filters,
             kernel      = [7,7],
             activation  = tf.nn.leaky_relu,
             params      = params)
 
-        n_filters = n_initial_filters
+        n_filters = params.n_initial_filters
         # Next, build out the convolution steps:
 
-        if params.growth_rate == "multiplicative":
-            n_filters_next = 2 * n_initial_filters
-        else:
-            n_filters_next = n_initial_filters + params.n_initial_filters
+        n_filters_next = 2 * n_filters
 
         self.net_core = UNetCore(
-            depth                    = depth,
-            in_filters               = n_initial_filters,
-            out_filters              = n_filters_next,
-            params                   = params)
+            depth       = params.network_depth,
+            in_filters  = params.n_initial_filters,
+            out_filters = n_filters_next,
+            params      = params)
 
 
         # We need final output shaping too.
         self.final_blocks = False
-        if blocks_final != 0:
+        if params.blocks_final != 0:
             self.final_blocks = True
             self.final_layer = BlockSeries(
                 out_filters = n_filters,
-                n_blocks    = blocks_final,
+                n_blocks    = params.blocks_final,
                 params      = params)
 
 
