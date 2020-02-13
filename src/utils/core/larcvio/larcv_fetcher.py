@@ -39,7 +39,7 @@ class larcv_fetcher(object):
         self.dataformat = dataformat
         self.synthetic  = synthetic
         self.sparse     = sparse
-
+        
         # self._cleanup = []
 
         # Compute the realized image shape:
@@ -65,7 +65,7 @@ class larcv_fetcher(object):
 
         return shape
 
-    def prepare_cosmic_sample(self, name, input_file, batch_size):
+    def prepare_cosmic_sample(self, name, input_file, batch_size, color=None):
 
         if self.synthetic:
             self.synthetic_index = 0
@@ -101,7 +101,7 @@ class larcv_fetcher(object):
                 'label': name + 'label'
                 }
 
-            self._larcv_interface.prepare_manager(name, io_config, batch_size, data_keys)
+            self._larcv_interface.prepare_manager(name, io_config, batch_size, data_keys, color=color)
             os.unlink(main_file.name)
 
 
@@ -178,7 +178,6 @@ class larcv_fetcher(object):
                     kernel,
                     func = numpy.max)
      
-            print(minibatch_data['image'].shape)
         else:
 
             minibatch_data = {}

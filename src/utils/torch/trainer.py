@@ -15,8 +15,8 @@ torch.backends.cudnn.benchmark = False
 
 # from torch.jit import trace
 
-from ..core.trainercore     import trainercore
-
+from src.utils.core.trainercore     import trainercore
+from src.networks.torch             import LossCalculator
 
 
 
@@ -35,21 +35,21 @@ class torch_trainer(trainercore):
     '''
     def __init__(self,args):
         trainercore.__init__(self, args)
-
+        self._rank = None
 
     def init_network(self):
 
         if self.args.conv_mode == "2D" and not self.args.sparse:
-            from ...networks.torch.uresnet2D import UResNet
-            self._net = UResNet(self.args, shape = self.image_shape)
+            from src.networks.torch.uresnet2D import UResNet
+            self._net = UResNet(self.args)
 
         else:
             if self.args.sparse and self.args.mode != "iotest":
-                from ...networks.torch.sparseuresnet3D import UResNet3D
+                from src.networks.torch.sparseuresnet3D import UResNet3D
             else:
-                from ...networks.torch.uresnet3D       import UResNet3D
+                from src.networks.torch.uresnet3D       import UResNet3D
 
-            self._net = UResNet3D(self.args, shape = self.image_shape)
+            self._net = UResNet3D(self.args)
 
         # self._net.half()
 
@@ -61,27 +61,17 @@ class torch_trainer(trainercore):
 
         # Here we set up weights using the aggregate metrics for the dataset:
 
-        self._criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
         self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
 
     def initialize(self, io_only=False):
 
-        self._initialize_io()
-
-
+        self._initialize_io(color=self._rank)
 
         if io_only:
             return
 
         self.init_network()
-
-        n_trainable_parameters = 0
-        for name, var in self._net.named_parameters():
-            n_trainable_parameters += numpy.prod(var.shape)
-            # print(name, var.shape)
-
-        print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
 
         self.init_optimizer()
 
@@ -89,11 +79,7 @@ class torch_trainer(trainercore):
 
         self._global_step = 0
 
-
-        state = self.restore_model()
-
-        if state is not None:
-            self.load_state(state)
+        self.restore_model()
 
         # If using half precision on the model, convert it now:
         if self.args.model_half_precision:
@@ -104,7 +90,24 @@ class torch_trainer(trainercore):
         if self.args.compute_mode == "GPU":
             self._net.cuda()
 
+        self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
 
+    def print_network_info(self):
+
+        n_trainable_parameters = 0
+        for name, var in self._net.named_parameters():
+            n_trainable_parameters += numpy.prod(var.shape)
+            # print(name, var.shape)
+
+        print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
+
+
+    def restore_model(self):
+
+        state = self.load_state_from_file()
+
+        if state is not None:
+            self.restore_state(state)
 
 
     def init_optimizer(self):
@@ -155,7 +158,7 @@ class torch_trainer(trainercore):
         # Here, either restore the weights of the network or initialize it:
 
 
-    def restore_model(self):
+    def load_state_from_file(self):
         ''' This function attempts to restore the model from file
         '''
 
@@ -176,7 +179,7 @@ class torch_trainer(trainercore):
         state = torch.load(chkp_file)
         return state
 
-    def load_state(self, state):
+    def restore_state(self, state):
 
 
         self._net.load_state_dict(state['state_dict'])
@@ -267,62 +270,6 @@ class torch_trainer(trainercore):
 
 
 
-    def _calculate_loss(self, labels, logits, weights = None):
-        ''' Calculate the loss.
-
-        returns a single scalar for the optimizer to use.
-        '''
-
-        # To apply the loss function, we have to convert the sparse tensors
-        # to dense tensors.  We can take a version of the labels, however,
-        # and set all its points to 1.0 (or another function) to create a weight
-        # tensor to apply to the corresponding loss map.
-
-        loss = None
-        for i in [0,1,2]:
-            plane_loss = self._criterion(input=logits[i], target=labels[i])
-
-            if self.args.loss_balance_scheme == "focal":
-                # To compute the focal loss, we need to compute the one-hot labels and the
-                # softmax
-                softmax = torch.nn.functional.softmax(logits[i])
-                # print("softmax.shape: ", softmax.shape)
-                # print("labels.shape: ", labels[i].shape)
-                onehot = torch.nn.functional.one_hot(labels[i], num_classes=3).float()
-                # print("onehot.shape: ", onehot.shape)
-                onehot = onehot.permute([0,3,1,2])
-                # print("onehot.shape: ", onehot.shape)
-
-                scale_factor = onehot * (1 - softmax)**3
-                # print("scale_factor.shape:  ", scale_factor.shape)
-                scale_factor = torch.mean(scale_factor, dim=1)
-                # print("scale_factor.shape:  ", scale_factor.shape)
-                # print("plane_loss.shape: ", plane_loss.shape)
-                # scale_factor /= torch.mean(scale_factor)
-                plane_loss = torch.mean(scale_factor * plane_loss)
-                # print("plane_loss.shape: ", plane_loss.shape)
-
-            elif self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light":
-                #split the weights across the plane dimension:
-                plane_loss = torch.sum(weights[:,i,:,:] * plane_loss)
-            else:
-                plane_loss = torch.mean(plane_loss)
-
-
-            if loss is None:
-                loss = plane_loss
-            else:
-                loss += plane_loss
-
-        if self.args.loss_scale != 1.0:
-            loss *= self.args.loss_scale
-
-        return loss
-
-        # if self.args.label_mode == 'all':
-        #     values, target = torch.max(inputs[self.args.keyword_label], dim = 1)
-        #     loss = self._criterion(logits, target=target)
-        #     return loss
 
 
 
@@ -500,9 +447,9 @@ class torch_trainer(trainercore):
 
     def increment_global_step(self):
 
-        previous_epoch = int((self._global_step * self.args.minibatch_size) / self._epoch_size)
+        previous_epoch = int((self._global_step * self.args.minibatch_size) / self._train_data_size)
         self._global_step += 1
-        current_epoch = int((self._global_step * self.args.minibatch_size) / self._epoch_size)
+        current_epoch = int((self._global_step * self.args.minibatch_size) / self._train_data_size)
 
         self.on_step_end()
 
@@ -551,7 +498,6 @@ class torch_trainer(trainercore):
             if self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light":
                 minibatch_data['weight'] = minibatch_data['weight'].float()
 
-        self.downsample_images(minibatch_data)
         self.reduce_precision(minibatch_data)
 
         return minibatch_data
@@ -559,25 +505,6 @@ class torch_trainer(trainercore):
     def reduce_precision(self, minibatch_data):
         if self.args.input_half_precision:
             minibatch_data['image'] = minibatch_data['image'].half()
-
-
-    def downsample_images(self, minibatch_data):
-        # This step applies downsampling as necessary:
-        if self.args.downsample_images != 0:
-            kernel = 2**self.args.downsample_images
-
-            minibatch_data['image'] = torch.nn.functional.avg_pool2d(minibatch_data['image'], kernel)
-
-            # Here is something fun.  For CPU, need to cast to float first:
-            if self.args.compute_mode == "CPU":
-                minibatch_data['label'] = minibatch_data['label'].float()
-            minibatch_data['label'] = torch.nn.functional.max_pool2d(minibatch_data['label'], kernel)
-            # And, cast back to long:
-            if self.args.compute_mode == "CPU":
-                minibatch_data['label'] = minibatch_data['label'].long()
-
-            if self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light":
-                minibatch_data['weight'] = torch.nn.functional.max_pool2d(minibatch_data['weight'], kernel)
 
 
     def forward_pass(self, minibatch_data):
@@ -624,10 +551,9 @@ class torch_trainer(trainercore):
 
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
-            minibatch_data = self.fetch_next_batch(force_pop = True)
+            minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
-
 
             logits_image, labels_image = self.forward_pass(minibatch_data)
 
@@ -638,7 +564,10 @@ class torch_trainer(trainercore):
             # Compute the loss based on the logits
 
 
-            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
+            loss = self.loss_calculator(labels_image, logits_image)
+
+            if self.args.loss_scale != 1.0:
+                loss *= self.args.loss_scale
 
             if verbose: print("Completed loss")
 
@@ -722,13 +651,13 @@ class torch_trainer(trainercore):
             # Fetch the next batch of data with larcv
             # (Make sure to pull from the validation set)
             io_start_time = datetime.datetime.now()
-            minibatch_data = self.fetch_next_batch('aux')
+            minibatch_data = self.larcv_fetcher.fetch_next_batch('aux')
             io_end_time = datetime.datetime.now()
 
             logits_image, labels_image = self.forward_pass(minibatch_data)
 
             # Compute the loss based on the logits
-            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
+            loss = self.loss_calculator(labels_image, logits_image)
 
 
             # Compute any necessary metrics:
@@ -760,7 +689,7 @@ class torch_trainer(trainercore):
         # self._net.train()
 
         # Fetch the next batch of data with larcv
-        minibatch_data = self.fetch_next_batch(metadata=True)
+        minibatch_data = self.larcv_fetcher.fetch_next_batch("aux",metadata=True)
 
         # Convert the input data to torch tensors
         minibatch_data = self.to_torch(minibatch_data)
@@ -780,13 +709,10 @@ class torch_trainer(trainercore):
             features = (logits.features).cpu()
             coords   = (logits.get_spatial_locations()).cpu()
             coords = coords[:,0:-1]
-            # print("Features shape: ", features.shape)
-            # print("Coords shape: ", coords.shape)
 
             # Compute the softmax:
             features = torch.nn.Softmax(dim=1)(features)
             val, prediction = torch.max(features, dim=-1)
-            # print("Prediction shape: ", prediction.shape)
 
             # Assuming batch size of 1 here so we don't need to fiddle with the batch dimension.
 
@@ -868,14 +794,6 @@ class torch_trainer(trainercore):
         return
 
     def batch_process(self):
-
-        # At the begining of batch process, figure out the epoch size:
-        if not self.args.synthetic:
-            self._epoch_size = self._larcv_interface.size('primary')
-        else:
-            self._epoch_size = 100
-
-        # This is the 'master' function, so it controls a lot
 
 
         # Run iterations
