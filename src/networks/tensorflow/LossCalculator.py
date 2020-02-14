@@ -40,7 +40,7 @@ class LossCalculator(object):
         # This function receives the inputs labels and logits and returns a loss.\
         # If there is balancing scheme specified, weights are computed on the fly
 
-        with tf.name_scope('cross_entropy'):
+        with tf.compat.v1.name_scope('cross_entropy'):
 
             loss = None
 
@@ -57,13 +57,13 @@ class LossCalculator(object):
 
                         weights = (1-s)**2
                         weights *= ont_hot
-                        weights = tf.reduce_sum(weights, axis=self._channels_dim)
+                        weights = tf.reduce_sum(input_tensor=weights, axis=self._channels_dim)
 
 
                     elif self.balance_type == "even":
                         counts = self.label_counts(labels[i])
                         total_pixels = numpy.prod(labels[i].shape)
-                        locs = tf.where(labels[i] != 0)
+                        locs = tf.compat.v1.where(labels[i] != 0)
                         class_weights = 0.3333/(counts + 1.0)
 
                         weights = tf.full(labels[i].shape, class_weights[0])
@@ -85,7 +85,7 @@ class LossCalculator(object):
                     weights = tf.stop_gradient(weights)
 
                     loss[i] *= weights
-                    loss[i] = tf.reduce_mean(loss[i])
+                    loss[i] = tf.reduce_mean(input_tensor=loss[i])
                     total_weight = torch.sum(weights)
 
 

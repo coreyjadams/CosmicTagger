@@ -545,7 +545,7 @@ class UResNet3D(tf.keras.models.Model):
             x = tf.expand_dims(x, -1)
             # print(x.get_shape())
             # Shape here is [B, H, W, 3, 1]
-            x = tf.transpose(x, perm=[0,3,1,2,4])
+            x = tf.transpose(a=x, perm=[0,3,1,2,4])
             # print(x.get_shape())
 
 
