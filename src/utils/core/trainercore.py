@@ -29,7 +29,7 @@ class trainercore(object):
     def __init__(self, args):
 
         self._iteration    = 0
-        self._global_step  = -1
+        self._global_step  = 0
         self.args          = args
         self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
             mode        = args.mode, 

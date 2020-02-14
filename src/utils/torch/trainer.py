@@ -644,7 +644,7 @@ class torch_trainer(trainercore):
             # Fetch the next batch of data with larcv
             # (Make sure to pull from the validation set)
             io_start_time = datetime.datetime.now()
-            minibatch_data = self.larcv_fetcher.fetch_next_batch('aux')
+            minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
             io_end_time = datetime.datetime.now()
 
             logits_image, labels_image = self.forward_pass(minibatch_data)
