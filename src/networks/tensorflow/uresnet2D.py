@@ -532,7 +532,7 @@ class UResNet(tf.keras.models.Model):
         )
 
 
-
+    @tf.function
     def call(self, input_tensor, training):
 
 

@@ -23,7 +23,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
 
 class distributed_trainer(tf_trainer):
-    '''
+    '''a
     This class is the core interface for training.  Each function to
     be overridden for a particular interface is marked and raises
     a NotImplemented error.
@@ -223,19 +223,6 @@ class distributed_trainer(tf_trainer):
         return this_learning_rate
 
 
-
-
-    # def metrics(self, metrics):
-    #     # Here, we can allreduce the metrics.
-
-    #     if hvd.rank() == 0:
-    #         print metrics
-
-    #     for key in metrics:
-    #         metrics[key] = hvd_keras.allreduce(metrics[key])
-
-    #     if hvd.rank() == 0:
-    #         print metrics
 
 
     def save_model(self, gs):
