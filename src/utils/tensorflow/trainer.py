@@ -31,7 +31,7 @@ class tf_trainer(trainercore):
 
     def __init__(self, args):
         trainercore.__init__(self, args)
-
+        self._global_step = tf.Variable(0, dtype=tf.int32)
 
     def local_batch_size(self):
         return self.args.minibatch_size
@@ -52,67 +52,18 @@ class tf_trainer(trainercore):
         # We compute the 
         batch_dims[0] = self.local_batch_size()
 
-        # We have to make placeholders for input objects:
-
-        # self._input = {
-        #     'image'   : tf.compat.v1.placeholder(floating_point_format, batch_dims, name="input_image"),
-        #     'label'   : tf.compat.v1.placeholder(integer_format,        batch_dims, name="input_label"),
-        #     'io_time' : tf.compat.v1.placeholder(floating_point_format, (), name="io_fetch_time")
-        # }
-
         # Build the network object, forward pass only:
-
-        self._metrics = {}
 
         if self.args.conv_mode == '2D':
             self._net = uresnet2D.UResNet(self.args)
         else:
             self._net = uresnet3D.UResNet3D(self.args)
-
-        # self._logits = self._net(self._input['image'], training=self.args.training)
-
-        # # Used to accumulate gradients over several iterations:
-        # self._accum_vars = [tf.Variable(tv.initialized_value(),
-        #                     trainable=False) for tv in tf.compat.v1.trainable_variables()]
         
         self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
         self.acc_calculator  = AccuracyCalculator.AccuracyCalculator()
 
-        # if self.args.mode == "train" or self.args.mode == "inference":
 
-
-        #     # Here, if the data format is channels_first, we have to reorder the logits tensors
-        #     # To put channels last.  Otherwise it does not work with the softmax tensors.
-
-        #     # if self.args.data_format != "channels_last":
-        #     #     # Split the channel dims apart:
-        #     #     for i, logit in enumerate(self._logits):
-        #     #         n_splits = logit.get_shape().as_list()[1]
-
-        #     #         # Split the tensor apart:
-        #     #         split = [tf.squeeze(l, 1) for l in tf.split(logit, n_splits, 1)]
-
-        #     #         # Stack them back together with the right shape:
-        #     #         self._logits[i] = tf.stack(split, -1)
-        #     #         print
-        #     # Apply a softmax and argmax:
-        #     self._output = dict()
-
-        #     # Take the logits (which are one per plane) and create a softmax and prediction (one per plane)
-
-
-
-        #     # # Create the loss function
-        #     # if self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light" :
-        #     #     self._loss = self._calculate_loss(
-        #     #         labels = self._input['label'],
-        #     #         logits = self._logits,
-        #     #         weight = self._input['weight'])
-        #     # else:
-
-
-
-        self._log_keys = ["cross_entropy/Total_Loss", "accuracy/All_Plane_Non_Background_Accuracy"]
+        self._log_keys = ["loss", "Non_Background_Accuracy"]
 
         end = time.time()
         return end - start
@@ -189,13 +140,11 @@ class tf_trainer(trainercore):
     def restore_model(self):
         ''' This function attempts to restore the model from file
         '''
+        path = self._checkpoint_manager.latest_checkpoint
 
-        if self.args.checkpoint_directory == None:
-            file_path= self.args.log_directory  + "/checkpoints/"
-        else:
-            file_path= self.args.checkpoint_directory  + "/checkpoints/"
+        # The checkpoint file is listed with the global step in the name.  
+        # So, it gets used to restore:
 
-        path = tf.train.latest_checkpoint(file_path)
 
 
         if path is None:
@@ -203,7 +152,7 @@ class tf_trainer(trainercore):
             return False
         # Parse the checkpoint file and use that to get the latest file path
         print("Restoring checkpoint from ", path)
-        self._net.load_weights(path)
+        self._checkpoint.restore(path)
 
         return True
 
@@ -231,25 +180,26 @@ class tf_trainer(trainercore):
         # if not os.path.isdir(os.path.dirname(file_path)):
         #     os.makedirs(os.path.dirname(file_path))
 
-        saved_path = self._net.save_weights(file_path + "model_{}.ckpt".format(global_step))
+        saved_path = self._checkpoint_manager.save()
+        # self._net.save_weights(file_path + "model_{}.ckpt".format(global_step))
 
 
-    def get_model_filepath(self, global_step):
-        '''Helper function to build the filepath of a model for saving and restoring:
+    # def get_model_filepath(self, global_step):
+    #     '''Helper function to build the filepath of a model for saving and restoring:
 
-        '''
+    #     '''
 
-        # Find the base path of the log directory
-        if self.args.checkpoint_directory == None:
-            file_path= self.args.log_directory  + "/checkpoints/"
-        else:
-            file_path= self.args.checkpoint_directory  + "/checkpoints/"
+    #     # Find the base path of the log directory
+    #     if self.args.checkpoint_directory == None:
+    #         file_path= self.args.log_directory  + "/checkpoints/"
+    #     else:
+    #         file_path= self.args.checkpoint_directory  + "/checkpoints/"
 
 
-        name = file_path + 'model-{}.ckpt'.format(global_step)
-        checkpoint_file_path = file_path + "checkpoint"
+    #     name = file_path + 'model-{}.ckpt'.format(global_step)
+    #     checkpoint_file_path = file_path + "checkpoint"
 
-        return name, checkpoint_file_path
+    #     return name, checkpoint_file_path
 
 
     def init_saver(self):
@@ -259,10 +209,8 @@ class tf_trainer(trainercore):
         else:
             file_path= self.args.checkpoint_directory  + "/checkpoints/"
 
-        try:
-            os.makedirs(file_path)
-        except:
-            tf.compat.v1.logging.error("Could not make file path")
+        self._checkpoint = tf.train.Checkpoint(optimizer=self._opt, model = self._net, step=self._global_step)
+        self._checkpoint_manager = tf.train.CheckpointManager(self._checkpoint, file_path+"cosmic_tagger", max_to_keep=3)
 
 
         # Create a file writer for training metrics:
@@ -295,7 +243,7 @@ class tf_trainer(trainercore):
 
         log_string = ""
 
-        log_string += "{} Global Step {}: ".format(kind, step)
+        log_string += "{} Global Step {}: ".format(kind, int(step))
 
 
         for key in metrics:
@@ -312,6 +260,9 @@ class tf_trainer(trainercore):
 
         return
 
+    def current_step(self):
+        return int(self._global_step)
+
 
     def summary_images(self, labels, prediction):
         ''' Create images of the labels and prediction to show training progress
@@ -320,11 +271,11 @@ class tf_trainer(trainercore):
         # print(labels[0].shape)
         # print(prediction[0].shape)
 
-        if self._global_step % 25 * self.args.summary_iteration == 0 and not self.args.no_summary_images:
+        if self.current_step() % 25 * self.args.summary_iteration == 0 and not self.args.no_summary_images:
 
             for p in range(len(labels)):
-                tf.summary.image(f"label_plane_{p}", labels[p],     self._global_step)
-                tf.summary.image(f"pred_plane_{p}",  prediction[p], self._global_step)
+                tf.summary.image(f"label_plane_{p}", labels[p],     self.current_step())
+                tf.summary.image(f"pred_plane_{p}",  prediction[p], self.current_step())
 
             # images = []
 
@@ -430,7 +381,7 @@ class tf_trainer(trainercore):
 
 
             # Report metrics on the terminal:
-            self.log(metrics, kind="Test", step=self._global_step)
+            self.log(metrics, kind="Test", step=self.current_step())
 
 
             self.summary(metrics)
@@ -454,7 +405,7 @@ class tf_trainer(trainercore):
 
     def summary(self, metrics,saver=""):
         
-        if self._global_step % self.args.summary_iteration == 0:
+        if self.current_step() % self.args.summary_iteration == 0:
 
             if saver == "":
                 saver = self._main_writer
@@ -462,7 +413,7 @@ class tf_trainer(trainercore):
             with saver.as_default():
                 for metric in metrics:
                     name = metric
-                    tf.summary.scalar(metric, metrics[metric], self._global_step)
+                    tf.summary.scalar(metric, metrics[metric], self.current_step())
         return
 
 
@@ -540,7 +491,7 @@ class tf_trainer(trainercore):
 
 
         # Report metrics on the terminal:
-        self.log(metrics, kind="Train", step=self._global_step)
+        self.log(metrics, kind="Train", step=self.current_step())
 
 
         global_end_time = datetime.datetime.now()
@@ -548,7 +499,7 @@ class tf_trainer(trainercore):
         # Compute global step per second:
         self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
 
-        return self._global_step
+        return self.current_step()
 
     def stop(self):
         # Mostly, this is just turning off the io:
@@ -717,7 +668,7 @@ class tf_trainer(trainercore):
             if post_one_time is None:
                 post_one_time = time.time()
             
-            self._global_step += 1
+            self._global_step.assign_add(1)
 
         if self.args.mode == 'inference':
             if self._larcv_interface._writer is not None:
