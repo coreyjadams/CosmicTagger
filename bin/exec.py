@@ -245,10 +245,10 @@ The most commonly used commands are:
 
 
             if self.args.distributed:
-                from src.utils.tensorflow2 import distributed_trainer
+                from src.utils.tensorflow import distributed_trainer
                 self.trainer = distributed_trainer.distributed_trainer(self.args)
             else:
-                from src.utils.tensorflow2 import trainer
+                from src.utils.tensorflow import trainer
                 self.trainer = trainer.tf_trainer(self.args)
 
         elif self.args.framework == "torch":
