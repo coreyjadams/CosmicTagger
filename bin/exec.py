@@ -239,15 +239,16 @@ The most commonly used commands are:
 
     def make_trainer(self):
 
-
+        self.validate_arguments()
+        
         if self.args.framework == "tensorflow" or self.args.framework == "tf":
 
 
             if self.args.distributed:
-                from src.utils.tensorflow import distributed_trainer
+                from src.utils.tensorflow2 import distributed_trainer
                 self.trainer = distributed_trainer.distributed_trainer(self.args)
             else:
-                from src.utils.tensorflow import trainer
+                from src.utils.tensorflow2 import trainer
                 self.trainer = trainer.tf_trainer(self.args)
 
         elif self.args.framework == "torch":
@@ -378,7 +379,13 @@ The most commonly used commands are:
 
         return
 
+    def validate_arguments(self):
 
+        if self.args.framework == "torch":
+            # In torch, only option is channels first:
+            if self.args.data_format == "channels_last":
+                print("Torch requires channels_first, switching automatically")
+                self.args.data_format = "channels_first"
 
 
 if __name__ == '__main__':
