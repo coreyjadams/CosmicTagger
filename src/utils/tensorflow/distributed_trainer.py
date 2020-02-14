@@ -156,7 +156,15 @@ class distributed_trainer(tf_trainer):
 
             # Take all of the metrics and turn them into summaries:
 
+    def local_batch_size(self):
+        # If synthetic, the local batch size is the minibatchsize.
 
+        # Otherwise, it's minibatch size / n_ranks:
+
+        if self.args.synthetic:
+            return self.args.minibatch_size
+        else
+            return self.args.minibatch_size / hvd.size()
 
 
     def restore_model(self):

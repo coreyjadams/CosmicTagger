@@ -447,19 +447,12 @@ class torch_trainer(trainercore):
 
     def increment_global_step(self):
 
-        previous_epoch = int((self._global_step * self.args.minibatch_size) / self._train_data_size)
         self._global_step += 1
-        current_epoch = int((self._global_step * self.args.minibatch_size) / self._train_data_size)
 
         self.on_step_end()
 
-        if previous_epoch != current_epoch:
-            self.on_epoch_end()
 
     def on_step_end(self):
-        pass
-
-    def on_epoch_end(self):
         pass
 
 

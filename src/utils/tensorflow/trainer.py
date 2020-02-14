@@ -7,8 +7,8 @@ from collections import OrderedDict
 import numpy
 
 
-from ..core.trainercore     import trainercore
-from ...networks.tensorflow import uresnet2D, uresnet3D
+from src.utils.core.trainercore import trainercore
+from src.networks.tensorflow    import uresnet2D, uresnet3D, LossCalculator
 
 
 import datetime
@@ -33,6 +33,9 @@ class tf_trainer(trainercore):
         trainercore.__init__(self, args)
 
 
+    def local_batch_size(self):
+        return self.args.minibatch_size
+
     def init_network(self):
 
         # This function builds the compute graph.
@@ -45,33 +48,17 @@ class tf_trainer(trainercore):
 
 
         batch_dims = self.larcv_fetcher.batch_dims(1)
-        batch_dims[0] = None
+        
+        # We compute the 
+        batch_dims[0] = self.local_batch_size()
 
-        print(batch_dims)
         # We have to make placeholders for input objects:
-
 
         self._input = {
             'image'   : tf.placeholder(floating_point_format, batch_dims, name="input_image"),
             'label'   : tf.placeholder(integer_format,        batch_dims, name="input_label"),
             'io_time' : tf.placeholder(floating_point_format, (), name="io_fetch_time")
         }
-
-        # if self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light":
-        #     self._input['weight'] = tf.placeholder(floating_point_format, self._raw_dims['label'], name="input_weight")
-
-        # # To accomodate flexible downsampling, we build the downsampling layers into the network:
-        # if self.args.downsample_images != 0:
-        #     with tf.variable_scope("image_scaling"):
-        #         kernel = 2**self.args.downsample_images
-        #         self._input = {}
-        #         self._input['image'] = tf.keras.layers.AveragePooling2D(pool_size=kernel, trainable=False)(self._raw_input['image'])
-        #         self._input['label'] = tf.keras.layers.MaxPool2D(pool_size=kernel, trainable=False)(self._raw_input['label'])
-        #         if self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light":
-        #             self._input['weight'] = tf.keras.layers.MaxPool2D(kernel, trainable=False)(self._raw_input['weight'])
-        # else:
-        #     # Point the inputs to the right spot:
-        #     self._input = self._raw_input
 
         # Build the network object, forward pass only:
 
@@ -87,9 +74,6 @@ class tf_trainer(trainercore):
         # Used to accumulate gradients over several iterations:
         self._accum_vars = [tf.Variable(tv.initialized_value(),
                             trainable=False) for tv in tf.trainable_variables()]
-
-        # self._net = uresnet_classic.UResNet()
-        # self._logits = self._net._build_network(self._input)
 
 
         if self.args.mode == "train" or self.args.mode == "inference":
@@ -127,8 +111,20 @@ class tf_trainer(trainercore):
             #         logits = self._logits,
             #         weight = self._input['weight'])
             # else:
-            self._loss = self._calculate_loss(
-                    labels = self._input['label'],
+            self._input['split_labels'] = [
+                tf.squeeze(l, axis=self._channels_dim) 
+                    for l in tf.split(self._input['label'], 3, self._channels_dim)
+                ]
+            self._input['split_images'] = [
+                tf.squeeze(l, axis=self._channels_dim) 
+                    for l in tf.split(self._input['image'], 3, self._channels_dim)
+                ]
+
+
+            self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
+
+            self._loss = self.loss_calculator(
+                    labels = self._input['split_labels'],
                     logits = self._logits)
 
         self._log_keys = ["cross_entropy/Total_Loss", "accuracy/All_Plane_Non_Background_Accuracy"]
@@ -338,69 +334,7 @@ class tf_trainer(trainercore):
 
 
 
-    def _calculate_loss(self, labels, logits, weight=None):
-        ''' Calculate the loss.
-
-        returns a single scalar for the optimizer to use.
-        '''
-
-        with tf.name_scope('cross_entropy'):
-            # Calculate the loss, per plane, unreduced:
-            split_labels = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(labels,len(logits) ,self._channels_dim)]
-            if weight is not None:
-                split_weights = [tf.squeeze(l, axis=self._channels_dim) for l in tf.split(weight,len(logits) ,self._channels_dim)]
-
-
-            # If the channels dim is not -1, we have to reshape the labels:
-            if self._channels_dim != -1:
-                logits = [ tf.transpose(l, perm=[0,2,3,1]) for l in logits]
-
-            loss = [None]*len(logits)
-            for p in range(len(logits)):
-                loss[p] = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels = split_labels[p],
-                    logits = logits[p]
-                )
-
-                # Now, we apply a weight to the loss if necessary:
-                if self.args.loss_balance_scheme == "none":
-                    loss[p] = tf.reduce_mean(loss[p])
-                elif self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light":
-                    loss[p] = tf.multiply(loss[p], split_weights[p])
-                    loss[p] = tf.reduce_sum(loss[p])
-                elif self.args.loss_balance_scheme == "focal":
-
-                    # Compute this as focal loss:
-                    s      = tf.nn.softmax(logits[p], axis = self._channels_dim)
-                    labels = tf.one_hot(indices=split_labels[p], depth=3, axis=self._channels_dim)
-
-                    balance_term = (1-s)**2
-                    balance_term *= labels
-                    balance_term = tf.reduce_sum(balance_term, axis=self._channels_dim)
-                    loss[p] *= balance_term
-                    loss[p] = tf.reduce_mean(loss[p])
-
-
-
-                self._metrics["cross_entropy/Loss_plane_{}".format(p)] = loss[p]
-                # tf.summary.scalar("Loss_plane_{}".format(p),loss[p])
-
-            # We do use the *mean* across planes:
-            total_loss = tf.reduce_mean(loss)
-
-            # # If desired, add weight regularization loss:
-            # if self.args.regularize_weights != 0.0:
-            #     reg_loss = tf.reduce_mean(tf.losses.get_regularization_losses())
-            #     tf.summary.scalar("Regularization_loss",reg_loss)
-            #     total_loss += reg_loss
-
-
-            # Total summary:
-            self._metrics["cross_entropy/Total_Loss"] = total_loss
-            # tf.summary.scalar("Total_Loss",total_loss)
-
-            return total_loss
-
+ 
 
     def _calculate_accuracy(self, logits, input):
         ''' Calculate the accuracy.
