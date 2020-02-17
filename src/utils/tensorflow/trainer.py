@@ -73,7 +73,7 @@ class tf_trainer(trainercore):
         for var in tf.compat.v1.trainable_variables():
             n_trainable_parameters += numpy.prod(var.get_shape())
             # print(var.name, var.get_shape())
-        sys.stdout.write("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
+        self.print(f"Total number of trainable parameters in this network: {n_trainable_parameters}")
 
 
     def set_compute_parameters(self):
@@ -99,10 +99,8 @@ class tf_trainer(trainercore):
 
 
         start = time.time()
-        graph = tf.compat.v1.get_default_graph()
         net_time = self.init_network()
 
-        sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(time.time()-start))
 
 
         self.print_network_info()
@@ -112,6 +110,7 @@ class tf_trainer(trainercore):
 
         self.init_saver()
 
+        self.init_checkpointer()
 
 
         self.set_compute_parameters()
@@ -119,19 +118,8 @@ class tf_trainer(trainercore):
         # # Add the graph to the log file:
         # self._main_writer.add_graph(graph)
 
-
-
         # Try to restore a model?
         restored = self.restore_model()
-
-        # if not restored:
-        #     self._sess.run(tf.compat.v1.global_variables_initializer())
-
-        # # Create a session:
-        # self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = hooks,
-        #     checkpoint_dir        = checkpoint_dir,
-        #     log_step_count_steps  = self.args.logging_iteration,
-        #     save_checkpoint_steps = self.args.checkpoint_iteration)
 
     def init_learning_rate(self):
         self._learning_rate = self.args.learning_rate
@@ -148,10 +136,10 @@ class tf_trainer(trainercore):
 
 
         if path is None:
-            print("No checkpoint found, starting from scratch")
+            self.print("No checkpoint found, starting from scratch")
             return False
         # Parse the checkpoint file and use that to get the latest file path
-        print("Restoring checkpoint from ", path)
+        self.print("Restoring checkpoint from ", path)
         self._checkpoint.restore(path)
 
         return True
@@ -176,33 +164,11 @@ class tf_trainer(trainercore):
             file_path= self.args.checkpoint_directory  + "/checkpoints/"
 
 
-        # # Make sure the path actually exists:
-        # if not os.path.isdir(os.path.dirname(file_path)):
-        #     os.makedirs(os.path.dirname(file_path))
-
         saved_path = self._checkpoint_manager.save()
-        # self._net.save_weights(file_path + "model_{}.ckpt".format(global_step))
 
 
-    # def get_model_filepath(self, global_step):
-    #     '''Helper function to build the filepath of a model for saving and restoring:
 
-    #     '''
-
-    #     # Find the base path of the log directory
-    #     if self.args.checkpoint_directory == None:
-    #         file_path= self.args.log_directory  + "/checkpoints/"
-    #     else:
-    #         file_path= self.args.checkpoint_directory  + "/checkpoints/"
-
-
-    #     name = file_path + 'model-{}.ckpt'.format(global_step)
-    #     checkpoint_file_path = file_path + "checkpoint"
-
-    #     return name, checkpoint_file_path
-
-
-    def init_saver(self):
+    def init_checkpointer(self):
 
         if self.args.checkpoint_directory == None:
             file_path= self.args.log_directory  + "/checkpoints/"
@@ -212,6 +178,8 @@ class tf_trainer(trainercore):
         self._checkpoint = tf.train.Checkpoint(optimizer=self._opt, model = self._net, step=self._global_step)
         self._checkpoint_manager = tf.train.CheckpointManager(self._checkpoint, file_path+"cosmic_tagger", max_to_keep=3)
 
+
+    def init_saver(self):
 
         # Create a file writer for training metrics:
         self._main_writer = tf.summary.create_file_writer(self.args.log_directory+"/train/")
@@ -227,14 +195,12 @@ class tf_trainer(trainercore):
 
         if 'RMS' in self.args.optimizer.upper():
             # Use RMS prop:
-            tf.compat.v1.logging.info("Selected optimizer is RMS Prop")
             self._opt = tf.keras.optimizers.RMSprop(self._learning_rate)
         # elif 'LARS' in self.args.optimizer.upper():
         #     tf.compat.v1.logging.info("Selected optimizer is LARS")
         #     self._opt = tf.contrib.opt.LARSOptimizer(self._learning_rate)
         else:
             # default is Adam:
-            tf.compat.v1.logging.info("Using default Adam optimizer")
             self._opt = tf.keras.optimizers.Adam(self._learning_rate)
 
 
@@ -256,7 +222,7 @@ class tf_trainer(trainercore):
         else:
             log_string.rstrip(", ")
 
-        print(log_string)
+        self.print(log_string)
 
         return
 
@@ -267,9 +233,6 @@ class tf_trainer(trainercore):
     def summary_images(self, labels, prediction):
         ''' Create images of the labels and prediction to show training progress
         '''
-
-        # print(labels[0].shape)
-        # print(prediction[0].shape)
 
         if self.current_step() % 25 * self.args.summary_iteration == 0 and not self.args.no_summary_images:
 
@@ -363,8 +326,6 @@ class tf_trainer(trainercore):
         if self._val_writer is None:
             return
 
-        print(self.args.aux_iteration)
-
         if gs % self.args.aux_iteration == 0:
 
             # Fetch the next batch of data with larcv
@@ -417,6 +378,11 @@ class tf_trainer(trainercore):
         return
 
 
+    def get_gradients(self, loss, tape, trainable_variables):
+
+        return tape.gradient(loss, self._net.trainable_variables)
+
+
     def train_step(self):
 
         global_start_time = datetime.datetime.now()
@@ -434,17 +400,17 @@ class tf_trainer(trainercore):
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
-
             with tf.GradientTape() as tape:
                 labels, logits, prediction = self.forward_pass(minibatch_data, training=True)
 
                 loss = self.loss_calculator(labels, logits)
 
-                # Do the backwards pass for gradients:
-                if gradients is None:
-                    gradients = tape.gradient(loss, self._net.trainable_variables)
-                else:
-                    gradients += tape.gradient(loss, self._net.trainable_variables)
+
+            # Do the backwards pass for gradients:
+            if gradients is None:
+                gradients = self.get_gradients(loss, tape, self._net.trainable_variables)
+            else:
+                gradients += self.get_gradients(loss, tape, self._net.trainable_variables)
 
 
 
@@ -546,12 +512,11 @@ class tf_trainer(trainercore):
 
         metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
 
-        if verbose: print("Calculated metrics")
+        if verbose: self.self.print("Calculated metrics")
 
         # Report metrics on the terminal:
         self.log(ops["metrics"], kind="Inference", step=ops["global_step"])
 
-        print(ops["metrics"])
 
 
         # Here is the part where we have to add output:
@@ -606,7 +571,7 @@ class tf_trainer(trainercore):
 
 
 
-        if verbose: print("Completed Log")
+        if verbose: self.print("Completed Log")
 
         global_end_time = datetime.datetime.now()
 
@@ -653,7 +618,7 @@ class tf_trainer(trainercore):
         # Run iterations
         for self._iteration in range(self.args.iterations):
             if self.args.training and self._iteration >= self.args.iterations:
-                print('Finished training (iteration %d)' % self._iteration)
+                self.print('Finished training (iteration %d)' % self._iteration)
                 break
 
             if self.args.mode == 'train':
@@ -676,5 +641,5 @@ class tf_trainer(trainercore):
 
         end = time.time()
 
-        print("Total time to batch_process: ", end - start)
-        print("Total time to batch process except first iteration: ", end - post_one_time)
+        self.print("Total time to batch_process: ", end - start)
+        self.print("Total time to batch process except first iteration: ", end - post_one_time)

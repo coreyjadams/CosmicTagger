@@ -99,7 +99,7 @@ class torch_trainer(trainercore):
             n_trainable_parameters += numpy.prod(var.shape)
             # print(name, var.shape)
 
-        print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
+        self.print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
 
 
     def restore_model(self):
@@ -173,7 +173,7 @@ class torch_trainer(trainercore):
                 if line.startswith("latest: "):
                     chkp_file = line.replace("latest: ", "").rstrip('\n')
                     chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
-                    print("Restoring weights from ", chkp_file)
+                    self.print("Restoring weights from ", chkp_file)
                     break
 
         state = torch.load(chkp_file)
@@ -364,7 +364,7 @@ class torch_trainer(trainercore):
 
 
             self._previous_log_time = self._current_log_time
-            print("{} Step {} metrics: {}".format(saver, self._global_step, s))
+            self.print("{} Step {} metrics: {}".format(saver, self._global_step, s))
 
 
     def summary(self, metrics,saver=""):
@@ -553,7 +553,7 @@ class torch_trainer(trainercore):
 
             verbose = False
 
-            if verbose: print("Completed Forward pass")
+            if verbose: self.print("Completed Forward pass")
             # Compute the loss based on the logits
 
 
@@ -562,7 +562,7 @@ class torch_trainer(trainercore):
             if self.args.loss_scale != 1.0:
                 loss *= self.args.loss_scale
 
-            if verbose: print("Completed loss")
+            if verbose: self.print("Completed loss")
 
             # Compute the gradients for the network parameters:
             loss.backward()
@@ -574,7 +574,7 @@ class torch_trainer(trainercore):
 
 
 
-            if verbose: print("Completed backward pass")
+            if verbose: self.print("Completed backward pass")
 
 
             # Compute any necessary metrics:
@@ -596,14 +596,14 @@ class torch_trainer(trainercore):
 
         metrics['io_fetch_time'] = io_fetch_time
 
-        if verbose: print("Calculated metrics")
+        if verbose: self.print("Calculated metrics")
 
 
 
         step_start_time = datetime.datetime.now()
         # Apply the parameter update:
         self._opt.step()
-        if verbose: print("Updated Weights")
+        if verbose: self.print("Updated Weights")
         global_end_time = datetime.datetime.now()
 
         metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
@@ -611,12 +611,12 @@ class torch_trainer(trainercore):
 
         self.log(metrics, saver="train")
 
-        if verbose: print("Completed Log")
+        if verbose: self.print("Completed Log")
 
         self.summary(metrics, saver="train")
         self.summary_images(logits_image, labels_image, saver="train")
         # self.graph_summary()
-        if verbose: print("Summarized")
+        if verbose: self.print("Summarized")
 
 
         # Compute global step per second:
@@ -722,12 +722,12 @@ class torch_trainer(trainercore):
 
             for plane in range(3):
                 locs = coords[:,0] == plane
-                # print("Locs shape: ", locs.shape)
+                # self.print("Locs shape: ", locs.shape)
                 this_coords = coords[locs]
                 this_features = features[locs]
 
-                # print("Sub coords shape: ", this_coords.shape)
-                # print("Sub features shape: ", this_features.shape)
+                # self.print("Sub coords shape: ", this_coords.shape)
+                # self.print("Sub features shape: ", this_features.shape)
 
                 # Ravel the cooridinates into flat indexes:
                 indexes = self._y_spatial_size * this_coords[:,1] + this_coords[:,2]
@@ -736,11 +736,11 @@ class torch_trainer(trainercore):
                         self._y_spatial_size, self._x_spatial_size,
                         plane,
                     ]
-                # print("Indexes shape: ", indexes.shape)
+                # self.print("Indexes shape: ", indexes.shape)
 
                 for feature_type in [0,1,2]:
                     writeable_features = this_features[:, feature_type]
-                    # print("Write features shape: ", writeable_features.shape)
+                    # self.print("Write features shape: ", writeable_features.shape)
 
                     list_of_dicts_by_label[feature_type][plane] = {
                         'value' : numpy.asarray(writeable_features).flatten(),
@@ -751,7 +751,7 @@ class torch_trainer(trainercore):
 
                 # Also do the prediction:
                 this_prediction = prediction[locs]
-                # print("Sub prediction shape: ", this_prediction.shape)
+                # self.print("Sub prediction shape: ", this_prediction.shape)
                 list_of_dicts_by_label['pred'][plane] = {
                     'value' : numpy.asarray(this_prediction).flatten(),
                     'index' : numpy.asarray(indexes.flatten()),
@@ -776,7 +776,7 @@ class torch_trainer(trainercore):
             loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
 
             # Compute the metrics for this iteration:
-            print("computing metrics for entry ", minibatch_data['entries'][0])
+            self.print("computing metrics for entry ", minibatch_data['entries'][0])
             metrics = self._compute_metrics(logits_image, labels_image, loss)
 
 
@@ -792,7 +792,7 @@ class torch_trainer(trainercore):
         # Run iterations
         for self._iteration in range(self.args.iterations):
             if self.args.training and self._iteration >= self.args.iterations:
-                print('Finished training (iteration %d)' % self._iteration)
+                self.print('Finished training (iteration %d)' % self._iteration)
                 self.checkpoint()
                 break
 

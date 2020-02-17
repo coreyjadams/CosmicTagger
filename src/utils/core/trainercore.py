@@ -43,6 +43,13 @@ class trainercore(object):
         if args.data_format == "channels_last" : self._channels_dim = -1
 
 
+    def print(self, *argv):
+        ''' Function for logging as needed.  Works correctly in distributed mode'''
+
+        message = " ".join([ str(s) for s in argv] )
+
+        sys.stdout.write(message + "\n")
+
 
     def _initialize_io(self, color=None):
 
@@ -81,7 +88,7 @@ class trainercore(object):
         else:
             log_string.rstrip(", ")
 
-        print(log_string)
+        self.log(log_string)
 
         return
 
@@ -107,7 +114,7 @@ class trainercore(object):
         # Run iterations
         for self._iteration in range(FLAGS.ITERATIONS):
             if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
-                print('Finished training (iteration %d)' % self._iteration)
+                self.log('Finished training (iteration %d)' % self._iteration)
                 break
 
             if FLAGS.MODE == 'train':

@@ -145,7 +145,9 @@ class distributed_trainer(torch_trainer):
         self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
 
 
-
+    def print(self, *argv):
+        if self._rank == 0:
+            torch_trainer.print(self, argv)
 
     def init_saver(self):
         if hvd.rank() == 0:
