@@ -59,18 +59,24 @@ class tf_trainer(trainercore):
         else:
             self._net = uresnet3D.UResNet3D(self.args)
         
+
         self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
         self.acc_calculator  = AccuracyCalculator.AccuracyCalculator()
 
+
+        # TO PROPERLY INITIALIZE THE NETWORK, NEED TO DO A FORWARD PASS
+        minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=False)
+        self.forward_pass(minibatch_data, training=False)
 
         self._log_keys = ["loss", "Non_Background_Accuracy"]
 
         end = time.time()
         return end - start
 
+
     def print_network_info(self):
         n_trainable_parameters = 0
-        for var in tf.compat.v1.trainable_variables():
+        for var in self._net.variables:
             n_trainable_parameters += numpy.prod(var.get_shape())
             # print(var.name, var.get_shape())
         self.print(f"Total number of trainable parameters in this network: {n_trainable_parameters}")
@@ -107,6 +113,7 @@ class tf_trainer(trainercore):
 
         if self.args.mode != "inference":
             self.init_optimizer()
+
 
         self.init_saver()
 
@@ -273,7 +280,7 @@ class tf_trainer(trainercore):
         # if False:
         #     hist = []
 
-        #     for var, grad in zip(tf.compat.v1.trainable_variables(), self._accum_gradients):
+        #     for var, grad in zip(tf.compat.v1.trainable_weights(), self._accum_gradients):
         #         name = var.name.replace("/",".")
         #         hist.append(tf.compat.v1.summary.histogram(name, var))
         #         hist.append(tf.compat.v1.summary.histogram(name  + "/grad/", grad))
@@ -378,9 +385,13 @@ class tf_trainer(trainercore):
         return
 
 
-    def get_gradients(self, loss, tape, trainable_variables):
+    def get_gradients(self, loss, tape, trainable_weights):
 
-        return tape.gradient(loss, self._net.trainable_variables)
+        return tape.gradient(loss, self._net.trainable_weights)
+
+
+    def apply_gradients(self, gradients):
+        self._opt.apply_gradients(zip(gradients, self._net.trainable_variables))
 
 
     def train_step(self):
@@ -408,9 +419,9 @@ class tf_trainer(trainercore):
 
             # Do the backwards pass for gradients:
             if gradients is None:
-                gradients = self.get_gradients(loss, tape, self._net.trainable_variables)
+                gradients = self.get_gradients(loss, tape, self._net.trainable_weights)
             else:
-                gradients += self.get_gradients(loss, tape, self._net.trainable_variables)
+                gradients += self.get_gradients(loss, tape, self._net.trainable_weights)
 
 
 
@@ -441,7 +452,9 @@ class tf_trainer(trainercore):
         # After the accumulation, weight the gradients as needed and apply them:
         if self.args.gradient_accumulation != 1:
             gradients /= self.args.gradient_accumulation
-        self._opt.apply_gradients(zip(gradients, self._net.trainable_variables))
+
+        self.apply_gradients(gradients)
+
 
         # Add the global step / second to the tensorboard log:
         try:

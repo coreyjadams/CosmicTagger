@@ -14,7 +14,7 @@ for i, p in enumerate(sys.path):
         sys.path.pop(i)
 
 import horovod.tensorflow as hvd
-from horovod.tensorflow.keras import DistributedOptimizer
+# from horovod.tensorflow.keras import DistributedOptimizer
 hvd.init()
 
 
@@ -41,7 +41,7 @@ class distributed_trainer(tf_trainer):
     def print(self, *argv):
 
         if self._rank == 0:
-            tf_trainer.print(self, argv)
+            tf_trainer.print(self, *argv)
 
     def init_optimizer(self):
                 # with tf.variable_scope("hvd"):
@@ -51,7 +51,7 @@ class distributed_trainer(tf_trainer):
         tf_trainer.init_optimizer(self)
 
         # Wrap the optimizer it in horovod:
-        self._opt = DistributedOptimizer(self._opt)
+        self._opt = hvd.DistributedOptimizer(self._opt)
 
     def init_saver(self):
         if hvd.rank() == 0:
@@ -66,12 +66,21 @@ class distributed_trainer(tf_trainer):
         self._learning_rate = self.generate_learning_rate(self.args.learning_rate, self._global_step)
 
 
-    def get_gradients(self, loss, tape, trainable_variables):
+    # def get_gradients(self, loss, tape, trainable_variables):
 
-        tape = hvd.DistributedGradientTape(tape)
-        return tape.gradient(loss, self._net.trainable_variables)
+    #     print(gradients[0])
+    #     tape = hvd.DistributedGradientTape(tape)
+    #     gradients =  tape.gradient(loss, self._net.trainable_variables)
 
+    #     print(gradients[0])
 
+    #     return gradients
+
+    # def apply_gradients(self, gradients):
+    #     print(gradients)
+    #     gradients = [ hvd.allreduce(gradient) for gradient in gradients ] 
+
+    #     tf_trainer.apply_gradients(self, gradients)
 
     def init_checkpointer(self):
         if hvd.rank() == 0:
