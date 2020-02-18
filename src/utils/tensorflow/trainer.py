@@ -273,6 +273,9 @@ class tf_trainer(trainercore):
 
     def checkpoint(self, global_step):
 
+        if FLAGS.CHECKPOINT_ITERATION == -1:
+            return
+
         if global_step % FLAGS.CHECKPOINT_ITERATION == 0 and global_step != 0:
             # Save a checkpoint, but don't do it on the first pass
             self.save_model(global_step)
@@ -968,6 +971,8 @@ class tf_trainer(trainercore):
 
         start = time.time()
         post_one_time = None
+        post_two_time = None
+
         # Run iterations
         for self._iteration in range(FLAGS.ITERATIONS):
             if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
@@ -985,6 +990,8 @@ class tf_trainer(trainercore):
 
             if post_one_time is None:
                 post_one_time = time.time()
+            elif post_two_time is None:
+                post_two_time = time.time()
 
         if FLAGS.MODE == 'inference':
             if self._larcv_interface._writer is not None:
@@ -994,3 +1001,4 @@ class tf_trainer(trainercore):
 
         print("Total time to batch_process: ", end - start)
         print("Total time to batch process except first iteration: ", end - post_one_time)
+        print("Total time to batch process except first two iterations: ", end - post_two_time)

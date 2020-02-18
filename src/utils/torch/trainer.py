@@ -213,9 +213,12 @@ class torch_trainer(trainercore):
                     chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
                     print("Restoring weights from ", chkp_file)
                     break
-
-        state = torch.load(chkp_file)
-        return state
+        try:
+            state = torch.load(chkp_file)
+            return state
+        except:
+            print("Could not load from checkpoint file")
+            return None
 
     def load_state(self, state):
 
@@ -334,15 +337,13 @@ class torch_trainer(trainercore):
                 onehot = onehot.permute([0,3,1,2])
                 # print("onehot.shape: ", onehot.shape)
 
-                scale_factor = onehot * (1 - softmax)**2
+                scale_factor = onehot * (1 - softmax)**3
                 # print("scale_factor.shape:  ", scale_factor.shape)
                 scale_factor = torch.mean(scale_factor, dim=1)
                 # print("scale_factor.shape:  ", scale_factor.shape)
-                # print("Scale Factor sum: ", torch.sum(scale_factor))
-                # print("plane_loss pre mean: ", torch.mean(plane_loss))
-                # scale_factor /= torch.sum(scale_factor)
-                plane_loss = torch.sum(scale_factor * plane_loss)
-                # print("plane_loss post mean: ", torch.mean(plane_loss))
+                # print("plane_loss.shape: ", plane_loss.shape)
+                # scale_factor /= torch.mean(scale_factor)
+                plane_loss = torch.mean(scale_factor * plane_loss)
                 # print("plane_loss.shape: ", plane_loss.shape)
 
             elif FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
@@ -626,6 +627,7 @@ class torch_trainer(trainercore):
     def forward_pass(self, minibatch_data):
 
         minibatch_data = self.to_torch(minibatch_data)
+
 
         # Run a forward pass of the model on the input image:
         logits_image = self._net(minibatch_data['image'])
@@ -911,6 +913,9 @@ class torch_trainer(trainercore):
 
     def batch_process(self):
 
+        start = time.time()
+        post_one_time = None
+        post_two_time = None
         # At the begining of batch process, figure out the epoch size:
         if not FLAGS.SYNTHETIC:
             self._epoch_size = self._larcv_interface.size('primary')
@@ -935,8 +940,20 @@ class torch_trainer(trainercore):
             else:
                 self.ana_step()
 
+            if post_one_time is None:
+                post_one_time = time.time()
+            elif post_two_time is None:
+                post_two_time = time.time()
+
 
         if self._saver is not None:
             self._saver.close()
         if self._aux_saver is not None:
             self._aux_saver.close()
+
+        end = time.time()
+
+        print("Total time to batch_process: ", end - start)
+        print("Total time to batch process except first iteration: ", end - post_one_time)
+        print("Total time to batch process except first two iterations: ", end - post_two_time)
+                                                                                                                                                       
