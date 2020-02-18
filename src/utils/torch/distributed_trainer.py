@@ -19,6 +19,8 @@ from .trainer import torch_trainer
 
 import tensorboardX
 
+def flat_lr(step):
+    return 1.0
 
 def lambda_warmup(epoch):
     # Constant terms:
@@ -96,7 +98,7 @@ class distributed_trainer(torch_trainer):
 
     '''
     def __init__(self, args):
-        
+
         torch_trainer.__init__(self, args)
         # Rely on the base class for most standard parameters, only
         # search for parameters relevant for distributed computing here
@@ -107,8 +109,8 @@ class distributed_trainer(torch_trainer):
 
         if self.args.compute_mode == "GPU":
             os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
-
         self._rank            = hvd.rank()
+
 
 
         # Make sure that 'LEARNING_RATE' and 'TRAINING'

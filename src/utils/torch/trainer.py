@@ -175,9 +175,12 @@ class torch_trainer(trainercore):
                     chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
                     self.print("Restoring weights from ", chkp_file)
                     break
-
-        state = torch.load(chkp_file)
-        return state
+        try:
+            state = torch.load(chkp_file)
+            return state
+        except:
+            print("Could not load from checkpoint file")
+            return None
 
     def restore_state(self, state):
 
@@ -789,6 +792,17 @@ class torch_trainer(trainercore):
     def batch_process(self):
 
 
+        start = time.time()
+        post_one_time = None
+        post_two_time = None
+        # At the begining of batch process, figure out the epoch size:
+        if not FLAGS.SYNTHETIC:
+            self._epoch_size = self._larcv_interface.size('primary')
+        else:
+            self._epoch_size = 100
+
+        # This is the 'master' function, so it controls a lot
+
         # Run iterations
         for self._iteration in range(self.args.iterations):
             if self.args.training and self._iteration >= self.args.iterations:
@@ -804,8 +818,20 @@ class torch_trainer(trainercore):
             else:
                 self.ana_step()
 
+            if post_one_time is None:
+                post_one_time = time.time()
+            elif post_two_time is None:
+                post_two_time = time.time()
+
 
         if self._saver is not None:
             self._saver.close()
         if self._aux_saver is not None:
             self._aux_saver.close()
+
+        end = time.time()
+
+        self.print("Total time to batch_process: ", end - start)
+        self.print("Total time to batch process except first iteration: ", end - post_one_time)
+        self.print("Total time to batch process except first two iterations: ", end - post_two_time)
+                                                                                                                                                       

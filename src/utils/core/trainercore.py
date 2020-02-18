@@ -32,9 +32,9 @@ class trainercore(object):
         self._global_step  = 0
         self.args          = args
         self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
-            mode        = args.mode, 
+            mode        = args.mode,
             distributed = args.distributed,
-            downsample  = args.downsample_images, 
+            downsample  = args.downsample_images,
             dataformat  = args.data_format,
             synthetic   = args.synthetic,
             sparse      = args.sparse )

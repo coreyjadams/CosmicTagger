@@ -37,6 +37,7 @@ class distributed_trainer(tf_trainer):
             os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
         self._rank            = hvd.rank()
+        self.local_minibatch_size = int(FLAGS.MINIBATCH_SIZE / hvd.size())
 
     def print(self, *argv):
 
@@ -78,7 +79,7 @@ class distributed_trainer(tf_trainer):
 
     # def apply_gradients(self, gradients):
     #     print(gradients)
-    #     gradients = [ hvd.allreduce(gradient) for gradient in gradients ] 
+    #     gradients = [ hvd.allreduce(gradient) for gradient in gradients ]
 
     #     tf_trainer.apply_gradients(self, gradients)
 
@@ -108,9 +109,9 @@ class distributed_trainer(tf_trainer):
         if self._rank == 0:
             # Restore the model on the root node:
             tf_trainer.restore_model(self)
-        
 
- 
+
+
     def local_batch_size(self):
         # If synthetic, the local batch size is the minibatchsize.
 
@@ -136,7 +137,7 @@ class distributed_trainer(tf_trainer):
         base_learning_rate,
         global_step,
         warmup_steps = 1000,
-        decay_after_step=4500):
+        decay_after_step=20000):
 
         ''' Compute the peak learning rate, the start point, and such
         '''

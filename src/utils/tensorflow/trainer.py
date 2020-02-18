@@ -48,8 +48,8 @@ class tf_trainer(trainercore):
 
 
         batch_dims = self.larcv_fetcher.batch_dims(1)
-        
-        # We compute the 
+
+        # We compute the
         batch_dims[0] = self.local_batch_size()
 
         # Build the network object, forward pass only:
@@ -58,7 +58,7 @@ class tf_trainer(trainercore):
             self._net = uresnet2D.UResNet(self.args)
         else:
             self._net = uresnet3D.UResNet3D(self.args)
-        
+
 
         self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
         self.acc_calculator  = AccuracyCalculator.AccuracyCalculator()
@@ -119,7 +119,6 @@ class tf_trainer(trainercore):
 
         self.init_checkpointer()
 
-
         self.set_compute_parameters()
 
         # # Add the graph to the log file:
@@ -137,7 +136,7 @@ class tf_trainer(trainercore):
         '''
         path = self._checkpoint_manager.latest_checkpoint
 
-        # The checkpoint file is listed with the global step in the name.  
+        # The checkpoint file is listed with the global step in the name.
         # So, it gets used to restore:
 
 
@@ -153,7 +152,10 @@ class tf_trainer(trainercore):
 
     def checkpoint(self, global_step):
 
+        if self.args.checkpoint_iteration == -1: return
+
         if global_step % self.args.checkpoint_iteration == 0 and global_step != 0:
+
             # Save a checkpoint, but don't do it on the first pass
             self.save_model(global_step)
 
@@ -342,7 +344,7 @@ class tf_trainer(trainercore):
             labels, logits, prediction = self.forward_pass(minibatch_data, training=False)
 
             loss = self.loss_calculator(labels, logits)
- 
+
 
 
             metrics = self._compute_metrics(logits, prediction, labels, loss)
@@ -372,7 +374,7 @@ class tf_trainer(trainercore):
 
 
     def summary(self, metrics,saver=""):
-        
+
         if self.current_step() % self.args.summary_iteration == 0:
 
             if saver == "":
@@ -415,7 +417,6 @@ class tf_trainer(trainercore):
                 labels, logits, prediction = self.forward_pass(minibatch_data, training=True)
 
                 loss = self.loss_calculator(labels, logits)
-
 
             # Do the backwards pass for gradients:
             if gradients is None:
@@ -463,6 +464,7 @@ class tf_trainer(trainercore):
         except AttributeError:
             metrics['global_step_per_sec'] = 0.0
             metrics['images_per_second'] = 0.0
+
 
 
         self.summary(metrics)
@@ -628,6 +630,8 @@ class tf_trainer(trainercore):
 
         start = time.time()
         post_one_time = None
+        post_two_time = None
+
         # Run iterations
         for self._iteration in range(self.args.iterations):
             if self.args.training and self._iteration >= self.args.iterations:
@@ -645,7 +649,9 @@ class tf_trainer(trainercore):
 
             if post_one_time is None:
                 post_one_time = time.time()
-            
+            elif post_two_time is None:
+                post_two_time = time.time()
+
             self._global_step.assign_add(1)
 
         if self.args.mode == 'inference':
@@ -656,3 +662,4 @@ class tf_trainer(trainercore):
 
         self.print("Total time to batch_process: ", end - start)
         self.print("Total time to batch process except first iteration: ", end - post_one_time)
+        self.print("Total time to batch process except first two iterations: ", end - post_two_time)
