@@ -46,33 +46,33 @@ The most commonly used commands are:
         ##################################################################
         # Parameters to control logging and snapshotting
         ##################################################################
-        parser.add_argument('-ci','--checkpoint-iteration', 
-            type    = int, 
+        parser.add_argument('-ci','--checkpoint-iteration',
+            type    = int,
             default = 100,
             help    = 'Period (in steps) to store snapshot of weights')
 
-        parser.add_argument('-si','--summary-iteration', 
-            type    = int, 
+        parser.add_argument('-si','--summary-iteration',
+            type    = int,
             default = 1,
             help    = 'Period (in steps) to store summary in tensorboard log')
 
-        parser.add_argument('--no-summary-images', 
-            type    = str2bool, 
+        parser.add_argument('--no-summary-images',
+            type    = str2bool,
             default = False,
             help    = 'Skip summary images to save on memory')
 
-        parser.add_argument('-li','--logging-iteration', 
-            type    = int, 
+        parser.add_argument('-li','--logging-iteration',
+            type    = int,
             default = 1,
             help    = 'Period (in steps) to print values to log')
 
-        parser.add_argument('-cd','--checkpoint-directory', 
-            type    = str, 
+        parser.add_argument('-cd','--checkpoint-directory',
+            type    = str,
             default = None,
             help    = 'Directory to store model snapshots')
 
         parser.add_argument('--gradient-accumulation',
-            type    = int, 
+            type    = int,
             default = 1,
             help    = "Accumulate this many minibatches before updating weigths.")
 
@@ -80,30 +80,30 @@ The most commonly used commands are:
         # Parameters to control the network training
         ##################################################################
 
-        parser.add_argument('-lr','--learning-rate', 
-            type    = float, 
+        parser.add_argument('-lr','--learning-rate',
+            type    = float,
             default = 0.0003,
             help    = 'Initial learning rate')
 
-        parser.add_argument('--optimizer', 
-            type    = str, 
-            choices = ['adam', 'rmsprop',], 
+        parser.add_argument('--optimizer',
+            type    = str,
+            choices = ['adam', 'rmsprop',],
             default = 'rmsprop',
             help    = 'Optimizer to use')
 
-        parser.add_argument('--loss-balance-scheme', 
-            type    = str, 
-            choices = ['none', 'focal', 'even', 'light'], 
+        parser.add_argument('--loss-balance-scheme',
+            type    = str,
+            choices = ['none', 'focal', 'even', 'light'],
             default = 'none',
             help    = "Way to compute weights for balancing the loss.")
 
-        parser.add_argument('--weight-decay', 
-            type    = float, 
+        parser.add_argument('--weight-decay',
+            type    = float,
             default = 0.0,
             help    = "Weight decay strength")
 
-        parser.add_argument('-rw','--regularize-weights', 
-            type    = float, 
+        parser.add_argument('-rw','--regularize-weights',
+            type    = float,
             default = 0.00001,
             help    = "Regularization strength for all learned weights")
 
@@ -112,18 +112,18 @@ The most commonly used commands are:
         ### Torch Specific
         ##################################################################
 
-        parser.add_argument('--model-half-precision', 
-            type    = str2bool, 
+        parser.add_argument('--model-half-precision',
+            type    = str2bool,
             default = False,
             help    = "Use half precision for model weights and parameters.")
 
-        parser.add_argument('--input-half-precision', 
-            type    = str2bool, 
+        parser.add_argument('--input-half-precision',
+            type    = str2bool,
             default = False,
             help    = "Use half precision for input values and intermediate activations.")
 
-        parser.add_argument('--loss-scale', 
-            type    = float, 
+        parser.add_argument('--loss-scale',
+            type    = float,
             default = 1.0,
             help    = "Amount to scale the loss function before back prop.")
 
@@ -132,23 +132,23 @@ The most commonly used commands are:
         ##################################################################
 
         parser.add_argument('--inter-op-parallelism-threads',
-            type    = int, 
+            type    = int,
             default = 4,
             help    = "Passed to tf configproto.")
-        
+
         parser.add_argument('--intra-op-parallelism-threads',
-            type    = int, 
+            type    = int,
             default = 24,
             help    = "Passed to tf configproto.")
-        
+
         ##################################################################
         # High level network decisions: 2D/3D, Sparse/Dense
         ##################################################################
 
-        parser.add_argument('--conv-mode', 
-            type    = str, 
+        parser.add_argument('--conv-mode',
+            type    = str,
             default = '2D',
-            choices = ['2D','3D'], 
+            choices = ['2D','3D'],
             help    = "Only for non-sparse (dense) mode, use 2d or 3d convolutions.")
 
 
@@ -162,8 +162,8 @@ The most commonly used commands are:
         self.add_core_configuration(self.parser)
         self.add_shared_training_arguments(self.parser)
 
-        self.parser.add_argument('--cycle-lambda', 
-            type    = float, 
+        self.parser.add_argument('--cycle-lambda',
+            type    = float,
             default = '10',
             help    = 'Lambda balancing between cycle loss and GAN loss')
 
@@ -192,8 +192,8 @@ The most commonly used commands are:
 
     def add_network_parsers(self, parser):
         # Here, we define the networks available.  In io test mode, used to determine what the IO is.
-        network_parser = parser.add_subparsers( 
-            title          = "Networks", 
+        network_parser = parser.add_subparsers(
+            title          = "Networks",
             dest           = "network",
             description    = 'Which network architecture to use.')
 
@@ -214,7 +214,7 @@ The most commonly used commands are:
 
         print("Running IO Test")
         print(self.__str__())
-        
+
         self.make_trainer()
 
         self.trainer.initialize(io_only=True)
@@ -240,7 +240,7 @@ The most commonly used commands are:
     def make_trainer(self):
 
         self.validate_arguments()
-        
+
         if self.args.framework == "tensorflow" or self.args.framework == "tf":
 
 
@@ -286,23 +286,23 @@ The most commonly used commands are:
 
     def add_core_configuration(self, parser):
         # These are core parameters that are important for all modes:
-        parser.add_argument('-i', '--iterations', 
-            type    = int, 
+        parser.add_argument('-i', '--iterations',
+            type    = int,
             default = 25000,
             help    = "Number of iterations to process")
 
-        parser.add_argument('-d','--distributed', 
-            action  = 'store_true', 
+        parser.add_argument('-d','--distributed',
+            action  = 'store_true',
             default = False,
             help    = "Run with the MPI compatible mode")
 
-        parser.add_argument('-m','--compute-mode', 
-            type    = str, 
-            choices = ['CPU','GPU'], 
+        parser.add_argument('-m','--compute-mode',
+            type    = str,
+            choices = ['CPU','GPU'],
             default = 'CPU',
             help    = "Selection of compute device, CPU or GPU ")
-        
-        parser.add_argument('-ld','--log-directory', 
+
+        parser.add_argument('-ld','--log-directory',
             default ="log/",
             help    ="Prefix (directory) for logging information")
 
@@ -311,8 +311,8 @@ The most commonly used commands are:
         # Parameters to control framework options
         ##################################################################
 
-        parser.add_argument('--framework', 
-            type    = str, choices=['torch','tensorflow', 'tf'], 
+        parser.add_argument('--framework',
+            type    = str, choices=['torch','tensorflow', 'tf'],
             default = "tensorflow",
             help    = "Pick to use either torch or tensorflow/tf.")
 
@@ -320,60 +320,60 @@ The most commonly used commands are:
 
     def add_io_arguments(self, parser):
 
-        data_directory = "/Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging/"
+        data_directory = "/gpfs/jlse-fs0/users/cadams/datasets/cosmic_tagging/"
 
         # IO PARAMETERS FOR INPUT:
-        parser.add_argument('-f','--file', 
-            type    = str, 
+        parser.add_argument('-f','--file',
+            type    = str,
             default = data_directory + "cosmic_tagging_train.h5",
             help    = "IO Input File")
 
-        parser.add_argument('--start-index', 
-            type    = int, 
+        parser.add_argument('--start-index',
+            type    = int,
             default = 0,
             help    = "Start index, only used in inference mode")
 
         parser.add_argument('-mb','--minibatch-size',
-            type    = int, 
+            type    = int,
             default = 2,
             help    = "Number of images in the minibatch size")
-        
+
         # IO PARAMETERS FOR AUX INPUT:
-        parser.add_argument('--aux-file', 
-            type    = str, 
+        parser.add_argument('--aux-file',
+            type    = str,
             default = data_directory + "cosmic_tagging_test.h5",
             help    = "IO Aux Input File, or output file in inference mode")
 
 
         parser.add_argument('--aux-iteration',
-            type    = int, 
+            type    = int,
             default = 10,
             help    = "Iteration to run the aux operations")
 
         parser.add_argument('--aux-minibatch-size',
-            type    = int, 
+            type    = int,
             default = 2,
             help    = "Number of images in the minibatch size")
 
-        parser.add_argument('--synthetic', 
-            type    = str2bool, 
+        parser.add_argument('--synthetic',
+            type    = str2bool,
             default = False ,
             help    = "Use synthetic data instead of real data.")
 
-        parser.add_argument('-df','--data-format', 
-            type    = str, 
+        parser.add_argument('-df','--data-format',
+            type    = str,
             choices = ["channels_last", "channels_first"],
             default = "channels_last",
             help    = "Channels format in the tensor shape.")
 
-        parser.add_argument('-ds', '--downsample-images', 
-            default = 1, 
+        parser.add_argument('-ds', '--downsample-images',
+            default = 1,
             type    = int,
             help    = 'Dense downsampling of the images.  This is the number of downsamples applied (0 == none, 1 == once ...) ')
 
 
-        parser.add_argument('--sparse', 
-            type    = str2bool, 
+        parser.add_argument('--sparse',
+            type    = str2bool,
             default = False,
             help    = "Use sparse convolutions instead of dense convolutions.")
 
@@ -389,4 +389,4 @@ The most commonly used commands are:
 
 
 if __name__ == '__main__':
-    s = exec()  
+    s = exec()
