@@ -6,11 +6,22 @@ from . import larcv_io
 
 # These are all doing sparse IO, so there is no dense IO template here.  But you could add it.
 
-def dataset_io(input_file, name, RandomAccess=None):
+def dataset_io(input_file, name, compression, RandomAccess=None):
     data_proc  = gen_sparse2d_data_filler(name=name + "data",  producer="sbndwire")
     label_proc = gen_sparse2d_data_filler(name=name + "label", producer="sbnd_cosmicseg")
-
+    
     config = larcv_io.ThreadIOConfig(name=name)
+
+    if compression != 0:
+        label_compression = gen_compression(
+            name="Downsample_label", input_label="sbnd_cosmicseg",
+            compression_level = compression, pooling_type = "max")
+        image_compression = gen_compression(
+            name="Downsample_image", input_label="sbndwire",
+            compression_level = compression, pooling_type = "average")
+        config.add_process(label_compression)
+        config.add_process(image_compression)
+
 
     config.add_process(data_proc)
     config.add_process(label_proc)
@@ -42,6 +53,21 @@ def output_io(input_file):
     config.set_param("InputFiles", input_file)
 
     return config
+
+def gen_compression(name, input_label, compression_level, pooling_type):
+    proc = larcv_io.ProcessConfig(proc_name=name, proc_type="Downsample")
+
+    proc.set_param("Producer",       f"{input_label}")
+    proc.set_param("Product",         "sparse2d")
+    proc.set_param("OutputProducer", f"{input_label}")
+    proc.set_param("Downsample",       2**compression_level)
+    if pooling_type == "max":
+        proc.set_param("PoolType", 2)
+    elif pooling_type == "average":
+        proc.set_param("PoolType", 1)
+
+    return proc
+
 
 def gen_sparse2d_data_filler(name, producer):
 
