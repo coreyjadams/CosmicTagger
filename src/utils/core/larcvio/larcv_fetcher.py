@@ -1,5 +1,6 @@
 import os
 import torch 
+import time
 
 from . import data_transforms
 from . import io_templates
@@ -78,14 +79,16 @@ class larcv_fetcher(object):
 
         else:
             config = io_templates.dataset_io(
-                    input_file = input_file,
-                    name       = name)
+                    input_file  = input_file,
+                    name        = name,
+                    compression = self.downsample)
 
 
             # Generate a named temp file:
             main_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
             main_file.write(config.generate_config_str())
 
+            print(config.generate_config_str())
             main_file.close()
 
             io_config = {
@@ -130,13 +133,16 @@ class larcv_fetcher(object):
             if not force_pop:
                 pop = False
 
-
+            start = time.time()
             # This brings up the current data
             self._larcv_interface.prepare_next(name)
             minibatch_data = self._larcv_interface.fetch_minibatch_data(name, 
                 pop=pop,fetch_meta_data=metadata)
             minibatch_dims = self._larcv_interface.fetch_minibatch_dims(name)
 
+
+            print("Time to read data from file: ", time.time() - start)
+            start_dense = time.time()
 
             for key in minibatch_data:
                 if key == 'entries' or key == 'event_ids':
@@ -147,7 +153,7 @@ class larcv_fetcher(object):
             if not self.sparse:
                 minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(
                     minibatch_data['image'], 
-                    dense_shape =self.full_image_shape, 
+                    dense_shape =self.image_shape, 
                     dataformat  =self.dataformat)
             else:
                 minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(
@@ -156,28 +162,33 @@ class larcv_fetcher(object):
             # Label is always dense:
             minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(
                 minibatch_data['label'], 
-                dense_shape =self.full_image_shape, 
+                dense_shape =self.image_shape, 
                 dataformat  =self.dataformat)
 
 
-            # Now, this is supposed to be temporary, but we need to downsample too:
-            if self.downsample != 0:
+            print("Time to convert to dense: ", time.time() - start_dense)
+            start_ds = time.time()
 
-                if self.dataformat == "channels_first":
-                    kernel = (1, 1, self.ds, self.ds)
-                else:
-                    kernel = (1, self.ds, self.ds, 1)
+            # # Now, this is supposed to be temporary, but we need to downsample too:
+            # if self.downsample != 0:
 
-                minibatch_data['image'] = block_reduce(
-                    minibatch_data['image'],
-                    kernel,
-                    func = numpy.mean)
+            #     if self.dataformat == "channels_first":
+            #         kernel = (1, 1, self.ds, self.ds)
+            #     else:
+            #         kernel = (1, self.ds, self.ds, 1)
 
-                minibatch_data['label'] = block_reduce(
-                    minibatch_data['label'],
-                    kernel,
-                    func = numpy.max)
+            #     minibatch_data['image'] = block_reduce(
+            #         minibatch_data['image'],
+            #         kernel,
+            #         func = numpy.mean)
+
+            #     minibatch_data['label'] = block_reduce(
+            #         minibatch_data['label'],
+            #         kernel,
+            #         func = numpy.max)
      
+            print("Time to downsample: ", time.time() - start_ds)
+
         else:
 
             minibatch_data = {}

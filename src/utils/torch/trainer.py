@@ -834,4 +834,3 @@ class torch_trainer(trainercore):
         self.print("Total time to batch_process: ", end - start)
         self.print("Total time to batch process except first iteration: ", end - post_one_time)
         self.print("Total time to batch process except first two iterations: ", end - post_two_time)
-                                                                                                                                                       
