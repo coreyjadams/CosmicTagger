@@ -16,8 +16,6 @@ print("sys.path: ", sys.path)
 print("network_dir: ", network_dir)
 
 from src.networks.tensorflow import uresnet2D
-from src.utils.core import flags
-
 
 import tensorflow as tf
 

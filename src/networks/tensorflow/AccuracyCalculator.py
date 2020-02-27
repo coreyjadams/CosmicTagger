@@ -1,5 +1,8 @@
 import tensorflow as tf
+<<<<<<< Updated upstream
 from tensorflow.python.keras.utils import losses_utils
+=======
+>>>>>>> Stashed changes
 
 import numpy
 
@@ -8,19 +11,6 @@ class AccuracyCalculator(object):
     def __init__(self):
 
         object.__init__(self)
-
-
-        # if balance_type not in ["focal", "light", "even", "none"] and balance_type is not None:
-        #     raise Exception("Unsupported loss balancing recieved: ", balance_type)
-
-        # self.balance_type = balance_type
-
-        # if balance_type != "none":
-        #     self._criterion = tf.keras.losses.SparseCategoricalCrossentropy(
-        #         reduction=losses_utils.ReductionV2.NONE)
-        # else:
-        #     self._criterion = tf.keras.losses.SparseCategoricalCrossentropy(
-        #         reduction=losses_utils.ReductionV2.AUTO)
 
 
     @tf.function
@@ -42,14 +32,16 @@ class AccuracyCalculator(object):
             # Accuracy over individual pixels:
             pixel_accuracy = tf.cast(tf.math.equal(labels[p], prediction[p]), dtype=tf.float16)
 
+
+
             accuracies["total_accuracy"][p] = tf.reduce_mean(pixel_accuracy)
 
             # Find the non zero labels:
-            non_zero_indices = labels[p] != 0
+            non_zero_indices = tf.not_equal(labels[p], tf.constant(0, labels[p].dtype))
 
 
             # Use non_zero_indexes to mask the accuracy to non zero label pixels
-            accuracies["non_bkg_accuracy"][p] = tf.reduce_mean(pixel_accuracy[non_zero_indices])
+            accuracies["non_bkg_accuracy"][p] = tf.reduce_mean(tf.boolean_mask(pixel_accuracy, non_zero_indices))
 
 
             # Neutrinos are label 2, cosmics label 1.  But iterate so I only need to
