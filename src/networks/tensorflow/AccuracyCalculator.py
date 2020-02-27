@@ -23,18 +23,6 @@ class AccuracyCalculator(object):
         #         reduction=losses_utils.ReductionV2.AUTO)
 
 
-    def label_counts(self, label_plane):
-        # helper function to compute number of each type of label
-
-        y, idx, counts = tf.unique_with_counts(label_plane)
-
-        print(counts)
-        # Make sure that if the number of counts is 0 for neutrinos, we fix that
-        if len(counts.shape) < 3:
-            counts = tf.cat((counts, [1,]), 0 )
-
-        return counts
-
     @tf.function
     def __call__(self, labels, prediction):
 
@@ -55,7 +43,7 @@ class AccuracyCalculator(object):
             pixel_accuracy = tf.cast(tf.math.equal(labels[p], prediction[p]), dtype=tf.float16)
 
             accuracies["total_accuracy"][p] = tf.reduce_mean(pixel_accuracy)
-            
+
             # Find the non zero labels:
             non_zero_indices = labels[p] != 0
 
@@ -70,12 +58,12 @@ class AccuracyCalculator(object):
             for index in [1, 2]:
                 # Find the true indices:
                 label_indices       = labels[p] == index
-                
+
                 # Find the predicted indices:
                 prediction_indices  = prediction[p] == index
 
 
-                # To compute the intersection over union metrics, 
+                # To compute the intersection over union metrics,
                 # start with intersections and unions:
 
                 intersection = tf.math.logical_and(label_indices, prediction_indices)

@@ -31,7 +31,7 @@ class tf_trainer(trainercore):
 
     def __init__(self, args):
         trainercore.__init__(self, args)
-        self._global_step = tf.Variable(0, dtype=tf.int32)
+        self._global_step = None
 
     def local_batch_size(self):
         return self.args.minibatch_size
@@ -46,6 +46,7 @@ class tf_trainer(trainercore):
         # sys.stdout.write("Begin constructing network\n")
 
 
+        self._global_step = tf.Variable(0, dtype=tf.int32)
 
         batch_dims = self.larcv_fetcher.batch_dims(1)
 
@@ -90,11 +91,15 @@ class tf_trainer(trainercore):
             self._config.inter_op_parallelism_threads = self.args.inter_op_parallelism_threads
             self._config.intra_op_parallelism_threads = self.args.intra_op_parallelism_threads
         if self.args.compute_mode == "GPU":
+            gpus = tf.config.experimental.list_physical_devices('GPU')
             self._config.gpu_options.allow_growth = True
             os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = "True"
+            for gpu in gpus:
+                  tf.config.experimental.set_memory_growth(gpu, True)
 
     def initialize(self, io_only=False):
 
+        self.set_compute_parameters()
 
         self._initialize_io()
 
@@ -102,6 +107,7 @@ class tf_trainer(trainercore):
 
         if io_only:
             return
+
 
 
         start = time.time()
@@ -119,7 +125,6 @@ class tf_trainer(trainercore):
 
         self.init_checkpointer()
 
-        self.set_compute_parameters()
 
         # # Add the graph to the log file:
         # self._main_writer.add_graph(graph)
@@ -308,6 +313,7 @@ class tf_trainer(trainercore):
         # It allows a handle to the distributed network to allreduce metrics.
         return metrics
 
+
     def _compute_metrics(self, logits, prediction, labels, loss):
 
         # self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
@@ -359,6 +365,7 @@ class tf_trainer(trainercore):
 
         return
 
+
     def forward_pass(self, minibatch_data, training):
 
         # Run a forward pass of the model on the input image:
@@ -391,7 +398,7 @@ class tf_trainer(trainercore):
 
         return tape.gradient(loss, self._net.trainable_weights)
 
-
+    @tf.function
     def apply_gradients(self, gradients):
         self._opt.apply_gradients(zip(gradients, self._net.trainable_variables))
 
