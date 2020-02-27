@@ -1,8 +1,5 @@
 import tensorflow as tf
-<<<<<<< Updated upstream
 from tensorflow.python.keras.utils import losses_utils
-=======
->>>>>>> Stashed changes
 
 import numpy
 
