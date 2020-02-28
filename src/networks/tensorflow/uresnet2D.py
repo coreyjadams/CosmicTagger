@@ -2,7 +2,7 @@ import tensorflow as tf
 
 
 
-class Block(tf.keras.models.Model):
+class Block(tf.keras.layers.Layer):
 
     def __init__(self, *,
                  n_filters,
@@ -11,7 +11,7 @@ class Block(tf.keras.models.Model):
                  activation = tf.nn.leaky_relu,
                  params):
 
-        tf.keras.models.Model.__init__(self)
+        tf.keras.layers.Layer.__init__(self)
 
 
         if params.data_format == "channels_first":
@@ -50,7 +50,7 @@ class Block(tf.keras.models.Model):
         return  x
 
 
-class ConvolutionUpsample(tf.keras.models.Model):
+class ConvolutionUpsample(tf.keras.layers.Layer):
 
     def __init__(self, *,
         n_filters,
@@ -59,7 +59,7 @@ class ConvolutionUpsample(tf.keras.models.Model):
         activation = tf.nn.leaky_relu,
         params):
 
-        tf.keras.models.Model.__init__(self)
+        tf.keras.layers.Layer.__init__(self)
 
 
         if params.data_format == "channels_first":
@@ -98,12 +98,12 @@ class ConvolutionUpsample(tf.keras.models.Model):
             x = self.batch_norm(x)
         return self.activation(x)
 
-class ResidualBlock(tf.keras.models.Model):
+class ResidualBlock(tf.keras.layers.Layer):
 
     def __init__(self, *,
         n_filters, params, kernel=[3,3], strides=[1,1],):
 
-        tf.keras.models.Model.__init__(self)
+        tf.keras.layers.Layer.__init__(self)
 
         n_filters_in = n_filters
 
@@ -134,7 +134,7 @@ class ResidualBlock(tf.keras.models.Model):
         return tf.nn.leaky_relu(x)
 
 
-class BlockSeries(tf.keras.models.Model):
+class BlockSeries(tf.keras.layers.Layer):
 
 
     def __init__(self, *,
@@ -144,7 +144,7 @@ class BlockSeries(tf.keras.models.Model):
         strides = [1,1],
         params):
 
-        tf.keras.models.Model.__init__(self)
+        tf.keras.layers.Layer.__init__(self)
 
         self.blocks = []
         if not params.residual:
@@ -178,11 +178,11 @@ class BlockSeries(tf.keras.models.Model):
         return x
 
 
-class DeepestBlock(tf.keras.models.Model):
+class DeepestBlock(tf.keras.layers.Layer):
 
     def __init__(self, in_filters, params):
 
-        tf.keras.models.Model.__init__(self)
+        tf.keras.layers.Layer.__init__(self)
 
 
 
@@ -253,28 +253,28 @@ class DeepestBlock(tf.keras.models.Model):
         return x
 
 
-class NoConnection(tf.keras.models.Model):
+class NoConnection(tf.keras.layers.Layer):
 
     def __init__(self):
-        tf.keras.models.Model.__init__(self)
+        tf.keras.layers.Layer.__init__(self)
 
     def call(self, x, residual, training):
         return x
 
-class SumConnection(tf.keras.models.Model):
+class SumConnection(tf.keras.layers.Layer):
 
     def __init__(self):
-        tf.keras.models.Model.__init__(self)
+        tf.keras.layers.Layer.__init__(self)
 
     def call(self, x, residual, training):
         return x + residual
 
-class ConcatConnection(tf.keras.models.Model):
+class ConcatConnection(tf.keras.layers.Layer):
 
     def __init__(self, *,
             in_filters,
             params):
-        tf.keras.models.Model.__init__(self)
+        tf.keras.layers.Layer.__init__(self)
 
 
         if params.data_format == "channels_first":

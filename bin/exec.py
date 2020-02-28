@@ -162,11 +162,6 @@ The most commonly used commands are:
         self.add_core_configuration(self.parser)
         self.add_shared_training_arguments(self.parser)
 
-        self.parser.add_argument('--cycle-lambda',
-            type    = float,
-            default = '10',
-            help    = 'Lambda balancing between cycle loss and GAN loss')
-
         self.add_network_parser(self.parser)
 
         self.args = self.parser.parse_args(sys.argv[2:])
@@ -220,7 +215,7 @@ The most commonly used commands are:
         self.trainer.initialize(io_only=True)
 
         # label_stats = numpy.zeros((36,))
-
+        global_start = time.time()
         time.sleep(0.1)
         for i in range(self.args.iterations):
             start = time.time()
@@ -237,6 +232,7 @@ The most commonly used commands are:
             # time.sleep(0.5)
         # print(label_stats)
 
+        print("Total IO Time: ", time.time() - global_start)
     def make_trainer(self):
 
         self.validate_arguments()

@@ -70,12 +70,12 @@ class UResNetConfig(object):
 
         parser.add_argument('--network-depth', 
             type    = int, 
-            default = 0,
+            default = 6,
             help    = "Total number of downsamples to apply. Note: ensure depth + downsample =< 8")
 
         parser.add_argument("--filter-size-deepest", 
             type    = int, 
-            default = 3,
+            default = 5,
             help    = "Convolutional window size for the deepest layer convolution.")
 
         parser.add_argument("--bottleneck-deepest", 

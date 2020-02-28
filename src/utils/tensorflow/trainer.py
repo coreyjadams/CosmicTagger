@@ -17,6 +17,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
 
 
 import tensorflow as tf
+from tensorflow.python.client import timeline
 
 floating_point_format = tf.float32
 integer_format = tf.int64
@@ -184,7 +185,7 @@ class tf_trainer(trainercore):
 
 
         start = time.time()
-        graph = tf.get_default_graph()
+        graph = tf.compat.v1.get_default_graph()
         net_time = self.init_network()
 
         sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(time.time()-start))
@@ -332,27 +333,27 @@ class tf_trainer(trainercore):
         if 'RMS' in self.args.optimizer.upper():
             # Use RMS prop:
             self.print("Selected optimizer is RMS Prop")
-            self._opt = tf.train.RMSPropOptimizer(self._learning_rate)
+            self._opt = tf.compat.v1.train.RMSPropOptimizer(self._learning_rate)
         elif 'LARS' in self.args.optimizer.upper():
             self.print("Selected optimizer is LARS")
             self._opt = tf.contrib.opt.LARSOptimizer(self._learning_rate)
         else:
             # default is Adam:
             self.print("Using default Adam optimizer")
-            self._opt = tf.train.AdamOptimizer(self._learning_rate)
+            self._opt = tf.compat.v1.train.AdamOptimizer(self._learning_rate)
 
 
 
         # self._train_op = self._opt.minimize(self._loss, self._global_step)
 
-        # with tf.name_scope('gradient_accumulation'):
+        with tf.name_scope('gradient_accumulation'):
 
-        self._zero_gradients =  [tv.assign(tf.zeros_like(tv)) for tv in self._accum_vars]
-        self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
-                                 i, gv in enumerate(self._opt.compute_gradients(self._loss))]
+            self._zero_gradients =  [tv.assign(tf.zeros_like(tv)) for tv in self._accum_vars]
+            self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
+                                     i, gv in enumerate(self._opt.compute_gradients(self._loss))]
 
-        self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.trainable_variables()),
-            global_step = self._global_step)
+            self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.trainable_variables()),
+                global_step = self._global_step)
 
 
     def log(self, metrics, kind, step):
@@ -435,6 +436,7 @@ class tf_trainer(trainercore):
 
     def on_epoch_end(self):
         pass
+
     def write_summaries(self, writer, summary, global_step):
         # This function is isolated here to allow the distributed version
         # to intercept these calls and only write summaries from one rank
@@ -508,7 +510,6 @@ class tf_trainer(trainercore):
             return ops["global_step"]
         return
 
-
     def train_step(self):
 
 
@@ -552,8 +553,26 @@ class tf_trainer(trainercore):
                 if do_summary_images:
                     ops['summary_images'] = self._summary_images
 
-            ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
 
+            ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
+            # THis is all for profiling:
+            # # setup for timeline profile
+            # run_meta = tf.RunMetadata()
+            # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            
+
+            # ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data),
+            #     options=run_options, run_metadata=run_meta)
+
+            # NAME = "mb_{}_step_{}".format(minibatch_data['image'].shape[0], self._iteration)
+            # self._main_writer.add_run_metadata(run_meta, NAME , self._iteration)
+
+            # # dump profile
+            # tl = timeline.Timeline(run_meta.step_stats)
+            # ctf = tl.generate_chrome_trace_format()
+            # # dump file per iteration
+            # with open('timeline_%s.json' % self._iteration, 'w') as f:
+            #     f.write(ctf)
 
             if metrics is None:
                 metrics = self.metrics(ops["metrics"])
