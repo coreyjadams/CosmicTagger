@@ -135,7 +135,7 @@ class tf_trainer(trainercore):
 
 
 
-            self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
+            self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
 
             self._loss = self.loss_calculator(
                     labels = self._input['split_labels'],
