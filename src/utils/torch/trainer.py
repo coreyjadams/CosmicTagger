@@ -795,11 +795,6 @@ class torch_trainer(trainercore):
         start = time.time()
         post_one_time = None
         post_two_time = None
-        # At the begining of batch process, figure out the epoch size:
-        if not self.args.synthetic:
-            self._epoch_size = self._larcv_interface.size('primary')
-        else:
-            self._epoch_size = 100
 
         # This is the 'master' function, so it controls a lot
 
