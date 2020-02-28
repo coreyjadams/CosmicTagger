@@ -19,7 +19,6 @@ class larcv_fetcher(object):
             raise Exception("Larcv Fetcher can't handle mode ", mode)
 
         if not synthetic:
-            from skimage.measure import block_reduce
 
             if distributed:
                 from larcv import distributed_queue_interface
