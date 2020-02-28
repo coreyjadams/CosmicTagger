@@ -101,6 +101,8 @@ class larcv_fetcher(object):
             self._larcv_interface.prepare_manager(name, io_config, batch_size, data_keys, color=color)
             os.unlink(main_file.name)
 
+            # This queues up the next data
+            self._larcv_interface.prepare_next(name)
 
             return self._larcv_interface.size(name)
 
@@ -115,12 +117,13 @@ class larcv_fetcher(object):
             if not force_pop:
                 pop = False
 
-            # This brings up the current data
-            self._larcv_interface.prepare_next(name)
+
             minibatch_data = self._larcv_interface.fetch_minibatch_data(name,
                 pop=pop,fetch_meta_data=metadata)
             minibatch_dims = self._larcv_interface.fetch_minibatch_dims(name)
 
+            # This brings up the current data
+            self._larcv_interface.prepare_next(name)
 
             for key in minibatch_data:
                 if key == 'entries' or key == 'event_ids':

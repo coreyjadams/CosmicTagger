@@ -155,7 +155,7 @@ class tf_trainer(trainercore):
 
 
 
-        self._log_keys = ["cross_entropy/Total_Loss", "accuracy/All_Plane_Non_Background_Accuracy"]
+        self._log_keys = ["loss", "Non_Background_Accuracy"]
 
         end = time.time()
         return end - start
@@ -469,7 +469,7 @@ class tf_trainer(trainercore):
                 do_summary_images = False
 
             # Fetch the next batch of data with larcv
-            minibatch_data = self.larcv_fetcher.fetch_next_batch('aux')
+            minibatch_data = self.larcv_fetcher.fetch_next_batch('aux',force_pop=True)
 
             # For tensorflow, we have to build up an ops list to submit to the
             # session to run.
