@@ -15,7 +15,7 @@ class larcv_fetcher(object):
 
     def __init__(self, mode, distributed, downsample, dataformat, synthetic, sparse, seed=None):
 
-        if mode not in ['train', 'inference']:
+        if mode not in ['train', 'inference', 'iotest']:
             raise Exception("Larcv Fetcher can't handle mode ", mode)
 
         if not synthetic:
@@ -29,7 +29,7 @@ class larcv_fetcher(object):
                 if mode == "inference":
                     self._larcv_interface = queueloader.queue_interface(
                         random_access_mode="serial_access", seed=seed)
-                elif mode == "train":
+                elif mode == "train" or mode == "iotest":
                     self._larcv_interface = queueloader.queue_interface(
                         random_access_mode="random_blocks", seed=seed)
                 else:

@@ -28,8 +28,6 @@ class AccuracyCalculator(object):
                 # Accuracy over individual pixels:
                 pixel_accuracy = tf.stop_gradient(tf.cast(tf.math.equal(labels[p], prediction[p]), dtype=tf.float16))
 
-
-
                 accuracies["total_accuracy"][p] = tf.reduce_mean(pixel_accuracy)
 
                 # Find the non zero labels:

@@ -74,6 +74,7 @@ class tf_trainer(trainercore):
 
         self._logits = self._net(self._input['image'], training=self.args.training)
 
+
         # Used to accumulate gradients over several iterations:
         self._accum_vars = [tf.Variable(tv.initialized_value(),
                             trainable=False) for tv in tf.trainable_variables()]
@@ -104,9 +105,8 @@ class tf_trainer(trainercore):
             self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
             self._output['prediction'] = [ tf.argmax(x, axis=self._channels_dim) for x in self._logits]
 
-
-            self._accuracy_calc = AccuracyCalculator.AccuracyCalculator()
-
+            self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
+            
             self._input['split_labels'] = [
                 tf.squeeze(l, axis=self._channels_dim) 
                     for l in tf.split(self._input['label'], 3, self._channels_dim)
@@ -115,6 +115,15 @@ class tf_trainer(trainercore):
                 tf.squeeze(l, axis=self._channels_dim) 
                     for l in tf.split(self._input['image'], 3, self._channels_dim)
                 ]
+
+            self._loss = self.loss_calculator(
+                    labels = self._input['split_labels'],
+                    logits = self._logits)
+
+
+            self._accuracy_calc = AccuracyCalculator.AccuracyCalculator()
+
+
 
             self._accuracy = self._accuracy_calc(prediction=self._output['prediction'], labels=self._input['split_labels'])
 
@@ -137,9 +146,6 @@ class tf_trainer(trainercore):
 
             self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
 
-            self._loss = self.loss_calculator(
-                    labels = self._input['split_labels'],
-                    logits = self._logits)
             
             self._metrics['loss'] = self._loss
 
