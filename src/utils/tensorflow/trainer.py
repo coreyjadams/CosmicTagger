@@ -69,11 +69,13 @@ class tf_trainer(trainercore):
         else:
             self._net = uresnet3D.UResNet3D(self.args)
 
+        self._net.trainable = True
+
         self._logits = self._net(self._input['image'], training=self.args.training)
 
         # Used to accumulate gradients over several iterations:
         self._accum_vars = [tf.Variable(tv.initialized_value(),
-                            trainable=False) for tv in tf.compat.v1.trainable_variables()]
+                            trainable=False) for tv in tf.trainable_variables()]
 
 
         if self.args.mode == "train" or self.args.mode == "inference":
@@ -82,6 +84,17 @@ class tf_trainer(trainercore):
             # Here, if the data format is channels_first, we have to reorder the logits tensors
             # To put channels last.  Otherwise it does not work with the softmax tensors.
 
+            # if self.args.data_format != "channels_last":
+            #     # Split the channel dims apart:
+            #     for i, logit in enumerate(self._logits):
+            #         n_splits = logit.get_shape().as_list()[1]
+
+            #         # Split the tensor apart:
+            #         split = [tf.squeeze(l, 1) for l in tf.split(logit, n_splits, 1)]
+
+            #         # Stack them back together with the right shape:
+            #         self._logits[i] = tf.stack(split, -1)
+            #         print
             # Apply a softmax and argmax:
             self._output = dict()
 
@@ -93,13 +106,6 @@ class tf_trainer(trainercore):
 
             self._accuracy_calc = AccuracyCalculator.AccuracyCalculator()
 
-            # # Create the loss function
-            # if self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light" :
-            #     self._loss = self._calculate_loss(
-            #         labels = self._input['label'],
-            #         logits = self._logits,
-            #         weight = self._input['weight'])
-            # else:
             self._input['split_labels'] = [
                 tf.squeeze(l, axis=self._channels_dim) 
                     for l in tf.split(self._input['label'], 3, self._channels_dim)
@@ -149,7 +155,7 @@ class tf_trainer(trainercore):
 
     def print_network_info(self):
         n_trainable_parameters = 0
-        for var in tf.compat.v1.trainable_variables():
+        for var in tf.trainable_variables():
             n_trainable_parameters += numpy.prod(var.get_shape())
             # print(var.name, var.get_shape())
         sys.stdout.write("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
@@ -178,7 +184,7 @@ class tf_trainer(trainercore):
 
 
         start = time.time()
-        graph = tf.compat.v1.get_default_graph()
+        graph = tf.get_default_graph()
         net_time = self.init_network()
 
         sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(time.time()-start))
@@ -322,30 +328,31 @@ class tf_trainer(trainercore):
 
         self.init_learning_rate()
 
+
         if 'RMS' in self.args.optimizer.upper():
             # Use RMS prop:
             self.print("Selected optimizer is RMS Prop")
-            self._opt = tf.compat.v1.train.RMSPropOptimizer(self._learning_rate)
+            self._opt = tf.train.RMSPropOptimizer(self._learning_rate)
         elif 'LARS' in self.args.optimizer.upper():
             self.print("Selected optimizer is LARS")
             self._opt = tf.contrib.opt.LARSOptimizer(self._learning_rate)
         else:
             # default is Adam:
             self.print("Using default Adam optimizer")
-            self._opt = tf.compat.v1.train.AdamOptimizer(self._learning_rate)
+            self._opt = tf.train.AdamOptimizer(self._learning_rate)
 
 
 
         # self._train_op = self._opt.minimize(self._loss, self._global_step)
 
-        with tf.name_scope('gradient_accumulation'):
+        # with tf.name_scope('gradient_accumulation'):
 
-            self._zero_gradients =  [tv.assign(tf.zeros_like(tv)) for tv in self._accum_vars]
-            self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
-                                     i, gv in enumerate(self._opt.compute_gradients(self._loss))]
+        self._zero_gradients =  [tv.assign(tf.zeros_like(tv)) for tv in self._accum_vars]
+        self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
+                                 i, gv in enumerate(self._opt.compute_gradients(self._loss))]
 
-            self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.compat.v1.trainable_variables()),
-                global_step = self._global_step)
+        self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.trainable_variables()),
+            global_step = self._global_step)
 
 
     def log(self, metrics, kind, step):
@@ -442,7 +449,7 @@ class tf_trainer(trainercore):
     def val_step(self, gs):
 
 
-        if self._val_writer is None:
+        if self._val_writer is None or self.args.synthetic:
             return
 
         if gs % self.args.aux_iteration == 0:
@@ -771,6 +778,7 @@ class tf_trainer(trainercore):
 
         start = time.time()
         post_one_time = None
+        post_two_time = None
         # Run iterations
         for self._iteration in range(self.args.iterations):
             if self.args.training and self._iteration >= self.args.iterations:
@@ -788,6 +796,8 @@ class tf_trainer(trainercore):
 
             if post_one_time is None:
                 post_one_time = time.time()
+            elif post_two_time is None:
+                post_two_time = time.time()
 
         if self.args.mode == 'inference':
             if self._larcv_interface._writer is not None:
@@ -797,3 +807,4 @@ class tf_trainer(trainercore):
 
         self.print("Total time to batch_process: ", end - start)
         self.print("Total time to batch process except first iteration: ", end - post_one_time)
+        self.print("Total time to batch process except first two iterations: ", end - post_two_time)

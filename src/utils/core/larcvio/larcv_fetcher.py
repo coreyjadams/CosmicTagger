@@ -70,7 +70,6 @@ class larcv_fetcher(object):
             shape = self.batch_dims(12)
 
             self.synthetic_images = numpy.random.random_sample(shape).astype(numpy.float32)
-            self.synthetic_weight = numpy.random.random_sample(shape).astype(numpy.float32)
             self.synthetic_labels = numpy.random.randint(low=0, high=3, size=shape)
 
         else:
@@ -158,7 +157,6 @@ class larcv_fetcher(object):
 
             minibatch_data['image']  = self.synthetic_images[lower_index:upper_index]
             minibatch_data['label']  = self.synthetic_labels[lower_index:upper_index]
-            minibatch_data['weight'] = self.synthetic_images[lower_index:upper_index]
 
             self.synthetic_index += 1
 
