@@ -32,7 +32,7 @@ class tf_trainer(trainercore):
 
     def __init__(self, args):
         trainercore.__init__(self, args)
-
+        self._rank = None
 
     def local_batch_size(self):
         return self.args.minibatch_size
@@ -182,7 +182,7 @@ class tf_trainer(trainercore):
     def initialize(self, io_only=False):
 
 
-        self._initialize_io()
+        self._initialize_io(color=self._rank)
 
         self.init_global_step()
 
@@ -216,9 +216,7 @@ class tf_trainer(trainercore):
 
         self.set_compute_parameters()
 
-        # Add the graph to the log file:
-        self._main_writer.add_graph(graph)
-
+        self.write_graph_to_tensorboard(graph)
 
         self._sess = tf.compat.v1.Session(config = self._config)
 
@@ -233,6 +231,11 @@ class tf_trainer(trainercore):
         #     checkpoint_dir        = checkpoint_dir,
         #     log_step_count_steps  = self.args.logging_iteration,
         #     save_checkpoint_steps = self.args.checkpoint_iteration)
+
+    def write_graph_to_tensorboard(self, graph):
+        # Add the graph to the log file:
+        self._main_writer.add_graph(graph)
+
 
     def init_learning_rate(self):
         self._learning_rate = self.args.learning_rate

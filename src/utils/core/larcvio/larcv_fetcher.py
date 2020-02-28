@@ -82,7 +82,6 @@ class larcv_fetcher(object):
             main_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
             main_file.write(config.generate_config_str())
 
-            print(config.generate_config_str())
             main_file.close()
 
             io_config = {

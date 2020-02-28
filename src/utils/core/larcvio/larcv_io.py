@@ -190,7 +190,7 @@ class ThreadIOConfig(CoreConfig):
     def set_defaults(self):
 
         if self._params['Verbosity'] is None:
-            self._params['Verbosity'] = "2"
+            self._params['Verbosity'] = "5"
         if self._params['EnableFilter'] is None:
             self._params['EnableFilter'] = "false"
         if self._params['NumThreads'] is None:

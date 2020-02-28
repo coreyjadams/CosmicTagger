@@ -37,7 +37,7 @@ class distributed_trainer(tf_trainer):
             os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
         self._rank            = hvd.rank()
-        self.local_minibatch_size = int(FLAGS.MINIBATCH_SIZE / hvd.size())
+        self.local_minibatch_size = int(self.args.minibatch_size / hvd.size())
 
     def print(self, *argv):
 
@@ -60,7 +60,8 @@ class distributed_trainer(tf_trainer):
         else:
             self._saver = None
             self._aux_saver = None
-
+            self._main_writer = None
+            self._val_writer = None
 
 
         # In the distributed case, we may want a learning rate behavior:
@@ -110,6 +111,10 @@ class distributed_trainer(tf_trainer):
             # Restore the model on the root node:
             tf_trainer.restore_model(self)
 
+    def write_graph_to_tensorboard(self, graph):
+        if self._rank == 0:
+            # Add the graph to the log file:
+            tf_trainer.write_graph_to_tensorboard(self, graph)
 
 
     def local_batch_size(self):

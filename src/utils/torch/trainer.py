@@ -73,6 +73,8 @@ class torch_trainer(trainercore):
 
         self.init_network()
 
+        self.print_network_info()
+
         self.init_optimizer()
 
         self.init_saver()
@@ -356,14 +358,25 @@ class torch_trainer(trainercore):
             else:
                 s = ", ".join(["{0}: {1:.3}".format(key, metrics[key]) for key in metrics])
 
+            time_string = []
 
-            try:
-                s += " ({:.2}s / {:.2} IOs / {:.2})".format(
-                    (self._current_log_time - self._previous_log_time).total_seconds(),
-                    metrics['io_fetch_time'],
-                    metrics['step_time'])
-            except:
-                pass
+            if hasattr(self, "_previous_log_time"):
+            # try:
+                total_images = self.args.minibatch_size
+                images_per_second = total_images / (self._current_log_time - self._previous_log_time).total_seconds()
+                time_string.append("{:.2} Img/s".format(images_per_second))
+                
+            if 'io_fetch_time' in metrics.keys():
+                time_string.append("{:.2} IOs".format(metrics['io_fetch_time']))
+
+            if 'step_time' in metrics.keys():
+                time_string.append("{:.2} Step(s)".format(metrics['step_time']))
+
+            if len(time_string) > 0:
+                s += " (" + " / ".join(time_string) + ")"
+
+            # except:
+            #     pass
 
 
             self._previous_log_time = self._current_log_time
