@@ -76,8 +76,9 @@ class tf_trainer(trainercore):
 
 
         # Used to accumulate gradients over several iterations:
-        self._accum_vars = [tf.Variable(tv.initialized_value(),
-                            trainable=False) for tv in tf.trainable_variables()]
+        with tf.variable_scope("gradient_accumulation"):
+            self._accum_vars = [tf.Variable(tv.initialized_value(),
+                                trainable=False) for tv in tf.trainable_variables()]
 
 
         if self.args.mode == "train" or self.args.mode == "inference":
@@ -101,24 +102,25 @@ class tf_trainer(trainercore):
             self._output = dict()
 
             # Take the logits (which are one per plane) and create a softmax and prediction (one per plane)
+            with tf.variable_scope("prediction"):
+                self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
+                self._output['prediction'] = [ tf.argmax(x, axis=self._channels_dim) for x in self._logits]
 
-            self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
-            self._output['prediction'] = [ tf.argmax(x, axis=self._channels_dim) for x in self._logits]
+            with tf.variable_scope("cross_entropy"):
+                self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
+                
+                self._input['split_labels'] = [
+                    tf.squeeze(l, axis=self._channels_dim) 
+                        for l in tf.split(self._input['label'], 3, self._channels_dim)
+                    ]
+                self._input['split_images'] = [
+                    tf.squeeze(l, axis=self._channels_dim) 
+                        for l in tf.split(self._input['image'], 3, self._channels_dim)
+                    ]
 
-            self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
-            
-            self._input['split_labels'] = [
-                tf.squeeze(l, axis=self._channels_dim) 
-                    for l in tf.split(self._input['label'], 3, self._channels_dim)
-                ]
-            self._input['split_images'] = [
-                tf.squeeze(l, axis=self._channels_dim) 
-                    for l in tf.split(self._input['image'], 3, self._channels_dim)
-                ]
-
-            self._loss = self.loss_calculator(
-                    labels = self._input['split_labels'],
-                    logits = self._logits)
+                self._loss = self.loss_calculator(
+                        labels = self._input['split_labels'],
+                        logits = self._logits)
 
 
             self._accuracy_calc = AccuracyCalculator.AccuracyCalculator()
@@ -136,10 +138,10 @@ class tf_trainer(trainercore):
                 self._metrics[f"plane{p}/Neutrino_IoU"]            = self._accuracy["neut_iou"][p]
                 self._metrics[f"plane{p}/Cosmic_IoU"]              = self._accuracy["cosmic_iou"][p]
 
-            self._metrics["Total_Accuracy"]          = tf.reduce_mean(self._accuracy["total_accuracy"])
-            self._metrics["Non_Background_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
-            self._metrics["Neutrino_IoU"]            = tf.reduce_mean(self._accuracy["neut_iou"])
-            self._metrics["Cosmic_IoU"]              = tf.reduce_mean(self._accuracy["cosmic_iou"])
+            self._metrics["Average/Total_Accuracy"]          = tf.reduce_mean(self._accuracy["total_accuracy"])
+            self._metrics["Average/Non_Background_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
+            self._metrics["Average/Neutrino_IoU"]            = tf.reduce_mean(self._accuracy["neut_iou"])
+            self._metrics["Average/Cosmic_IoU"]              = tf.reduce_mean(self._accuracy["cosmic_iou"])
 
 
 
@@ -150,12 +152,9 @@ class tf_trainer(trainercore):
             self._metrics['loss'] = self._loss
 
 
-        for key in self._metrics:
-            tf.summary.scalar(key, self._metrics[key])
 
 
-
-        self._log_keys = ["loss", "Non_Background_Accuracy"]
+        self._log_keys = ["loss", "Average/Non_Background_Accuracy"]
 
         end = time.time()
         return end - start
@@ -564,7 +563,9 @@ class tf_trainer(trainercore):
 
 
             ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
-            # THis is all for profiling:
+
+            # ##############################################
+            # # THis is all for profiling:
             # # setup for timeline profile
             # run_meta = tf.RunMetadata()
             # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -582,6 +583,7 @@ class tf_trainer(trainercore):
             # # dump file per iteration
             # with open('timeline_%s.json' % self._iteration, 'w') as f:
             #     f.write(ctf)
+            # ##############################################
 
             if metrics is None:
                 metrics = self.metrics(ops["metrics"])

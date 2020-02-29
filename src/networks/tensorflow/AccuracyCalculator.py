@@ -26,16 +26,19 @@ class AccuracyCalculator(object):
             for p in range(n_planes):
 
                 # Accuracy over individual pixels:
-                pixel_accuracy = tf.stop_gradient(tf.cast(tf.math.equal(labels[p], prediction[p]), dtype=tf.float16))
+                pixel_accuracy = tf.stop_gradient(tf.cast(tf.math.equal(labels[p], prediction[p]), dtype=tf.float32))
 
                 accuracies["total_accuracy"][p] = tf.reduce_mean(pixel_accuracy)
 
                 # Find the non zero labels:
-                non_zero_indices = tf.not_equal(labels[p], tf.constant(0, labels[p].dtype))
+                non_zero_indices = tf.cast(tf.not_equal(labels[p], tf.constant(0, labels[p].dtype)), tf.float32)
 
+
+
+                weighted_accuracy = pixel_accuracy * non_zero_indices
 
                 # Use non_zero_indexes to mask the accuracy to non zero label pixels
-                accuracies["non_bkg_accuracy"][p] = tf.reduce_mean(tf.boolean_mask(pixel_accuracy, non_zero_indices))
+                accuracies["non_bkg_accuracy"][p] = tf.reduce_mean(weighted_accuracy) / tf.reduce_sum(non_zero_indices)
 
 
                 # Neutrinos are label 2, cosmics label 1.  But iterate so I only need to
@@ -43,15 +46,15 @@ class AccuracyCalculator(object):
 
                 for index in [1, 2]:
                     # Find the true indices:
-                    label_indices       = labels[p] == index
-
+                    label_indices       = tf.equal(
+                        labels[p], tf.constant(index, labels[p].dtype))
                     # Find the predicted indices:
-                    prediction_indices  = prediction[p] == index
+                    prediction_indices  = tf.equal(
+                        prediction[p], tf.constant(index, prediction[p].dtype))
 
 
                     # To compute the intersection over union metrics,
                     # start with intersections and unions:
-
                     intersection = tf.math.logical_and(label_indices, prediction_indices)
                     union        = tf.math.logical_or(label_indices, prediction_indices)
 
