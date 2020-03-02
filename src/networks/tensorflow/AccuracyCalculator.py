@@ -38,7 +38,7 @@ class AccuracyCalculator(object):
                 weighted_accuracy = pixel_accuracy * non_zero_indices
 
                 # Use non_zero_indexes to mask the accuracy to non zero label pixels
-                accuracies["non_bkg_accuracy"][p] = tf.reduce_mean(weighted_accuracy) / tf.reduce_sum(non_zero_indices)
+                accuracies["non_bkg_accuracy"][p] = tf.reduce_sum(weighted_accuracy) / tf.reduce_sum(non_zero_indices)
 
 
                 # Neutrinos are label 2, cosmics label 1.  But iterate so I only need to
