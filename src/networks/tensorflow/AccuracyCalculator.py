@@ -14,7 +14,7 @@ class AccuracyCalculator(object):
 
         # Labels is a list of tensors
         # Logits is a list of tensors
-        with tf.name_scope("Accuracy"):
+        with tf.name_scope("accuracy"):
             n_planes = 3
             accuracies = {
                 "total_accuracy"   : [None]*n_planes,
@@ -24,6 +24,7 @@ class AccuracyCalculator(object):
             }
 
             for p in range(n_planes):
+            # for p in range(n_planes):
 
                 # Accuracy over individual pixels:
                 pixel_accuracy = tf.stop_gradient(tf.cast(tf.math.equal(labels[p], prediction[p]), dtype=tf.float32))

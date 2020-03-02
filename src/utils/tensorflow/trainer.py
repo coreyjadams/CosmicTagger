@@ -49,8 +49,8 @@ class tf_trainer(trainercore):
 
 
         batch_dims = self.larcv_fetcher.batch_dims(1)
-        
-        # We compute the 
+
+        # We compute the
         batch_dims[0] = self.local_batch_size()
 
         # We have to make placeholders for input objects:
@@ -103,18 +103,18 @@ class tf_trainer(trainercore):
 
             # Take the logits (which are one per plane) and create a softmax and prediction (one per plane)
             with tf.variable_scope("prediction"):
-                self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
+                # self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
                 self._output['prediction'] = [ tf.argmax(x, axis=self._channels_dim) for x in self._logits]
 
             with tf.variable_scope("cross_entropy"):
                 self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
-                
+
                 self._input['split_labels'] = [
-                    tf.squeeze(l, axis=self._channels_dim) 
+                    tf.squeeze(l, axis=self._channels_dim)
                         for l in tf.split(self._input['label'], 3, self._channels_dim)
                     ]
                 self._input['split_images'] = [
-                    tf.squeeze(l, axis=self._channels_dim) 
+                    tf.squeeze(l, axis=self._channels_dim)
                         for l in tf.split(self._input['image'], 3, self._channels_dim)
                     ]
 
@@ -138,17 +138,18 @@ class tf_trainer(trainercore):
                 self._metrics[f"plane{p}/Neutrino_IoU"]            = self._accuracy["neut_iou"][p]
                 self._metrics[f"plane{p}/Cosmic_IoU"]              = self._accuracy["cosmic_iou"][p]
 
-            self._metrics["Average/Total_Accuracy"]          = tf.reduce_mean(self._accuracy["total_accuracy"])
-            self._metrics["Average/Non_Background_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
-            self._metrics["Average/Neutrino_IoU"]            = tf.reduce_mean(self._accuracy["neut_iou"])
-            self._metrics["Average/Cosmic_IoU"]              = tf.reduce_mean(self._accuracy["cosmic_iou"])
+            with tf.variable_scope("accuracy"):
+                self._metrics["Average/Total_Accuracy"]          = tf.reduce_mean(self._accuracy["total_accuracy"])
+                self._metrics["Average/Non_Background_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
+                self._metrics["Average/Neutrino_IoU"]            = tf.reduce_mean(self._accuracy["neut_iou"])
+                self._metrics["Average/Cosmic_IoU"]              = tf.reduce_mean(self._accuracy["cosmic_iou"])
 
 
 
 
             self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
 
-            
+
             self._metrics['loss'] = self._loss
 
 
@@ -205,7 +206,7 @@ class tf_trainer(trainercore):
 
         # Take all of the metrics and turn them into summaries:
         for key in self._metrics:
-            tf.summary.scalar(key, self._metrics[key])
+            tf.compat.v1.summary.scalar(key, self._metrics[key])
 
         if self.args.mode != "inference":
 
@@ -518,6 +519,7 @@ class tf_trainer(trainercore):
             return ops["global_step"]
         return
 
+    @profile
     def train_step(self):
 
 
@@ -562,21 +564,24 @@ class tf_trainer(trainercore):
                     ops['summary_images'] = self._summary_images
 
 
+            ##############################################
+            # This is for NOT profiling.
             ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
+            ##############################################
 
             # ##############################################
             # # THis is all for profiling:
             # # setup for timeline profile
             # run_meta = tf.RunMetadata()
             # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            
-
+            #
+            #
             # ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data),
             #     options=run_options, run_metadata=run_meta)
-
+            #
             # NAME = "mb_{}_step_{}".format(minibatch_data['image'].shape[0], self._iteration)
             # self._main_writer.add_run_metadata(run_meta, NAME , self._iteration)
-
+            #
             # # dump profile
             # tl = timeline.Timeline(run_meta.step_stats)
             # ctf = tl.generate_chrome_trace_format()
@@ -637,11 +642,11 @@ class tf_trainer(trainercore):
             self.write_summaries(self._main_writer, summary_images, ops["global_step"])
 
         # Create some extra summary information:
-        extra_summary = tf.Summary(
+        extra_summary = tf.compat.v1.Summary(
             value=[
-                tf.Summary.Value(tag="io_fetch_time", simple_value=metrics['io_fetch_time']),
-                tf.Summary.Value(tag="global_step_per_sec", simple_value=metrics['global_step_per_sec']),
-                tf.Summary.Value(tag="images_per_second", simple_value=metrics['images_per_second']),
+                tf.compat.v1.Summary.Value(tag="io_fetch_time", simple_value=metrics['io_fetch_time']),
+                tf.compat.v1.Summary.Value(tag="global_step_per_sec", simple_value=metrics['global_step_per_sec']),
+                tf.compat.v1.Summary.Value(tag="images_per_second", simple_value=metrics['images_per_second']),
             ])
 
         self.write_summaries(self._main_writer, extra_summary, ops["global_step"])
