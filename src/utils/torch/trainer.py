@@ -15,23 +15,10 @@ torch.backends.cudnn.benchmark = False
 
 # from torch.jit import trace
 
-from ..core                 import flags
-from ..core                 import data_transforms
-from ..core.trainercore     import trainercore
-
-FLAGS = flags.FLAGS()
-
-if FLAGS.SPARSE:
-    from ...networks.torch.sparseuresnet3D import UResNet3D
-else:
-    from ...networks.torch.uresnet2D       import UResNet
-    from ...networks.torch.uresnet3D       import UResNet3D
+from src.utils.core.trainercore     import trainercore
+from src.networks.torch             import LossCalculator
 
 
-
-
-if FLAGS.SPARSE and FLAGS.MODE != "iotest":
-    import sparseconvnet as scn
 
 import datetime
 
@@ -46,83 +33,47 @@ class torch_trainer(trainercore):
     a NotImplemented error.
 
     '''
-    def __init__(self,):
-        trainercore.__init__(self)
-
+    def __init__(self,args):
+        trainercore.__init__(self, args)
+        self._rank = None
 
     def init_network(self):
 
-        if FLAGS.CONV_MODE == "2D" and not FLAGS.SPARSE:
-            self._net = UResNet(
-                n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
-                batch_norm               = FLAGS.BATCH_NORM,
-                use_bias                 = FLAGS.USE_BIAS,
-                residual                 = FLAGS.RESIDUAL,
-                depth                    = FLAGS.NETWORK_DEPTH,
-                blocks_final             = FLAGS.BLOCKS_FINAL,
-                blocks_per_layer         = FLAGS.BLOCKS_PER_LAYER,
-                blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
-                connections              = FLAGS.CONNECTIONS,
-                upsampling               = FLAGS.UPSAMPLING,
-                downsampling             = FLAGS.DOWNSAMPLING,
-                bottleneck_deepest       = FLAGS.BOTTLENECK_DEEPEST,
-                filter_size_deepest      = FLAGS.FILTER_SIZE_DEEPEST,
-                shape                    = self.image_shape,
-                block_concat             = FLAGS.BLOCK_CONCAT,
-                growth_rate              = FLAGS.GROWTH_RATE)
+        if self.args.conv_mode == "2D" and not self.args.sparse:
+            from src.networks.torch.uresnet2D import UResNet
+            self._net = UResNet(self.args)
 
         else:
-            self._net = UResNet3D(
-                n_initial_filters        = FLAGS.N_INITIAL_FILTERS,
-                batch_norm               = FLAGS.BATCH_NORM,
-                use_bias                 = FLAGS.USE_BIAS,
-                residual                 = FLAGS.RESIDUAL,
-                depth                    = FLAGS.NETWORK_DEPTH,
-                blocks_final             = FLAGS.BLOCKS_FINAL,
-                blocks_per_layer         = FLAGS.BLOCKS_PER_LAYER,
-                blocks_deepest_layer     = FLAGS.BLOCKS_DEEPEST_LAYER,
-                connections              = FLAGS.CONNECTIONS,
-                upsampling               = FLAGS.UPSAMPLING,
-                downsampling             = FLAGS.DOWNSAMPLING,
-                shape                    = self.image_shape,
-                bottleneck_deepest       = FLAGS.BOTTLENECK_DEEPEST,
-                filter_size_deepest      = FLAGS.FILTER_SIZE_DEEPEST,
-                growth_rate              = FLAGS.GROWTH_RATE)
+            if self.args.sparse and self.args.mode != "iotest":
+                from src.networks.torch.sparseuresnet3D import UResNet3D
+            else:
+                from src.networks.torch.uresnet3D       import UResNet3D
+
+            self._net = UResNet3D(self.args)
 
         # self._net.half()
 
         # self._net = trace(self._net, torch.empty(1, 3, 640, 1024).uniform_(0,1))
 
 
-        if FLAGS.TRAINING:
+        if self.args.training:
             self._net.train(True)
 
         # Here we set up weights using the aggregate metrics for the dataset:
 
-        self._criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
         self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
 
     def initialize(self, io_only=False):
 
-        FLAGS.dump_config()
-
-
-        self._initialize_io()
-
-
+        self._initialize_io(color=self._rank)
 
         if io_only:
             return
 
         self.init_network()
 
-        n_trainable_parameters = 0
-        for name, var in self._net.named_parameters():
-            n_trainable_parameters += numpy.prod(var.shape)
-            # print(name, var.shape)
-
-        print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
+        self.print_network_info()
 
         self.init_optimizer()
 
@@ -130,44 +81,57 @@ class torch_trainer(trainercore):
 
         self._global_step = 0
 
-
-        state = self.restore_model()
-
-        if state is not None:
-            self.load_state(state)
+        self.restore_model()
 
         # If using half precision on the model, convert it now:
-        if FLAGS.MODEL_HALF_PRECISION:
+        if self.args.model_half_precision:
             self._net.half()
 
-        if FLAGS.COMPUTE_MODE == "CPU":
+        if self.args.compute_mode == "CPU":
             pass
-        if FLAGS.COMPUTE_MODE == "GPU":
+        if self.args.compute_mode == "GPU":
             self._net.cuda()
 
+        self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
 
+    def print_network_info(self):
+
+        n_trainable_parameters = 0
+        for name, var in self._net.named_parameters():
+            n_trainable_parameters += numpy.prod(var.shape)
+            # print(name, var.shape)
+
+        self.print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
+
+
+    def restore_model(self):
+
+        state = self.load_state_from_file()
+
+        if state is not None:
+            self.restore_state(state)
 
 
     def init_optimizer(self):
 
-        if FLAGS.OPTIMIZER == "adam":
+        if self.args.optimizer == "adam":
             # Create an optimizer:
-            if FLAGS.LEARNING_RATE <= 0:
+            if self.args.learning_rate <= 0:
                 self._opt = torch.optim.Adam(self._net.parameters())
             else:
-                self._opt = torch.optim.Adam(self._net.parameters(), FLAGS.LEARNING_RATE)
-        elif FLAGS.OPTIMIZER == "rmsprop":
+                self._opt = torch.optim.Adam(self._net.parameters(), self.args.learning_rate)
+        elif self.args.optimizer == "rmsprop":
             # Create an optimizer:
-            if FLAGS.LEARNING_RATE <= 0:
+            if self.args.learning_rate <= 0:
                 self._opt = torch.optim.RMSprop(self._net.parameters())
             else:
-                self._opt = torch.optim.RMSprop(self._net.parameters(), FLAGS.LEARNING_RATE)
+                self._opt = torch.optim.RMSprop(self._net.parameters(), self.args.learning_rate)
         else:
             # Create an optimizer:
-            if FLAGS.LEARNING_RATE <= 0:
+            if self.args.learning_rate <= 0:
                 self._opt = torch.optim.SGD(self._net.parameters())
             else:
-                self._opt = torch.optim.SGD(self._net.parameters(), FLAGS.LEARNING_RATE)
+                self._opt = torch.optim.SGD(self._net.parameters(), self.args.learning_rate)
 
 
 
@@ -178,12 +142,12 @@ class torch_trainer(trainercore):
     def init_saver(self):
 
         # This sets up the summary saver:
-        self._saver = tensorboardX.SummaryWriter(FLAGS.LOG_DIRECTORY)
+        self._saver = tensorboardX.SummaryWriter(self.args.log_directory)
 
-        if FLAGS.AUX_FILE is not None and FLAGS.TRAINING:
-            self._aux_saver = tensorboardX.SummaryWriter(FLAGS.LOG_DIRECTORY + "/test/")
-        elif FLAGS.AUX_FILE is not None and not FLAGS.TRAINING:
-            self._aux_saver = tensorboardX.SummaryWriter(FLAGS.LOG_DIRECTORY + "/val/")
+        if self.args.aux_file is not None and self.args.training:
+            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/test/")
+        elif self.args.aux_file is not None and not self.args.training:
+            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/val/")
         else:
             self._aux_saver = None
         # This code is supposed to add the graph definition.
@@ -196,7 +160,7 @@ class torch_trainer(trainercore):
         # Here, either restore the weights of the network or initialize it:
 
 
-    def restore_model(self):
+    def load_state_from_file(self):
         ''' This function attempts to restore the model from file
         '''
 
@@ -211,7 +175,7 @@ class torch_trainer(trainercore):
                 if line.startswith("latest: "):
                     chkp_file = line.replace("latest: ", "").rstrip('\n')
                     chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
-                    print("Restoring weights from ", chkp_file)
+                    self.print("Restoring weights from ", chkp_file)
                     break
         try:
             state = torch.load(chkp_file)
@@ -220,7 +184,7 @@ class torch_trainer(trainercore):
             print("Could not load from checkpoint file")
             return None
 
-    def load_state(self, state):
+    def restore_state(self, state):
 
 
         self._net.load_state_dict(state['state_dict'])
@@ -228,7 +192,7 @@ class torch_trainer(trainercore):
         self._global_step = state['global_step']
 
         # If using GPUs, move the model to GPU:
-        if FLAGS.COMPUTE_MODE == "GPU":
+        if self.args.compute_mode == "GPU":
             for state in self._opt.state.values():
                 for k, v in state.items():
                     if torch.is_tensor(v):
@@ -298,10 +262,10 @@ class torch_trainer(trainercore):
         '''
 
         # Find the base path of the log directory
-        if FLAGS.CHECKPOINT_DIRECTORY == None:
-            file_path= FLAGS.LOG_DIRECTORY  + "/checkpoints/"
+        if self.args.checkpoint_directory == None:
+            file_path= self.args.log_directory  + "/checkpoints/"
         else:
-            file_path= FLAGS.CHECKPOINT_DIRECTORY  + "/checkpoints/"
+            file_path= self.args.checkpoint_directory  + "/checkpoints/"
 
 
         name = file_path + 'model-{}.ckpt'.format(self._global_step)
@@ -311,62 +275,6 @@ class torch_trainer(trainercore):
 
 
 
-    def _calculate_loss(self, labels, logits, weights = None):
-        ''' Calculate the loss.
-
-        returns a single scalar for the optimizer to use.
-        '''
-
-        # To apply the loss function, we have to convert the sparse tensors
-        # to dense tensors.  We can take a version of the labels, however,
-        # and set all its points to 1.0 (or another function) to create a weight
-        # tensor to apply to the corresponding loss map.
-
-        loss = None
-        for i in [0,1,2]:
-            plane_loss = self._criterion(input=logits[i], target=labels[i])
-
-            if FLAGS.LOSS_BALANCE_SCHEME == "focal":
-                # To compute the focal loss, we need to compute the one-hot labels and the
-                # softmax
-                softmax = torch.nn.functional.softmax(logits[i])
-                # print("softmax.shape: ", softmax.shape)
-                # print("labels.shape: ", labels[i].shape)
-                onehot = torch.nn.functional.one_hot(labels[i], num_classes=3).float()
-                # print("onehot.shape: ", onehot.shape)
-                onehot = onehot.permute([0,3,1,2])
-                # print("onehot.shape: ", onehot.shape)
-
-                scale_factor = onehot * (1 - softmax)**3
-                # print("scale_factor.shape:  ", scale_factor.shape)
-                scale_factor = torch.mean(scale_factor, dim=1)
-                # print("scale_factor.shape:  ", scale_factor.shape)
-                # print("plane_loss.shape: ", plane_loss.shape)
-                # scale_factor /= torch.mean(scale_factor)
-                plane_loss = torch.mean(scale_factor * plane_loss)
-                # print("plane_loss.shape: ", plane_loss.shape)
-
-            elif FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
-                #split the weights across the plane dimension:
-                plane_loss = torch.sum(weights[:,i,:,:] * plane_loss)
-            else:
-                plane_loss = torch.mean(plane_loss)
-
-
-            if loss is None:
-                loss = plane_loss
-            else:
-                loss += plane_loss
-
-        if FLAGS.LOSS_SCALE != 1.0:
-            loss *= FLAGS.LOSS_SCALE
-
-        return loss
-
-        # if FLAGS.LABEL_MODE == 'all':
-        #     values, target = torch.max(inputs[FLAGS.KEYWORD_LABEL], dim = 1)
-        #     loss = self._criterion(logits, target=target)
-        #     return loss
 
 
 
@@ -432,7 +340,7 @@ class torch_trainer(trainercore):
         # Call all of the functions in the metrics dictionary:
         metrics = {}
 
-        metrics['loss']     = loss.data / FLAGS.LOSS_SCALE
+        metrics['loss']     = loss.data / self.args.loss_scale
         accuracy = self._calculate_accuracy(logits, labels)
         metrics.update(accuracy)
 
@@ -440,7 +348,7 @@ class torch_trainer(trainercore):
 
     def log(self, metrics, saver=''):
 
-        if self._global_step % FLAGS.LOGGING_ITERATION == 0:
+        if self._global_step % self.args.logging_iteration == 0:
 
             self._current_log_time = datetime.datetime.now()
 
@@ -450,23 +358,34 @@ class torch_trainer(trainercore):
             else:
                 s = ", ".join(["{0}: {1:.3}".format(key, metrics[key]) for key in metrics])
 
+            time_string = []
 
-            try:
-                s += " ({:.2}s / {:.2} IOs / {:.2})".format(
-                    (self._current_log_time - self._previous_log_time).total_seconds(),
-                    metrics['io_fetch_time'],
-                    metrics['step_time'])
-            except:
-                pass
+            if hasattr(self, "_previous_log_time"):
+            # try:
+                total_images = self.args.minibatch_size
+                images_per_second = total_images / (self._current_log_time - self._previous_log_time).total_seconds()
+                time_string.append("{:.2} Img/s".format(images_per_second))
+                
+            if 'io_fetch_time' in metrics.keys():
+                time_string.append("{:.2} IOs".format(metrics['io_fetch_time']))
+
+            if 'step_time' in metrics.keys():
+                time_string.append("{:.2} Step(s)".format(metrics['step_time']))
+
+            if len(time_string) > 0:
+                s += " (" + " / ".join(time_string) + ")"
+
+            # except:
+            #     pass
 
 
             self._previous_log_time = self._current_log_time
-            print("{} Step {} metrics: {}".format(saver, self._global_step, s))
+            self.print("{} Step {} metrics: {}".format(saver, self._global_step, s))
 
 
     def summary(self, metrics,saver=""):
 
-        if self._global_step % FLAGS.SUMMARY_ITERATION == 0:
+        if self._global_step % self.args.summary_iteration == 0:
             for metric in metrics:
                 name = metric
                 if saver == "test":
@@ -482,8 +401,8 @@ class torch_trainer(trainercore):
 
     def summary_images(self, logits_image, labels_image, saver=""):
 
-        # if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
-        if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0 and not FLAGS.NO_SUMMARY_IMAGES:
+        # if self._global_step % 1 * self.args.summary_iteration == 0:
+        if self._global_step % 25 * self.args.summary_iteration == 0 and not self.args.no_summary_images:
 
             for plane in range(3):
                 val, prediction = torch.max(logits_image[plane][0], dim=0)
@@ -528,8 +447,8 @@ class torch_trainer(trainercore):
 
     def graph_summary(self):
 
-        if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
-        # if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0 and not FLAGS.NO_SUMMARY_IMAGES:
+        if self._global_step % 1 * self.args.summary_iteration == 0:
+        # if self._global_step % 25 * self.args.summary_iteration == 0 and not self.args.no_summary_images:
             for name, param in self._net.named_parameters():
 
                 self._saver.add_histogram(f"{name}/weights",
@@ -544,26 +463,19 @@ class torch_trainer(trainercore):
 
     def increment_global_step(self):
 
-        previous_epoch = int((self._global_step * FLAGS.MINIBATCH_SIZE) / self._epoch_size)
         self._global_step += 1
-        current_epoch = int((self._global_step * FLAGS.MINIBATCH_SIZE) / self._epoch_size)
 
         self.on_step_end()
 
-        if previous_epoch != current_epoch:
-            self.on_epoch_end()
 
     def on_step_end(self):
-        pass
-
-    def on_epoch_end(self):
         pass
 
 
     def to_torch(self, minibatch_data, device=None):
 
         # Convert the input data to torch tensors
-        if FLAGS.COMPUTE_MODE == "GPU":
+        if self.args.compute_mode == "GPU":
             if device is None:
                 device = torch.device('cuda')
         else:
@@ -573,7 +485,7 @@ class torch_trainer(trainercore):
         for key in minibatch_data:
             if key == 'entries' or key == 'event_ids':
                 continue
-            if FLAGS.SPARSE:
+            if self.args.sparse:
                 # if key == 'weight': continue
                 if key == 'image':
                     minibatch_data[key] = (
@@ -585,43 +497,23 @@ class torch_trainer(trainercore):
                     minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
             else:
                 if key == 'weight':
-                    if FLAGS.LOSS_BALANCE_SCHEME == "none" or FLAGS.LOSS_BALANCE_SCHEME == "focal":
+                    if self.args.loss_balance_scheme == "none" or self.args.loss_balance_scheme == "focal":
                         continue
                 # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
-        if FLAGS.SYNTHETIC:
+        if self.args.synthetic:
             minibatch_data['image'] = minibatch_data['image'].float()
             minibatch_data['label'] = minibatch_data['label']
-            if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
+            if self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light":
                 minibatch_data['weight'] = minibatch_data['weight'].float()
 
-        self.downsample_images(minibatch_data)
         self.reduce_precision(minibatch_data)
 
         return minibatch_data
 
     def reduce_precision(self, minibatch_data):
-        if FLAGS.INPUT_HALF_PRECISION:
+        if self.args.input_half_precision:
             minibatch_data['image'] = minibatch_data['image'].half()
-
-
-    def downsample_images(self, minibatch_data):
-        # This step applies downsampling as necessary:
-        if FLAGS.DOWNSAMPLE_IMAGES != 0:
-            kernel = 2**FLAGS.DOWNSAMPLE_IMAGES
-
-            minibatch_data['image'] = torch.nn.functional.avg_pool2d(minibatch_data['image'], kernel)
-
-            # Here is something fun.  For CPU, need to cast to float first:
-            if FLAGS.COMPUTE_MODE == "CPU":
-                minibatch_data['label'] = minibatch_data['label'].float()
-            minibatch_data['label'] = torch.nn.functional.max_pool2d(minibatch_data['label'], kernel)
-            # And, cast back to long:
-            if FLAGS.COMPUTE_MODE == "CPU":
-                minibatch_data['label'] = minibatch_data['label'].long()
-
-            if FLAGS.LOSS_BALANCE_SCHEME == "even" or FLAGS.LOSS_BALANCE_SCHEME == "light":
-                minibatch_data['weight'] = torch.nn.functional.max_pool2d(minibatch_data['weight'], kernel)
 
 
     def forward_pass(self, minibatch_data):
@@ -663,40 +555,42 @@ class torch_trainer(trainercore):
         metrics = {}
         io_fetch_time = 0.0
 
-        for interior_batch in range(FLAGS.GRADIENT_ACCUMULATION):
+        for interior_batch in range(self.args.gradient_accumulation):
 
 
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
-            minibatch_data = self.fetch_next_batch(force_pop = True)
+            minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
-
 
             logits_image, labels_image = self.forward_pass(minibatch_data)
 
 
             verbose = False
 
-            if verbose: print("Completed Forward pass")
+            if verbose: self.print("Completed Forward pass")
             # Compute the loss based on the logits
 
 
-            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
+            loss = self.loss_calculator(labels_image, logits_image)
 
-            if verbose: print("Completed loss")
+            if self.args.loss_scale != 1.0:
+                loss *= self.args.loss_scale
+
+            if verbose: self.print("Completed loss")
 
             # Compute the gradients for the network parameters:
             loss.backward()
 
             # If the loss is scaled, we have to un-scale after the backwards pass
-            if FLAGS.LOSS_SCALE != 1.0:
+            if self.args.loss_scale != 1.0:
                 for param in self._net.parameters():
-                    param.grad /= FLAGS.LOSS_SCALE
+                    param.grad /= self.args.loss_scale
 
 
 
-            if verbose: print("Completed backward pass")
+            if verbose: self.print("Completed backward pass")
 
 
             # Compute any necessary metrics:
@@ -711,21 +605,21 @@ class torch_trainer(trainercore):
         # Add the global step / second to the tensorboard log:
         try:
             metrics['global_step_per_sec'] = 1./self._seconds_per_global_step
-            metrics['images_per_second'] = FLAGS.MINIBATCH_SIZE / self._seconds_per_global_step
+            metrics['images_per_second'] = self.args.minibatch_size / self._seconds_per_global_step
         except:
             metrics['global_step_per_sec'] = 0.0
             metrics['images_per_second'] = 0.0
 
         metrics['io_fetch_time'] = io_fetch_time
 
-        if verbose: print("Calculated metrics")
+        if verbose: self.print("Calculated metrics")
 
 
 
         step_start_time = datetime.datetime.now()
         # Apply the parameter update:
         self._opt.step()
-        if verbose: print("Updated Weights")
+        if verbose: self.print("Updated Weights")
         global_end_time = datetime.datetime.now()
 
         metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
@@ -733,12 +627,12 @@ class torch_trainer(trainercore):
 
         self.log(metrics, saver="train")
 
-        if verbose: print("Completed Log")
+        if verbose: self.print("Completed Log")
 
         self.summary(metrics, saver="train")
         self.summary_images(logits_image, labels_image, saver="train")
         # self.graph_summary()
-        if verbose: print("Summarized")
+        if verbose: self.print("Summarized")
 
 
         # Compute global step per second:
@@ -752,27 +646,27 @@ class torch_trainer(trainercore):
     def val_step(self):
 
         # First, validation only occurs on training:
-        if not FLAGS.TRAINING: return
+        if not self.args.training: return
 
         # Second, validation can not occur without a validation dataloader.
-        if FLAGS.AUX_FILE is None: return
+        if self.args.aux_file is None: return
 
         # perform a validation step
         # Validation steps can optionally accumulate over several minibatches, to
         # fit onto a gpu or other accelerator
-        if self._global_step != 0 and self._global_step % FLAGS.AUX_ITERATION == 0:
+        if self._global_step != 0 and self._global_step % self.args.aux_iteration == 0:
 
             self._net.eval()
             # Fetch the next batch of data with larcv
             # (Make sure to pull from the validation set)
             io_start_time = datetime.datetime.now()
-            minibatch_data = self.fetch_next_batch('aux')
+            minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
             io_end_time = datetime.datetime.now()
 
             logits_image, labels_image = self.forward_pass(minibatch_data)
 
             # Compute the loss based on the logits
-            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
+            loss = self.loss_calculator(labels_image, logits_image)
 
 
             # Compute any necessary metrics:
@@ -787,7 +681,7 @@ class torch_trainer(trainercore):
 
     def checkpoint(self):
 
-        if self._global_step % FLAGS.CHECKPOINT_ITERATION == 0 and self._global_step != 0:
+        if self._global_step % self.args.checkpoint_iteration == 0 and self._global_step != 0:
             # Save a checkpoint, but don't do it on the first pass
             self.save_model()
 
@@ -795,7 +689,7 @@ class torch_trainer(trainercore):
     def ana_step(self):
 
         # First, validation only occurs on training:
-        if FLAGS.TRAINING: return
+        if self.args.training: return
 
         # perform a validation step
 
@@ -804,7 +698,7 @@ class torch_trainer(trainercore):
         # self._net.train()
 
         # Fetch the next batch of data with larcv
-        minibatch_data = self.fetch_next_batch(metadata=True)
+        minibatch_data = self.larcv_fetcher.fetch_next_batch("aux",metadata=True)
 
         # Convert the input data to torch tensors
         minibatch_data = self.to_torch(minibatch_data)
@@ -818,19 +712,16 @@ class torch_trainer(trainercore):
 
         # If there is an aux file, for ana that means an output file.
         # Call the larcv interface to write data:
-        if FLAGS.AUX_FILE is not None:
+        if self.args.aux_file is not None:
 
             # To use the PyUtils class, we have to massage the data
             features = (logits.features).cpu()
             coords   = (logits.get_spatial_locations()).cpu()
             coords = coords[:,0:-1]
-            # print("Features shape: ", features.shape)
-            # print("Coords shape: ", coords.shape)
 
             # Compute the softmax:
             features = torch.nn.Softmax(dim=1)(features)
             val, prediction = torch.max(features, dim=-1)
-            # print("Prediction shape: ", prediction.shape)
 
             # Assuming batch size of 1 here so we don't need to fiddle with the batch dimension.
 
@@ -847,12 +738,12 @@ class torch_trainer(trainercore):
 
             for plane in range(3):
                 locs = coords[:,0] == plane
-                # print("Locs shape: ", locs.shape)
+                # self.print("Locs shape: ", locs.shape)
                 this_coords = coords[locs]
                 this_features = features[locs]
 
-                # print("Sub coords shape: ", this_coords.shape)
-                # print("Sub features shape: ", this_features.shape)
+                # self.print("Sub coords shape: ", this_coords.shape)
+                # self.print("Sub features shape: ", this_features.shape)
 
                 # Ravel the cooridinates into flat indexes:
                 indexes = self._y_spatial_size * this_coords[:,1] + this_coords[:,2]
@@ -861,11 +752,11 @@ class torch_trainer(trainercore):
                         self._y_spatial_size, self._x_spatial_size,
                         plane,
                     ]
-                # print("Indexes shape: ", indexes.shape)
+                # self.print("Indexes shape: ", indexes.shape)
 
                 for feature_type in [0,1,2]:
                     writeable_features = this_features[:, feature_type]
-                    # print("Write features shape: ", writeable_features.shape)
+                    # self.print("Write features shape: ", writeable_features.shape)
 
                     list_of_dicts_by_label[feature_type][plane] = {
                         'value' : numpy.asarray(writeable_features).flatten(),
@@ -876,7 +767,7 @@ class torch_trainer(trainercore):
 
                 # Also do the prediction:
                 this_prediction = prediction[locs]
-                # print("Sub prediction shape: ", this_prediction.shape)
+                # self.print("Sub prediction shape: ", this_prediction.shape)
                 list_of_dicts_by_label['pred'][plane] = {
                     'value' : numpy.asarray(this_prediction).flatten(),
                     'index' : numpy.asarray(indexes.flatten()),
@@ -901,7 +792,7 @@ class torch_trainer(trainercore):
             loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
 
             # Compute the metrics for this iteration:
-            print("computing metrics for entry ", minibatch_data['entries'][0])
+            self.print("computing metrics for entry ", minibatch_data['entries'][0])
             metrics = self._compute_metrics(logits_image, labels_image, loss)
 
 
@@ -913,27 +804,22 @@ class torch_trainer(trainercore):
 
     def batch_process(self):
 
+
         start = time.time()
         post_one_time = None
         post_two_time = None
-        # At the begining of batch process, figure out the epoch size:
-        if not FLAGS.SYNTHETIC:
-            self._epoch_size = self._larcv_interface.size('primary')
-        else:
-            self._epoch_size = 100
 
         # This is the 'master' function, so it controls a lot
 
-
         # Run iterations
-        for self._iteration in range(FLAGS.ITERATIONS):
-            if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
-                print('Finished training (iteration %d)' % self._iteration)
+        for self._iteration in range(self.args.iterations):
+            if self.args.training and self._iteration >= self.args.iterations:
+                self.print('Finished training (iteration %d)' % self._iteration)
                 self.checkpoint()
                 break
 
 
-            if FLAGS.TRAINING:
+            if self.args.training:
                 self.val_step()
                 self.train_step()
                 self.checkpoint()
@@ -953,7 +839,6 @@ class torch_trainer(trainercore):
 
         end = time.time()
 
-        print("Total time to batch_process: ", end - start)
-        print("Total time to batch process except first iteration: ", end - post_one_time)
-        print("Total time to batch process except first two iterations: ", end - post_two_time)
-                                                                                                                                                       
+        self.print("Total time to batch_process: ", end - start)
+        self.print("Total time to batch process except first iteration: ", end - post_one_time)
+        self.print("Total time to batch process except first two iterations: ", end - post_two_time)

@@ -14,159 +14,118 @@ for i, p in enumerate(sys.path):
         sys.path.pop(i)
 
 import horovod.tensorflow as hvd
+# from horovod.tensorflow.keras import DistributedOptimizer
 hvd.init()
 
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
-
-from ..core import flags
-FLAGS = flags.FLAGS()
-
-if not FLAGS.SYNTHETIC:
-    from larcv.distributed_queue_interface import queue_interface
-
-
 
 class distributed_trainer(tf_trainer):
-    '''
+    '''a
     This class is the core interface for training.  Each function to
     be overridden for a particular interface is marked and raises
     a NotImplemented error.
 
     '''
-    def __init__(self):
+    def __init__(self, args):
+
         # Rely on the base class for most standard parameters, only
         # search for parameters relevant for distributed computing here
+        tf_trainer.__init__(self, args)
 
-        # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
-        # root_rank = hvd.size() - 1
+        if self.args.compute_mode == "GPU":
+            os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
-        if not FLAGS.SYNTHETIC:
-            self._larcv_interface = queue_interface()
-        else:
-            self.synthetic_images = None
-            self.synthetic_labels = None
-        self._iteration       = 0
         self._rank            = hvd.rank()
-        self.local_minibatch_size = int(FLAGS.MINIBATCH_SIZE / hvd.size())
+        self.local_minibatch_size = int(self.args.minibatch_size / hvd.size())
 
-        self._val_writer      = None
+    def print(self, *argv):
 
-        # Make sure that 'LEARNING_RATE' and 'TRAINING'
-        # are in net network parameters:
+        if self._rank == 0:
+            tf_trainer.print(self, *argv)
 
-        self._metrics = OrderedDict()
+    def init_optimizer(self):
+                # with tf.variable_scope("hvd"):
 
-        self._cleanup         = []
+        #     # In the distributed case, we may want a learning rate behavior:
+        #     self._learning_rate = self.generate_learning_rate(self.args.learning_rate, self._global_step)
+        tf_trainer.init_optimizer(self)
 
+        # Wrap the optimizer it in horovod:
+        self._opt = hvd.DistributedOptimizer(self._opt)
+
+    def init_saver(self):
+        if hvd.rank() == 0:
+            tf_trainer.init_saver(self)
+        else:
+            self._saver = None
+            self._aux_saver = None
+            self._main_writer = None
+            self._val_writer = None
+
+
+        # In the distributed case, we may want a learning rate behavior:
+        self._learning_rate = self.generate_learning_rate(self.args.learning_rate, self._global_step)
+
+
+    # def get_gradients(self, loss, tape, trainable_variables):
+
+    #     print(gradients[0])
+    #     tape = hvd.DistributedGradientTape(tape)
+    #     gradients =  tape.gradient(loss, self._net.trainable_variables)
+
+    #     print(gradients[0])
+
+    #     return gradients
+
+    # def apply_gradients(self, gradients):
+    #     print(gradients)
+    #     gradients = [ hvd.allreduce(gradient) for gradient in gradients ]
+
+    #     tf_trainer.apply_gradients(self, gradients)
+
+    def init_checkpointer(self):
+        if hvd.rank() == 0:
+            tf_trainer.init_checkpointer(self)
+        else:
+            self._checkpoint = None
+            self._checkpoint_manager = None
 
     def initialize(self, io_only=False):
 
 
+        tf_trainer.initialize(self, io_only)
 
-        tf.logging.info("HVD rank: {}".format(hvd.rank()))
-        self.set_compute_parameters()
+        # Here, we broadcast parameters from rank 0.
 
-        self._initialize_io(color=self._rank)
-
-        if io_only:
-            return
-
-
-        if hvd.rank() == 0:
-            print(FLAGS.dump_config())
-
-
-
-        graph = tf.get_default_graph()
-
-        net_time = self.init_network()
-        if hvd.rank() == 0:
-            sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(net_time))
-
-        if hvd.rank() == 0:
-            self.print_network_info()
-
-        self.init_global_step()
-        with tf.variable_scope("hvd"):
-
-            # In the distributed case, we may want a learning rate behavior:
-            self._learning_rate = self.generate_learning_rate(FLAGS.LEARNING_RATE, self._global_step)
-
-
-
-        self.init_optimizer()
-
-        self.init_saver()
-
-        # Take all of the metrics and turn them into summaries:
-        for key in self._metrics:
-            tf.summary.scalar(key, self._metrics[key])
-
-        self._summary_basic = tf.summary.merge_all()
-        self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
-
-
-
-        # Add the graph to the log file:
-        if hvd.rank() == 0:
-            self._main_writer.add_graph(graph)
-
-
-        # Create a session:
-        self._sess = tf.Session(config = self._config)
-
-        # Try to restore a model?
-        restored = self.restore_model()
-
-        if hvd.rank() == 0:
-            if not restored:
-                self._sess.run(tf.global_variables_initializer())
-        else:
-            # Run the initializer on other ranks, else the bcast op won't work
-            self._sess.run(tf.global_variables_initializer())
-        # Rank 0 has either restored, or has initialized.  Broadcast it:
-        g_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-
-
-
-        bcast = hvd.broadcast_variables(g_vars, 0)
-
-
+        # If the model was restored, this is correct.  If not,
+        # This syncs everythign up.
         # print(bcast)
-        self._sess.run(bcast)
+
+        hvd.broadcast_variables(self._net.variables, root_rank=0)
+        hvd.broadcast_variables(self._opt.variables(), root_rank=0)
+
+    def restore_model(self):
+
+        if self._rank == 0:
+            # Restore the model on the root node:
+            tf_trainer.restore_model(self)
+
+    def write_graph_to_tensorboard(self, graph):
+        if self._rank == 0:
+            # Add the graph to the log file:
+            tf_trainer.write_graph_to_tensorboard(self, graph)
 
 
+    def local_batch_size(self):
+        # If synthetic, the local batch size is the minibatchsize.
 
+        # Otherwise, it's minibatch size / n_ranks:
 
-        with tf.variable_scope("hvd"):
-
-
-
-            # # All reduce metrics:
-            for key in self._metrics:
-                self._metrics[key] = hvd.allreduce(self._metrics[key])
-
-            # # Create a set of summary objects:
-            # for key in self._metrics:
-            #     tf.summary.scalar(key, self._metrics[key])
-
-            # In the distributed case, we may want a learning rate behavior:
-            self._learning_rate = self.generate_learning_rate(FLAGS.LEARNING_RATE, self._global_step)
-
-
-
-            # Wrap the optimizer it in horovod:
-            self._opt = hvd.DistributedOptimizer(self._opt)
-
-            self._train_op = self._opt.minimize(self._loss, self._global_step)
-
-            # Here, we have to replace all of the metrics with the allreduced version:
-
-            # Take all of the metrics and turn them into summaries:
-
-
+        if self.args.synthetic:
+            return self.args.minibatch_size
+        else:
+            return self.args.minibatch_size / hvd.size()
 
 
     def restore_model(self):
@@ -224,20 +183,6 @@ class distributed_trainer(tf_trainer):
 
         return this_learning_rate
 
-
-
-
-    # def metrics(self, metrics):
-    #     # Here, we can allreduce the metrics.
-
-    #     if hvd.rank() == 0:
-    #         print metrics
-
-    #     for key in metrics:
-    #         metrics[key] = hvd_keras.allreduce(metrics[key])
-
-    #     if hvd.rank() == 0:
-    #         print metrics
 
 
     def save_model(self, gs):

@@ -70,45 +70,44 @@ class CoreConfig(object):
 class IOManagerConfig(object):
 
 
-    def __init__(self):
-        self._name = "IOManager"
-        self._defaults_set = False
+    def __init__(self, name):
+        self._name = name
         self._params = OrderedDict()
         self._params["Verbosity"] =  None
         self._params["IOMode"] =  None
         self._params["OutFileName"] =  None
         self._params["InputFiles"] =  None
-        # self._params["InputDirs"] =  None
-        # self._params["StoreOnlyName"] =  None
-        # self._params["StoreOnlyType"] =  None
-        # self._params["ReadOnlyName"] =  None
-        # self._params["ReadOnlyType"] =  None
+        self._params["InputDirs"] =  None
+        self._params["StoreOnlyName"] =  None
+        self._params["StoreOnlyType"] =  None
+        self._params["ReadOnlyName"] =  None
+        self._params["ReadOnlyType"] =  None
 
-    def set_param(self, param, value):
-        self._params[param] = value
+        self._defaults_set = False
 
     def set_defaults(self):
 
         if self._params['Verbosity'] is None:
-            self._params['Verbosity'] = 5
-        if self._params['IOMode'] is None:
-            self._params['IOMode'] = 2
-        if self._params['OutFileName'] is None:
-            self._params['OutFileName'] = "\"\""
-        if self._params['InputFiles'] is None:
-            self._params['InputFiles'] = "\"\""
-        # if self._params['StoreOnlyName'] is None:
-        #     self._params['StoreOnlyName'] = ""
-        # if self._params['StoreOnlyType'] is None:
-        #     self._params['StoreOnlyType'] = ""
-        # if self._params['ReadOnlyName'] is None:
-        #     self._params['ReadOnlyName'] = ""
-        # if self._params['ReadOnlyType'] is None:
-        #     self._params['ReadOnlyType'] = ""
+            self._params['Verbosity'] = "0"
+        if self._params["IOMode"] is None:
+            self._params["IOMode"] = "2"
+        # if self._params["OutFileName"] is None:
+        #     self._params["OutFileName"] = 
+        # if self._params["InputFiles"] is None:
+        #     self._params["InputFiles"] = 
+        if self._params["InputDirs"] is None:
+            self._params["InputDirs"] = "[]"
+        if self._params["StoreOnlyName"] is None:
+            self._params["StoreOnlyName"] = "[]"
+        if self._params["StoreOnlyType"] is None:
+            self._params["StoreOnlyType"] = "[]"
+        if self._params["ReadOnlyName"] is None:
+            self._params["ReadOnlyName"] = "[]"
+        if self._params["ReadOnlyType"] is None:
+            self._params["ReadOnlyType"] = "[]"
+
 
         self._defaults_set = True
-
-
 
     def generate_config_str(self):
 
@@ -135,10 +134,14 @@ class IOManagerConfig(object):
                     value  = self._params[param])
 
 
+        # output_str += "{indent}}}\n".format(indent=" "*indent_level)
         indent_level -= 2
         output_str += "{indent}}}\n".format(indent=" "*indent_level)
 
         return output_str
+        
+    def set_param(self, param, value):
+        self._params[param] = value
 
 # class ProcessDriverConfig(CoreConfig):
 
@@ -187,17 +190,17 @@ class ThreadIOConfig(CoreConfig):
     def set_defaults(self):
 
         if self._params['Verbosity'] is None:
-            self._params['Verbosity'] = "3"
+            self._params['Verbosity'] = "5"
         if self._params['EnableFilter'] is None:
             self._params['EnableFilter'] = "false"
         if self._params['NumThreads'] is None:
             self._params['NumThreads'] = "4"
         if self._params['NumBatchStorage'] is None:
-            self._params['NumBatchStorage'] = "2"
+            self._params['NumBatchStorage'] = "4"
         if self._params['RandomSeed'] is None:
             self._params['RandomSeed'] = "0"
         if self._params['RandomAccess'] is None:
-            self._params['RandomAccess'] = "2"
+            self._params['RandomAccess'] = "0"
 
         self._defaults_set = True
 

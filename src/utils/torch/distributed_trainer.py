@@ -9,13 +9,6 @@ import torch
 import horovod.torch as hvd
 hvd.init()
 
-from ..core import flags
-# from . import data_transforms
-FLAGS = flags.FLAGS()
-
-
-if not FLAGS.SYNTHETIC:
-    from larcv.distributed_queue_interface import queue_interface
 
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
@@ -46,55 +39,55 @@ def lambda_warmup(epoch):
     else:
         return target * numpy.exp(-0.0001*(epoch-(full+linear_warmup+flat_warmup)))
 
-def lr_increase(step):
+# def lr_increase(step):
 
-    # This function actually ignores the input and uses the global step variable
-    # This allows it to get the learning rate correct after restore.
+#     # This function actually ignores the input and uses the global step variable
+#     # This allows it to get the learning rate correct after restore.
 
-    # For this problem, the dataset size is 1e5.
-    # So the epoch can be calculated easily:
-    # epoch = (step * FLAGS.MINIBATCH_SIZE) / (1e5)
+#     # For this problem, the dataset size is 1e5.
+#     # So the epoch can be calculated easily:
+#     # epoch = (step * self.args.MINIBATCH_SIZE) / (1e5)
 
-    base_lr   = FLAGS.LEARNING_RATE
-    step_size = 0.050
+#     base_lr   = self.args.LEARNING_RATE
+#     step_size = 0.050
 
-    return 1.0 + step*step_size
+#     return 1.0 + step*step_size
 
-def flat_lr(step):
-    return 1.0
+# def flat_lr(step):
+#     return 1.0
 
-peak_lr = 0.01
-cycle_len = 0.8
+# peak_lr = 0.01
+# cycle_len = 0.8
 
-def one_cycle_clr(step):
+# def one_cycle_clr(step):
 
-    peak = peak_lr / FLAGS.LEARNING_RATE
+#     peak = peak_lr / self.args.LEARNING_RATE
 
-    cycle_steps  = int(FLAGS.ITERATIONS*cycle_len)
-    end_steps = FLAGS.ITERATIONS - cycle_steps
-    # Which cycle are we in?
+#     cycle_steps  = int(self.args.ITERATIONS*cycle_len)
+#     end_steps = self.args.ITERATIONS - cycle_steps
+#     # Which cycle are we in?
 
-    cycle = int(step / cycle_steps)
-    intra_step = 1.0 * (step % cycle_steps)
+#     cycle = int(step / cycle_steps)
+#     intra_step = 1.0 * (step % cycle_steps)
 
-    base_multiplier = 1.0
+#     base_multiplier = 1.0
 
-    if cycle < 1:
-#         base_multiplier *= 0.5
+#     if cycle < 1:
+# #         base_multiplier *= 0.5
 
-        if intra_step > cycle_steps*0.5:
-            intra_step = cycle_steps - intra_step
+#         if intra_step > cycle_steps*0.5:
+#             intra_step = cycle_steps - intra_step
 
-        value = intra_step * (peak) /(0.5*cycle_steps)
+#         value = intra_step * (peak) /(0.5*cycle_steps)
 
-    else:
-        value = (intra_step / end_steps)*-1.0
+#     else:
+#         value = (intra_step / end_steps)*-1.0
 
-    # print("Step: {}, Cycle: {}, base {}, intra_step {}, value: {}, total_scale: {}".format(
-    #     step, cycle, base_multiplier, intra_step, value, base_multiplier + value)
-    # )
+#     # print("Step: {}, Cycle: {}, base {}, intra_step {}, value: {}, total_scale: {}".format(
+#     #     step, cycle, base_multiplier, intra_step, value, base_multiplier + value)
+#     # )
 
-    return base_multiplier + value
+#     return base_multiplier + value
 
 
 class distributed_trainer(torch_trainer):
@@ -104,25 +97,21 @@ class distributed_trainer(torch_trainer):
     a NotImplemented error.
 
     '''
-    def __init__(self):
+    def __init__(self, args):
+
+        torch_trainer.__init__(self, args)
         # Rely on the base class for most standard parameters, only
         # search for parameters relevant for distributed computing here
 
+
+
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
-        root_rank = hvd.size() - 1
 
-        if FLAGS.COMPUTE_MODE == "GPU":
+        if self.args.compute_mode == "GPU":
             os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
-
-        if not FLAGS.SYNTHETIC:
-            self._larcv_interface = queue_interface()
-        else:
-            self.synthetic_images = None
-            self.synthetic_labels = None
-        self._iteration       = 0
         self._rank            = hvd.rank()
-        self._cleanup         = []
-        self.local_minibatch_size = int(FLAGS.MINIBATCH_SIZE / hvd.size())
+
+
 
         # Make sure that 'LEARNING_RATE' and 'TRAINING'
         # are in net network parameters:
@@ -151,14 +140,16 @@ class distributed_trainer(torch_trainer):
         # operating on the 'step' parameter.
 
 
-        self._lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-            self._opt, flat_lr, last_epoch=-1)
+        # self._lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
+            # self._opt, flat_lr, last_epoch=-1)
 
 
         self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
 
 
-
+    def print(self, *argv):
+        if self._rank == 0:
+            torch_trainer.print(self, *argv)
 
     def init_saver(self):
         if hvd.rank() == 0:
@@ -168,68 +159,22 @@ class distributed_trainer(torch_trainer):
             self._aux_saver = None
 
 
-    def initialize(self, io_only = False):
-
-        print("HVD rank: {}".format(hvd.rank()))
-
-        if self._rank == 0:
-            FLAGS.dump_config()
-
-
-        self._initialize_io(color=self._rank)
-
-
-        if io_only:
-            return
-
-        self.init_network()
-
-
-        if FLAGS.TRAINING:
-            self._net.train(True)
-
-
-
+    def print_network_info(self):
         if hvd.rank() == 0:
-            n_trainable_parameters = 0
-            for var in self._net.parameters():
-                n_trainable_parameters += numpy.prod(var.shape)
-            print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
+            torch_trainer.print_network_info(self)
+        return
 
-        self.init_optimizer()
-
-        self.init_saver()
-        # hooks = self.get_standard_hooks()
-
-
-        # Here, either restore the weights of the network or initialize it:
-        self._global_step = 0
-        # Restore the state from the root rank:
+    def restore_model(self):
         if hvd.rank() == 0:
-            state = self.restore_model()
+            state = self.load_state_from_file()
         else:
             state = None
 
         if state is not None and hvd.rank() == 0:
             self.load_state(state)
 
-        if FLAGS.MODEL_HALF_PRECISION:
-            self._net.half()
-
-
         # Broadcast the state of the model:
         hvd.broadcast_parameters(self._net.state_dict(), root_rank = 0)
-
-
-        if FLAGS.COMPUTE_MODE == "CPU":
-            pass
-        if FLAGS.COMPUTE_MODE == "GPU":
-            self._net.cuda()
-
-        # comm.bcast(self._global_step, root = 0)
-        # hvd.broadcast_optimizer_state(self._opt, root_rank = 0)
-
-
 
     def summary(self, metrics, saver=""):
         if hvd.rank() == 0:
@@ -254,22 +199,10 @@ class distributed_trainer(torch_trainer):
         return metrics
 
     def on_step_end(self):
-        self._lr_scheduler.step()
+        # self._lr_scheduler.step()
         pass
 
 
-    # def to_torch(self, minibatch_data):
-
-    #     # This function wraps the to-torch function but for a gpu forces
-    #     # the right device
-    #     if FLAGS.COMPUTE_MODE == 'GPU':
-    #         device = torch.device('cuda')
-    #         # device = torch.device('cuda:{}'.format(hvd.local_rank()))
-    #     else:
-    #         device = None
-    #     minibatch_data = torch_trainer.to_torch(self, minibatch_data, device)
-
-    #     return minibatch_data
 
     def log(self, metrics, saver=""):
         if hvd.rank() == 0:

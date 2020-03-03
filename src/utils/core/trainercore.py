@@ -8,15 +8,8 @@ from collections import OrderedDict
 
 import numpy
 
-from .      import flags
-from .      import data_transforms
-from ...io  import io_templates
-
-FLAGS = flags.FLAGS()
-
-
-if not FLAGS.SYNTHETIC:
-    from larcv import queueloader
+# larcv_fetcher can also do synthetic IO without any larcv installation
+from . larcvio import larcv_fetcher
 
 import datetime
 
@@ -32,186 +25,40 @@ class trainercore(object):
     NEUTRINO_INDEX = 2
     COSMIC_INDEX   = 1
 
-    FULL_RESOLUTION_H = 1280
-    FULL_RESOLUTION_W = 2048
 
-    def __init__(self,):
-        if not FLAGS.SYNTHETIC:
-            if FLAGS.MODE == 'inference':
-                mode = 'serial_access'
-            else:
-                mode = 'random_blocks'
-            self._larcv_interface = queueloader.queue_interface(random_access_mode=mode, seed=0)
-        else:
-            self.synthetic_images = None
-            self.synthetic_labels = None
+    def __init__(self, args):
 
-        self._iteration       = 0
-        self._global_step     = -1
-        self._val_writer      = None
+        self._iteration    = 0
+        self._global_step  = 0
+        self.args          = args
+        self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
+            mode        = args.mode,
+            distributed = args.distributed,
+            downsample  = args.downsample_images,
+            dataformat  = args.data_format,
+            synthetic   = args.synthetic,
+            sparse      = args.sparse )
 
-        self._cleanup         = []
+        if args.data_format == "channels_first": self._channels_dim = 1
+        if args.data_format == "channels_last" : self._channels_dim = -1
 
-    def cleanup(self):
-        for f in self._cleanup:
-            try:
-                os.unlink(f.name)
-            except AttributeError:
-                pass
+
+    def print(self, *argv):
+        ''' Function for logging as needed.  Works correctly in distributed mode'''
+
+        message = " ".join([ str(s) for s in argv] )
+
+        sys.stdout.write(message + "\n")
+
 
     def _initialize_io(self, color=None):
 
-        # Compute the realized image shape:
-        self.full_image_shape = [self.FULL_RESOLUTION_H, self.FULL_RESOLUTION_W]
-        ds = 2**FLAGS.DOWNSAMPLE_IMAGES
+        self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
+            "train", self.args.file, self.args.minibatch_size, color)
 
-        self.image_shape = [ int(i / ds) for i in self.full_image_shape ]
-
-        if not FLAGS.SYNTHETIC:
-
-            max_voxels = 50000
-
-            # # This is a dummy placeholder, you must check this yourself:
-            # if 640 in FLAGS.SHAPE:
-            #     max_voxels = 35000
-            # else:
-            #     max_voxels = 70000
-
-            # Use the templates to generate a configuration string, which we store into a temporary file
-            if FLAGS.TRAINING:
-                config = io_templates.train_io(
-                    input_file      = FLAGS.FILE,
-                    data_producer   = FLAGS.IMAGE_PRODUCER,
-                    label_producer  = FLAGS.LABEL_PRODUCER,
-                    max_voxels      = max_voxels)
-            else:
-                config = io_templates.ana_io(
-                    input_file      = FLAGS.FILE,
-                    data_producer   = FLAGS.IMAGE_PRODUCER,
-                    label_producer  = FLAGS.LABEL_PRODUCER,
-                    max_voxels      = max_voxels)
-
-
-            # Generate a named temp file:
-            main_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-            main_file.write(config.generate_config_str())
-
-            main_file.close()
-            self._cleanup.append(main_file)
-
-            # Prepare data managers:
-            io_config = {
-                'filler_name' : config._name,
-                'filler_cfg'  : main_file.name,
-                'verbosity'   : FLAGS.VERBOSITY,
-                'make_copy'   : True
-            }
-
-            data_keys = OrderedDict({
-                'image': 'data',
-                'label': 'label'
-                })
-
-
-            self._larcv_interface.prepare_manager('primary', io_config, FLAGS.MINIBATCH_SIZE, data_keys, color)
-
-            # self._larcv_interface.prepare_next('primary')
-
-            # All of the additional tools are in case there is a test set up:
-            if FLAGS.AUX_FILE is not None:
-
-                if FLAGS.TRAINING:
-                    config = io_templates.test_io(
-                        input_file=FLAGS.AUX_FILE,
-                        data_producer= FLAGS.IMAGE_PRODUCER,
-                        label_producer= FLAGS.LABEL_PRODUCER,
-                        max_voxels=max_voxels)
-
-                    # Generate a named temp file:
-                    aux_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-                    aux_file.write(config.generate_config_str())
-
-                    aux_file.close()
-                    self._cleanup.append(aux_file)
-                    io_config = {
-                        'filler_name' : config._name,
-                        'filler_cfg'  : aux_file.name,
-                        'verbosity'   : FLAGS.VERBOSITY,
-                        'make_copy'   : False
-                    }
-
-                    data_keys = OrderedDict({
-                        'image': 'aux_data',
-                        'label': 'aux_label'
-                        })
-
-
-
-                    self._larcv_interface.prepare_manager('aux', io_config, FLAGS.AUX_MINIBATCH_SIZE, data_keys, color)
-                    self._larcv_interface.prepare_next('aux')
-
-                else:
-                    config = io_templates.output_io(input_file=FLAGS.FILE)
-                    print(config.generate_config_str())
-                    # Generate a named temp file:
-                    out_file_config = tempfile.NamedTemporaryFile(mode='w', delete=False)
-                    out_file_config.write(config.generate_config_str())
-
-                    out_file_config.close()
-                    self._cleanup.append(out_file_config)
-                    self._larcv_interface.prepare_writer(out_file_config.name, FLAGS.AUX_FILE)
-
-            io_dims = self._larcv_interface.fetch_minibatch_dims('primary')
-
-            self.cleanup()
-
-
-
-        # Make sure all required dimensions are present:
-        else:
-            io_dims = {}
-            if FLAGS.DATA_FORMAT == "channels_first":
-                io_dims['image'] = numpy.asarray(
-                    [FLAGS.MINIBATCH_SIZE, 3, self.image_shape[0], self.image_shape[1]])
-                io_dims['label'] = numpy.asarray(
-                    [FLAGS.MINIBATCH_SIZE, 3, self.image_shape[0], self.image_shape[1]])
-            else:
-                io_dims['image'] = numpy.asarray(
-                    [FLAGS.MINIBATCH_SIZE, self.image_shape[0], self.image_shape[1], 3])
-                io_dims['label'] = numpy.asarray(
-                    [FLAGS.MINIBATCH_SIZE, self.image_shape[0], self.image_shape[1], 3])
-
-
-        if FLAGS.DATA_FORMAT == "channels_last":
-            self._channels_dim = -1
-        else:
-            self._channels_dim = 1
-
-        self._raw_dims = {}
-        self._dims = {}
-        # Using the sparse IO techniques, we have to manually set the dimensions for the input.
-
-        # Fortunately, everything we need is in the FLAGS object and io object:
-        local_minibatch_size = io_dims['image'][0]
-
-
-        # Use this for the raw dimensions:
-        if FLAGS.DATA_FORMAT == "channels_first":
-            shape = [local_minibatch_size,] + [3,] + self.full_image_shape
-        else:
-            shape = [local_minibatch_size,] + self.full_image_shape + [3,]
-
-        self._raw_dims['image'] = numpy.asarray(shape)
-        self._raw_dims['label'] = numpy.asarray(shape)
-
-        # And this for the dimensions passed to and from the network:
-        if FLAGS.DATA_FORMAT == "channels_first":
-            shape = [local_minibatch_size,] + [3,] + self.image_shape
-        else:
-            shape = [local_minibatch_size,] + self.image_shape + [3,]
-
-        self._dims['image'] = numpy.asarray(shape)
-        self._dims['label'] = numpy.asarray(shape)
+        if self.args.aux_file is not None:
+            self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
+                "aux", self.args.aux_file, self.args.minibatch_size, color)
 
 
     def init_network(self):
@@ -241,195 +88,9 @@ class trainercore(object):
         else:
             log_string.rstrip(", ")
 
-        print(log_string)
+        self.log(log_string)
 
         return
-
-
-    def fetch_next_batch(self, mode='primary', metadata=False, force_pop=False):
-
-        if not FLAGS.SYNTHETIC:
-            metadata=True
-
-
-            pop = True
-            if self._iteration == 0 and not force_pop:
-                pop = False
-
-
-            # This brings up the current data
-            self._larcv_interface.prepare_next(mode)
-            minibatch_data = self._larcv_interface.fetch_minibatch_data(mode, pop=pop,fetch_meta_data=metadata)
-            minibatch_dims = self._larcv_interface.fetch_minibatch_dims(mode)
-
-
-            for key in minibatch_data:
-                if key == 'entries' or key == 'event_ids':
-                    continue
-                minibatch_data[key] = numpy.reshape(minibatch_data[key], minibatch_dims[key])
-
-            # if FLAGS.LOSS_BALANCE_SCHEME != "none":
-            minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
-
-
-
-
-            if not FLAGS.SPARSE:
-                minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(
-                    minibatch_data['image'], dense_shape=self.full_image_shape)
-                minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(
-                    minibatch_data['label'], dense_shape=self.full_image_shape)
-            else:
-                minibatch_data['image']  = data_transforms.larcvsparse_to_scnsparse_2d(
-                    minibatch_data['image'])
-                minibatch_data['label']  = data_transforms.larcvsparse_to_dense_2d(
-                    minibatch_data['label'], dense_shape=self.full_image_shape)
-
-
-        else:
-
-            # For synthetic data, we can preload the data:
-            if self.synthetic_images is None:
-                self.prepare_data(dataset_n_entries=12)
-
-            minibatch_data = {}
-            if self.synthetic_index + self._dims['image'][0] > len(self.synthetic_images):
-                self.synthetic_index = 0
-
-            lower_index = self.synthetic_index
-            # if FLAGS.DISTRIBUTED:
-            #     upper_index = self.synthetic_index + self.local_minibatch_size
-            # else:
-            upper_index = self.synthetic_index + FLAGS.MINIBATCH_SIZE
-
-            # print(lower_index)
-            # print(upper_index)
-
-
-            minibatch_data['image']  = self.synthetic_images[lower_index:upper_index]
-            minibatch_data['label']  = self.synthetic_labels[lower_index:upper_index]
-            minibatch_data['weight'] = self.compute_weights(minibatch_data['label'])
-
-            self.synthetic_index += 1
-
-        return minibatch_data
-
-    def prepare_data(self, dataset_n_entries):
-
-        self.synthetic_index = 0
-
-        shape = copy.copy(self._raw_dims['image'])
-        shape[0] = dataset_n_entries
-
-        self.synthetic_images = numpy.random.random_sample(shape)
-        self.synthetic_weight = numpy.random.random_sample(shape)
-        self.synthetic_labels = numpy.random.randint(low=0, high=3, size=shape)
-
-
-
-
-    def compute_weights(self, labels):
-
-        '''
-        This is NOT a tensorflow implementation, but a numpy implementation.
-        Running on CPUs this might not make a difference.  Running on GPUs
-        it might be good to move this to a GPU, but I suspect it's not needed.
-        '''
-        # Take the labels, and compute the per-label weight
-
-        # Compute weights works on the sparse images, not the dense images.
-        # The null-weight is computed on the image shape for dense networks,
-        # or based on occupancy on the sparse network.
-
-        # It's done per-batch rather than per image, so:
-
-
-        # weight modes:
-        # "none" - No loss balancing, just run normally
-        # "light" - Constant loss balancing: each class is given a weight, but the whole event is normalized
-        # "even" - Dynamic loss balancing:  each class is weighted such that it contributes 1/3 of the total weight.
-        # "focal" - Compute the focal loss, which is done in the framework loss functions
-
-        if FLAGS.LOSS_BALANCE_SCHEME == "focal": return None
-        if FLAGS.LOSS_BALANCE_SCHEME == "none": return None
-
-        x_coords = labels[:,:,:,0]
-        y_coords = labels[:,:,:,1]
-        val_coords = labels[:,:,:,2]
-
-
-        # Find the non_zero indexes of the input:
-        batch_index, plane_index, voxel_index = numpy.where(val_coords != -999)
-
-        values  = val_coords[batch_index, plane_index, voxel_index]
-        x_index = numpy.int32(x_coords[batch_index, plane_index, voxel_index])
-        y_index = numpy.int32(y_coords[batch_index, plane_index, voxel_index])
-
-        # Count the types of each label:
-        label_values, counts = numpy.unique(values, return_counts=True)
-
-        # Batch size
-        batch_size = labels.shape[0]
-
-        # Make sure that if the number of counts is 0 for neutrinos, we fix that
-        if len(counts) < 3:
-            counts = numpy.insert(counts, self.NEUTRINO_INDEX, 0.1)
-
-        # This computes the *real* number
-        # Multiply by 3 planes:
-        n_pixels = batch_size * 3* numpy.prod(self.image_shape)
-        # Correct the empty pixel values in the count:
-        counts[0] = n_pixels - counts[1] - counts[2]
-
-        if FLAGS.LOSS_BALANCE_SCHEME == "even":
-
-            # Now we have the weight values, return it in the proper shape:
-            # Prepare output weights:
-            class_weights = 0.3333/(counts + 1)
-
-            bkg_weight = class_weights[0]
-
-            weights = numpy.full(values.shape, bkg_weight)
-            weights[values==self.COSMIC_INDEX]   = class_weights[self.COSMIC_INDEX]
-            weights[values==self.NEUTRINO_INDEX] = class_weights[self.NEUTRINO_INDEX]
-
-            if FLAGS.DATA_FORMAT == "channels_first":
-                dense_weights = numpy.full([labels.shape[0], 3, self.full_image_shape[0], self.full_image_shape[1]], bkg_weight,dtype=numpy.float32)
-                dense_weights[batch_index,plane_index,y_index,x_index] = weights
-            else:
-                dense_weights = numpy.full([labels.shape[0], self.full_image_shape[0], self.full_image_shape[1], 3], bkg_weight,dtype=numpy.float32)
-                dense_weights[batch_index,y_index,x_index,plane_index] = weights
-
-        if FLAGS.LOSS_BALANCE_SCHEME == "light":
-
-            # This mode maintains the weights for everything as if they are unbalanced,
-            # however it gives a mild boost to cosmic pixels, and a medium
-            # boost to neutrino pixels.
-
-            per_pixel_weight = 1./(numpy.prod(self.image_shape))
-
-            bkg_weight = per_pixel_weight
-            # Now we have the weight values, return it in the proper shape:
-            # Prepare output weights:
-            weights = numpy.full(values.shape, bkg_weight,dtype=numpy.float32)
-            weights[values==self.COSMIC_INDEX]   = 1.5 * per_pixel_weight
-            weights[values==self.NEUTRINO_INDEX] = 10  * per_pixel_weight
-
-            if FLAGS.DATA_FORMAT == "channels_first":
-                dense_weights = numpy.full([labels.shape[0], 3, self.full_image_shape[0], self.full_image_shape[1]], bkg_weight,dtype=numpy.float32)
-                dense_weights[batch_index,plane_index,y_index,x_index] = weights
-            else:
-                dense_weights = numpy.full([labels.shape[0], self.full_image_shape[0], self.full_image_shape[1], 3], bkg_weight,dtype=numpy.float32)
-                dense_weights[batch_index,y_index,x_index,plane_index] = weights
-
-            # Normalize:
-            total_weight = numpy.sum(dense_weights)
-
-            # print("Total_weight: ", total_weight)
-            dense_weights *= 1./total_weight
-
-        # # Normalize the weights to sum to 1 for each event:
-        return dense_weights
 
     def on_step_end(self):
         pass
@@ -442,9 +103,6 @@ class trainercore(object):
         # It allows a handle to the distributed network to allreduce metrics.
         return metrics
 
-            # For tensorflow, we have to build up an ops list to submit to the
-            # session to run.
-
     def stop(self):
         # Mostly, this is just turning off the io:
         # self._larcv_interface.stop()
@@ -456,7 +114,7 @@ class trainercore(object):
         # Run iterations
         for self._iteration in range(FLAGS.ITERATIONS):
             if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
-                print('Finished training (iteration %d)' % self._iteration)
+                self.log('Finished training (iteration %d)' % self._iteration)
                 break
 
             if FLAGS.MODE == 'train':

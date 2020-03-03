@@ -431,45 +431,10 @@ class objectview(object):
 
 class UResNet3D(torch.nn.Module):
 
-    def __init__(self, * ,
-                n_initial_filters,    # Number of initial filters in the network.
-                batch_norm,           # Use Batch norm?
-                use_bias,             # Use Bias layers?
-                residual,             # Use residual blocks where possible
-                depth,                # How many times to downsample and upsample
-                blocks_final,         # How many blocks just before bottleneck?
-                blocks_per_layer,     # How many blocks to apply at this layer, if not deepest
-                blocks_deepest_layer, # How many blocks at the deepest layer
-                connections,          # What type of connection?
-                upsampling,           # What type of upsampling?
-                downsampling,         # What type of downsampling?
-                shape,                # Data shape
-                bottleneck_deepest,   # How many filters to use in combined, deepest convolutions
-                filter_size_deepest,  # What size filter to use in the deepest convolutions
-                growth_rate,          # Either multiplicative (doubles) or additive (constant addition))
-            ):
+    def __init__(self, params):
 
 
         torch.nn.Module.__init__(self)
-
-
-        params = objectview({
-            'n_initial_filters'     : n_initial_filters,
-            'batch_norm'            : batch_norm,
-            'use_bias'              : use_bias,
-            'residual'              : residual,
-            'depth'                 : depth,
-            'blocks_final'          : blocks_final,
-            'blocks_per_layer'      : blocks_per_layer,
-            'blocks_deepest_layer'  : blocks_deepest_layer,
-            'connections'           : connections,
-            'upsampling'            : upsampling,
-            'downsampling'          : downsampling,
-            'shape'                 : shape,
-            'growth_rate'           : growth_rate,
-            'bottleneck_deepest'    : bottleneck_deepest,
-            'filter_size_deepest'   : filter_size_deepest,
-            })
 
 
 
@@ -480,37 +445,37 @@ class UResNet3D(torch.nn.Module):
 
         self.initial_convolution = Block3D(
             inplanes    = 1,
-            outplanes   = n_initial_filters,
+            outplanes   = params.n_initial_filters,
             kernel      = [7,7],
             padding     = [3,3],
             params      = params)
 
 
-        n_filters = n_initial_filters
+        n_filters = params.n_initial_filters
         # Next, build out the convolution steps:
 
         self.net_core = UNetCore3D(
-            depth    = depth,
-            inplanes = n_initial_filters,
+            depth    = params.network_depth,
+            inplanes = params.n_initial_filters,
             params   = params)
 
         # We need final output shaping too.
         # Even with shared weights, keep this separate:
 
         self.final_layer = BlockSeries3D(
-            inplanes = n_initial_filters,
-            n_blocks = blocks_final,
+            inplanes = params.n_initial_filters,
+            n_blocks = params.blocks_final,
             n_planes = 1,
             params   = params )
 
 
         self.bottleneck = nn.Conv3d(
-            in_channels  = n_initial_filters,
+            in_channels  = params.n_initial_filters,
             out_channels = 3,
             kernel_size  = 1,
             stride       = 1,
             padding      = 0,
-            bias         = use_bias)
+            bias         = params.use_bias)
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
 
