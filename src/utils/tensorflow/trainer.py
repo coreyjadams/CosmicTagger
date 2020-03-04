@@ -519,7 +519,6 @@ class tf_trainer(trainercore):
             return ops["global_step"]
         return
 
-    @profile
     def train_step(self):
 
 

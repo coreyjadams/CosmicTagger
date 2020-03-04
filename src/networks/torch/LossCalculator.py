@@ -37,27 +37,32 @@ class LossCalculator(torch.nn.Module):
         # If there is balancing scheme specified, weights are computed on the fly
 
 
+        # Even if the model is half precision, we compute the loss and it's named_parameters
+        # in full precision.
+
         loss = None
 
         # labels and logits are by plane, loop over them:
         for i in [0,1,2]:
-            plane_loss = self._criterion(input=logits[i], target=labels[i])
+            plane_loss = self._criterion(input=logits[i].float(), target=labels[i])
             if self.balance_type != "none":
                 with torch.no_grad():
                     if self.balance_type == "focal":
                         # To compute the focal loss, we need to compute the one-hot labels and the
                         # softmax
-                        softmax = torch.nn.functional.softmax(logits[i], dim=1)
-                        # print("softmax.shape: ", softmax.shape)
-                        # print("labels.shape: ", labels[i].shape)
-                        onehot = torch.nn.functional.one_hot(labels[i], num_classes=3).float()
-                        # print("onehot.shape: ", onehot.shape)
+                        softmax = torch.nn.functional.softmax(logits[i].float(), dim=1)
+                        # print("torch.isnan(softmax).any(): ", torch.isnan(softmax).any())
+                        onehot = torch.nn.functional.one_hot(labels[i], num_classes=3)
+                        # print("torch.isnan(onehot).any(): ", torch.isnan(onehot).any())
                         onehot = onehot.permute([0,3,1,2])
+                        # print("torch.isnan(onehot).any(): ", torch.isnan(onehot).any())
                         # print("onehot.shape: ", onehot.shape)
 
                         weights = onehot * (1 - softmax)**2
+                        # print("torch.isnan(weights).any(): ", torch.isnan(weights).any())
                         # print("weights.shape:  ", weights.shape)
                         weights = torch.mean(weights, dim=1)
+                        # print("torch.isnan(weights).any(): ", torch.isnan(weights).any())
                         # print("scale_factor.shape:  ", scale_factor.shape)
                         # print("plane_loss.shape: ", plane_loss.shape)
                         # scale_factor /= torch.mean(scale_factor)
@@ -69,7 +74,7 @@ class LossCalculator(torch.nn.Module):
                         locs = torch.where(labels[i] != 0)
                         class_weights = 0.3333/(counts + 1.0)
 
-                        weights = torch.full(labels[i].shape, class_weights[0])
+                        weights = torch.full(labels[i].shape, class_weights[0], device=labels[i].device)
 
                         weights[labels[i] == 1 ] = class_weights[1]
                         weights[labels[i] == 2 ] = class_weights[2]
@@ -79,14 +84,11 @@ class LossCalculator(torch.nn.Module):
 
                         total_pixels = numpy.prod(labels[i].shape)
                         per_pixel_weight = 1./(total_pixels)
-                        weights = torch.full(labels[i].shape, per_pixel_weight)
+                        weights = torch.full(labels[i].shape, per_pixel_weight, device=labels[i].device)
                         weights[labels[i] == 1 ] = 1.5 * per_pixel_weight
                         weights[labels[i] == 2 ] = 10  * per_pixel_weight
-            
 
                 total_weight = torch.sum(weights)
-
-
                 plane_loss = torch.sum(weights*plane_loss)
 
                 plane_loss /= total_weight
@@ -98,7 +100,3 @@ class LossCalculator(torch.nn.Module):
 
 
         return loss
-
-
-
-

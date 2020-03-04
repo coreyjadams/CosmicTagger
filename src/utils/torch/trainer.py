@@ -36,6 +36,7 @@ class torch_trainer(trainercore):
     def __init__(self,args):
         trainercore.__init__(self, args)
         self._rank = None
+        self._loss_scale = 1.0
 
     def init_network(self):
 
@@ -94,6 +95,13 @@ class torch_trainer(trainercore):
 
         self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
 
+
+        # For half precision, we disable gradient accumulation.  This is to allow
+        # dynamic loss scaling
+        if self.args.model_half_precision or self.args.input_half_precision:
+            if self.args.gradient_accumulation > 1:
+                raise Exception("Can not accumulate gradients in half precision.")
+
     def print_network_info(self):
 
         n_trainable_parameters = 0
@@ -123,9 +131,9 @@ class torch_trainer(trainercore):
         elif self.args.optimizer == "rmsprop":
             # Create an optimizer:
             if self.args.learning_rate <= 0:
-                self._opt = torch.optim.RMSprop(self._net.parameters())
+                self._opt = torch.optim.RMSprop(self._net.parameters(), eps=1e-4)
             else:
-                self._opt = torch.optim.RMSprop(self._net.parameters(), self.args.learning_rate)
+                self._opt = torch.optim.RMSprop(self._net.parameters(), self.args.learning_rate, eps=1e-4)
         else:
             # Create an optimizer:
             if self.args.learning_rate <= 0:
@@ -340,7 +348,7 @@ class torch_trainer(trainercore):
         # Call all of the functions in the metrics dictionary:
         metrics = {}
 
-        metrics['loss']     = loss.data / self.args.loss_scale
+        metrics['loss']     = loss.data * self._loss_scale
         accuracy = self._calculate_accuracy(logits, labels)
         metrics.update(accuracy)
 
@@ -365,7 +373,7 @@ class torch_trainer(trainercore):
                 total_images = self.args.minibatch_size
                 images_per_second = total_images / (self._current_log_time - self._previous_log_time).total_seconds()
                 time_string.append("{:.2} Img/s".format(images_per_second))
-                
+
             if 'io_fetch_time' in metrics.keys():
                 time_string.append("{:.2} IOs".format(metrics['io_fetch_time']))
 
@@ -507,6 +515,7 @@ class torch_trainer(trainercore):
             if self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light":
                 minibatch_data['weight'] = minibatch_data['weight'].float()
 
+
         self.reduce_precision(minibatch_data)
 
         return minibatch_data
@@ -574,9 +583,17 @@ class torch_trainer(trainercore):
 
 
             loss = self.loss_calculator(labels_image, logits_image)
+            # We do dynamic loss scaling to put the loss in a reasonable range:
+            if self.args.model_half_precision or self.args.input_half_precision:
+                if loss > 1e3:
+                    self._loss_scale = 1000
+                elif loss < 1e-3:
+                    self._loss_scale = 0.001
+                else:
+                    self._loss_scale = 1.0
 
-            if self.args.loss_scale != 1.0:
-                loss *= self.args.loss_scale
+                loss /= self._loss_scale
+                loss = loss.half()
 
             if verbose: self.print("Completed loss")
 
@@ -584,9 +601,9 @@ class torch_trainer(trainercore):
             loss.backward()
 
             # If the loss is scaled, we have to un-scale after the backwards pass
-            if self.args.loss_scale != 1.0:
+            if self._loss_scale != 1.0:
                 for param in self._net.parameters():
-                    param.grad /= self.args.loss_scale
+                    param.grad *= self._loss_scale
 
 
 
@@ -668,6 +685,13 @@ class torch_trainer(trainercore):
             # Compute the loss based on the logits
             loss = self.loss_calculator(labels_image, logits_image)
 
+            if self.args.model_half_precision or self.args.input_half_precision:
+                if loss > 1e-3:
+                    self._loss_scale = 1000
+                elif loss < 1e-3:
+                    self._loss_scale = 0.001
+
+                loss /= self._loss_scale
 
             # Compute any necessary metrics:
             metrics = self._compute_metrics(logits_image, labels_image, loss)
