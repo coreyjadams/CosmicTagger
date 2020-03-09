@@ -17,6 +17,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
 
 
 import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
 from tensorflow.python.client import timeline
 
 floating_point_format = tf.float32
@@ -46,7 +47,11 @@ class tf_trainer(trainercore):
         start = time.time()
         # sys.stdout.write("Begin constructing network\n")
 
-
+        # Here, if using mixed precision, set a global policy:
+        if self.args.mixed_precision:
+            from tensorflow.keras.mixed_precision import experimental as mixed_precision
+            self.policy = mixed_precision.Policy('mixed_float16')
+            mixed_precision.set_policy(self.policy)
 
         batch_dims = self.larcv_fetcher.batch_dims(1)
 
@@ -76,9 +81,9 @@ class tf_trainer(trainercore):
 
 
         # Used to accumulate gradients over several iterations:
-        with tf.variable_scope("gradient_accumulation"):
+        with tf.compat.v1.variable_scope("gradient_accumulation"):
             self._accum_vars = [tf.Variable(tv.initialized_value(),
-                                trainable=False) for tv in tf.trainable_variables()]
+                                trainable=False) for tv in tf.compat.v1.trainable_variables()]
 
 
         if self.args.mode == "train" or self.args.mode == "inference":
@@ -102,11 +107,10 @@ class tf_trainer(trainercore):
             self._output = dict()
 
             # Take the logits (which are one per plane) and create a softmax and prediction (one per plane)
-            with tf.variable_scope("prediction"):
-                # self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
+            with tf.compat.v1.variable_scope("prediction"):
                 self._output['prediction'] = [ tf.argmax(x, axis=self._channels_dim) for x in self._logits]
 
-            with tf.variable_scope("cross_entropy"):
+            with tf.compat.v1.variable_scope("cross_entropy"):
                 self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
 
                 self._input['split_labels'] = [
@@ -138,7 +142,7 @@ class tf_trainer(trainercore):
                 self._metrics[f"plane{p}/Neutrino_IoU"]            = self._accuracy["neut_iou"][p]
                 self._metrics[f"plane{p}/Cosmic_IoU"]              = self._accuracy["cosmic_iou"][p]
 
-            with tf.variable_scope("accuracy"):
+            with tf.compat.v1.variable_scope("accuracy"):
                 self._metrics["Average/Total_Accuracy"]          = tf.reduce_mean(self._accuracy["total_accuracy"])
                 self._metrics["Average/Non_Background_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
                 self._metrics["Average/Neutrino_IoU"]            = tf.reduce_mean(self._accuracy["neut_iou"])
@@ -162,7 +166,7 @@ class tf_trainer(trainercore):
 
     def print_network_info(self):
         n_trainable_parameters = 0
-        for var in tf.trainable_variables():
+        for var in tf.compat.v1.trainable_variables():
             n_trainable_parameters += numpy.prod(var.get_shape())
             # print(var.name, var.get_shape())
         sys.stdout.write("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
@@ -352,6 +356,11 @@ class tf_trainer(trainercore):
             self._opt = tf.compat.v1.train.AdamOptimizer(self._learning_rate)
 
 
+        if self.args.mixed_precision:
+            from tensorflow.keras.mixed_precision import experimental as mixed_precision
+            self._opt = mixed_precision.LossScaleOptimizer(self._opt, loss_scale='dynamic')
+
+
 
         # self._train_op = self._opt.minimize(self._loss, self._global_step)
 
@@ -361,7 +370,7 @@ class tf_trainer(trainercore):
             self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
                                      i, gv in enumerate(self._opt.compute_gradients(self._loss))]
 
-            self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.trainable_variables()),
+            self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.compat.v1.trainable_variables()),
                 global_step = self._global_step)
 
 
@@ -459,6 +468,8 @@ class tf_trainer(trainercore):
 
     def val_step(self, gs):
 
+        if self.args.aux_file is None:
+            return
 
         if self._val_writer is None or self.args.synthetic:
             return
@@ -520,7 +531,6 @@ class tf_trainer(trainercore):
         return
 
     def train_step(self):
-
 
         global_start_time = datetime.datetime.now()
 
@@ -818,7 +828,6 @@ class tf_trainer(trainercore):
             if self.args.training and self._iteration >= self.args.iterations:
                 self.print('Finished training (iteration %d)' % self._iteration)
                 break
-
             if self.args.mode == 'train':
                 gs = self.train_step()
                 self.val_step(gs)

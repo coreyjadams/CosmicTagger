@@ -14,7 +14,7 @@ class AccuracyCalculator(object):
 
         # Labels is a list of tensors
         # Logits is a list of tensors
-        with tf.name_scope("accuracy"):
+        with tf.compat.v1.variable_scope("accuracy"):
             n_planes = 3
             accuracies = {
                 "total_accuracy"   : [None]*n_planes,

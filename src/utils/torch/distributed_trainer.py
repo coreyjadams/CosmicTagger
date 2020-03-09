@@ -171,7 +171,7 @@ class distributed_trainer(torch_trainer):
             state = None
 
         if state is not None and hvd.rank() == 0:
-            self.load_state(state)
+            self.restore_state(state)
 
         # Broadcast the state of the model:
         hvd.broadcast_parameters(self._net.state_dict(), root_rank = 0)

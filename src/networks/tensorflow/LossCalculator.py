@@ -34,7 +34,7 @@ class LossCalculator(object):
         # This function receives the inputs labels and logits and returns a loss.\
         # If there is balancing scheme specified, weights are computed on the fly
 
-        with tf.compat.v1.name_scope('cross_entropy'):
+        with tf.compat.v1.variable_scope('cross_entropy'):
 
             loss = None
 
