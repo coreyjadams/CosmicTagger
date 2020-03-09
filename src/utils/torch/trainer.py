@@ -84,7 +84,7 @@ class torch_trainer(trainercore):
         self.restore_model()
 
         # If using half precision on the model, convert it now:
-        if self.args.model_half_precision:
+        if self.args.mixed_precision:
             self._net.half()
 
         if self.args.compute_mode == "CPU":
@@ -365,7 +365,7 @@ class torch_trainer(trainercore):
                 total_images = self.args.minibatch_size
                 images_per_second = total_images / (self._current_log_time - self._previous_log_time).total_seconds()
                 time_string.append("{:.2} Img/s".format(images_per_second))
-                
+
             if 'io_fetch_time' in metrics.keys():
                 time_string.append("{:.2} IOs".format(metrics['io_fetch_time']))
 
@@ -512,7 +512,7 @@ class torch_trainer(trainercore):
         return minibatch_data
 
     def reduce_precision(self, minibatch_data):
-        if self.args.input_half_precision:
+        if self.args.mixed_precision:
             minibatch_data['image'] = minibatch_data['image'].half()
 
 
@@ -698,7 +698,7 @@ class torch_trainer(trainercore):
         # self._net.train()
 
         # Fetch the next batch of data with larcv
-        minibatch_data = self.larcv_fetcher.fetch_next_batch("aux",metadata=True)
+        minibatch_data = self.larcv_fetcher.fetch_next_batch("train", force_pop=True)
 
         # Convert the input data to torch tensors
         minibatch_data = self.to_torch(minibatch_data)
@@ -715,9 +715,9 @@ class torch_trainer(trainercore):
         if self.args.aux_file is not None:
 
             # To use the PyUtils class, we have to massage the data
-            features = (logits.features).cpu()
-            coords   = (logits.get_spatial_locations()).cpu()
-            coords = coords[:,0:-1]
+            # features = (logits.features).cpu()
+            # coords   = (logits.get_spatial_locations()).cpu()
+            # coords = coords[:,0:-1]
 
             # Compute the softmax:
             features = torch.nn.Softmax(dim=1)(features)
@@ -789,10 +789,9 @@ class torch_trainer(trainercore):
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss
-            loss = self._calculate_loss(labels_image, logits_image, minibatch_data['weight'])
+            loss = self.loss_calculator(labels_image, logits_image)
 
             # Compute the metrics for this iteration:
-            self.print("computing metrics for entry ", minibatch_data['entries'][0])
             metrics = self._compute_metrics(logits_image, labels_image, loss)
 
 

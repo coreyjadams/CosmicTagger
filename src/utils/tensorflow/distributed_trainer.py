@@ -14,8 +14,10 @@ for i, p in enumerate(sys.path):
         sys.path.pop(i)
 
 import horovod.tensorflow as hvd
-# from horovod.tensorflow.keras import DistributedOptimizer
 hvd.init()
+os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+
+# from horovod.tensorflow.keras import DistributedOptimizer
 
 
 
@@ -125,7 +127,8 @@ class distributed_trainer(tf_trainer):
         if self.args.synthetic:
             return self.args.minibatch_size
         else:
-            return self.args.minibatch_size / hvd.size()
+            lbs = int(self.args.minibatch_size / hvd.size())
+            return lbs
 
 
     def restore_model(self):

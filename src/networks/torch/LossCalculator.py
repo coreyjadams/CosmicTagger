@@ -82,7 +82,7 @@ class LossCalculator(torch.nn.Module):
                         weights = torch.full(labels[i].shape, per_pixel_weight)
                         weights[labels[i] == 1 ] = 1.5 * per_pixel_weight
                         weights[labels[i] == 2 ] = 10  * per_pixel_weight
-            
+
 
                 total_weight = torch.sum(weights)
 
@@ -98,7 +98,3 @@ class LossCalculator(torch.nn.Module):
 
 
         return loss
-
-
-
-

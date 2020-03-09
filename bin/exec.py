@@ -112,15 +112,10 @@ The most commonly used commands are:
         ### Torch Specific
         ##################################################################
 
-        parser.add_argument('--model-half-precision',
+        parser.add_argument('--mixed-precision',
             type    = str2bool,
             default = False,
-            help    = "Use half precision for model weights and parameters.")
-
-        parser.add_argument('--input-half-precision',
-            type    = str2bool,
-            default = False,
-            help    = "Use half precision for input values and intermediate activations.")
+            help    = "Use mixed precision for training.")
 
         parser.add_argument('--loss-scale',
             type    = float,
@@ -261,8 +256,28 @@ The most commonly used commands are:
 
 
     def inference(self):
-        pass
+        self.parser = argparse.ArgumentParser(
+            description     = 'Run Network Inference',
+            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
 
+        self.add_io_arguments(self.parser)
+        self.add_core_configuration(self.parser)
+        self.add_shared_training_arguments(self.parser)
+
+        self.add_network_parser(self.parser)
+
+        self.args = self.parser.parse_args(sys.argv[2:])
+        self.args.training = False
+        self.args.mode = "inference"
+
+
+        self.make_trainer()
+
+        print("Running Inference")
+        print(self.__str__())
+
+        self.trainer.initialize()
+        self.trainer.batch_process()
 
     def __str__(self):
         s = "\n\n-- CONFIG --\n"
@@ -319,10 +334,10 @@ The most commonly used commands are:
         return parser
 
     def add_io_arguments(self, parser):
-        
-        data_directory = "/lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/"
+
+        # data_directory = "/lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/"
         # data_directory = "/Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging/"
-        # data_directory = "/gpfs/jlse-fs0/users/cadams/datasets/cosmic_tagging/"
+        data_directory = "/gpfs/jlse-fs0/users/cadams/datasets/cosmic_tagging/"
 
         # IO PARAMETERS FOR INPUT:
         parser.add_argument('-f','--file',
@@ -343,6 +358,7 @@ The most commonly used commands are:
         # IO PARAMETERS FOR AUX INPUT:
         parser.add_argument('--aux-file',
             type    = str,
+            # default = None,
             default = data_directory + "cosmic_tagging_test.h5",
             help    = "IO Aux Input File, or output file in inference mode")
 
