@@ -98,7 +98,7 @@ class torch_trainer(trainercore):
 
         # For half precision, we disable gradient accumulation.  This is to allow
         # dynamic loss scaling
-        if self.args.model_half_precision or self.args.input_half_precision:
+        if self.args.mixed_precision:
             if self.args.gradient_accumulation > 1:
                 raise Exception("Can not accumulate gradients in half precision.")
 
@@ -584,7 +584,7 @@ class torch_trainer(trainercore):
 
             loss = self.loss_calculator(labels_image, logits_image)
             # We do dynamic loss scaling to put the loss in a reasonable range:
-            if self.args.model_half_precision or self.args.input_half_precision:
+            if self.args.mixed_precision:
                 if loss > 1e3:
                     self._loss_scale = 1000
                 elif loss < 1e-3:
@@ -685,7 +685,7 @@ class torch_trainer(trainercore):
             # Compute the loss based on the logits
             loss = self.loss_calculator(labels_image, logits_image)
 
-            if self.args.model_half_precision or self.args.input_half_precision:
+            if self.args.mixed_precision:
                 if loss > 1e-3:
                     self._loss_scale = 1000
                 elif loss < 1e-3:
