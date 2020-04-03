@@ -41,6 +41,7 @@ The most commonly used commands are:
         # use dispatch pattern to invoke method with same name
         getattr(self, args.command)()
 
+
     def add_shared_training_arguments(self, parser):
 
         ##################################################################
@@ -203,11 +204,14 @@ The most commonly used commands are:
         self.args.mode = "iotest"
 
         print("Running IO Test")
-        print(self.__str__())
+        
 
         self.make_trainer()
 
         self.trainer.initialize(io_only=True)
+        
+        # Trainer's print will automatically restrict to one rank in MPI mode:
+        self.trainer.print(self.__str__())
 
         # label_stats = numpy.zeros((36,))
         global_start = time.time()
@@ -219,15 +223,15 @@ The most commonly used commands are:
             # label_stats += numpy.sum(mb['label'], axis=0)
 
             end = time.time()
-            if not self.args.distributed:
-                print(i, ": Time to fetch a minibatch of data: {}".format(end - start))
-            else:
-                if self.trainer._rank == 0:
-                    print(i, ": Time to fetch a minibatch of data: {}".format(end - start))
-            # time.sleep(0.5)
+            # if not self.args.distributed:
+            self.trainer.print(i, ": Time to fetch a minibatch of data: {}".format(end - start))
+            # else:
+            #     if self.trainer._rank == 0:
+            #         print(i, ": Time to fetch a minibatch of data: {}".format(end - start))
         # print(label_stats)
+        # time.sleep(0.1)
+        self.trainer.print("Total IO Time: ", time.time() - global_start)
 
-        print("Total IO Time: ", time.time() - global_start)
     def make_trainer(self):
 
         self.validate_arguments()
@@ -336,8 +340,8 @@ The most commonly used commands are:
     def add_io_arguments(self, parser):
 
         # data_directory = "/lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/"
-        # data_directory = "/Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging/"
-        data_directory = "/gpfs/jlse-fs0/users/cadams/datasets/cosmic_tagging/"
+        data_directory = "/Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging/"
+        # data_directory = "/gpfs/jlse-fs0/users/cadams/datasets/cosmic_tagging/"
 
         # IO PARAMETERS FOR INPUT:
         parser.add_argument('-f','--file',
@@ -358,8 +362,8 @@ The most commonly used commands are:
         # IO PARAMETERS FOR AUX INPUT:
         parser.add_argument('--aux-file',
             type    = str,
-            # default = None,
-            default = data_directory + "cosmic_tagging_test.h5",
+            default = None,
+            # default = data_directory + "cosmic_tagging_test.h5",
             help    = "IO Aux Input File, or output file in inference mode")
 
 
@@ -402,7 +406,7 @@ The most commonly used commands are:
         if self.args.framework == "torch":
             # In torch, only option is channels first:
             if self.args.data_format == "channels_last":
-                print("Torch requires channels_first, switching automatically")
+                # print("Torch requires channels_first, switching automatically")
                 self.args.data_format = "channels_first"
 
 
