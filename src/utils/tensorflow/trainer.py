@@ -92,17 +92,7 @@ class tf_trainer(trainercore):
             # Here, if the data format is channels_first, we have to reorder the logits tensors
             # To put channels last.  Otherwise it does not work with the softmax tensors.
 
-            # if self.args.data_format != "channels_last":
-            #     # Split the channel dims apart:
-            #     for i, logit in enumerate(self._logits):
-            #         n_splits = logit.get_shape().as_list()[1]
 
-            #         # Split the tensor apart:
-            #         split = [tf.squeeze(l, 1) for l in tf.split(logit, n_splits, 1)]
-
-            #         # Stack them back together with the right shape:
-            #         self._logits[i] = tf.stack(split, -1)
-            #         print
             # Apply a softmax and argmax:
             self._output = dict()
 
@@ -151,9 +141,6 @@ class tf_trainer(trainercore):
 
 
 
-            self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
-
-
             self._metrics['loss'] = self._loss
 
 
@@ -179,14 +166,32 @@ class tf_trainer(trainercore):
         if self.args.compute_mode == "CPU":
             self._config.inter_op_parallelism_threads = self.args.inter_op_parallelism_threads
             self._config.intra_op_parallelism_threads = self.args.intra_op_parallelism_threads
-        if self.args.compute_mode == "GPU":
-            self._config.gpu_options.allow_growth = True
-            os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = "True"
+        elif self.args.compute_mode == "GPU":
+            gpus = tf.config.experimental.list_physical_devices('GPU')
+
+            # The code below is for MPS mode.  It is a bit of a hard-coded
+            # hack.  Use with caution since the memory limit is set by hand.
+            ####################################################################
+            # print(gpus)
+            # if gpus:
+            #   # Restrict TensorFlow to only allocate 1GB of memory on the first GPU
+            #   try:
+            #     tf.config.experimental.set_virtual_device_configuration(
+            #         gpus[0],
+            #         [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15000)])
+            #     # tf.config.experimental.set_memory_growth(gpus[0], True)
+            #     logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+            #     # print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+            #   except RuntimeError as e:
+            #     # Virtual devices must be set before GPUs have been initialized
+            #     print(e)
+            ####################################################################
+
 
     def initialize(self, io_only=False):
 
 
-        self._initialize_io(color=self._rank)
+        self._initialize_io(color=0)
 
         self.init_global_step()
 
@@ -536,7 +541,6 @@ class tf_trainer(trainercore):
 
         # For tensorflow, we have to build up an ops list to submit to the
         # session to run.
-
 
         metrics = None
 
