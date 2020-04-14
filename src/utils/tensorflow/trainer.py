@@ -79,11 +79,19 @@ class tf_trainer(trainercore):
 
         self._logits = self._net(self._input['image'], training=self.args.training)
 
+        # If channels first, need to permute the logits:
+        if self._channels_dim == 1:
+            permutation = tf.keras.layers.Permute((2, 3, 1))
+            self._loss_logits = [ permutation(l) for l in self._logits ]
+        else:
+            self._loss_logits = self._logits
+
 
         # Used to accumulate gradients over several iterations:
         with tf.compat.v1.variable_scope("gradient_accumulation"):
             self._accum_vars = [tf.Variable(tv.initialized_value(),
                                 trainable=False) for tv in tf.compat.v1.trainable_variables()]
+
 
 
         if self.args.mode == "train" or self.args.mode == "inference":
@@ -124,7 +132,7 @@ class tf_trainer(trainercore):
 
                 self._loss = self.loss_calculator(
                         labels = self._input['split_labels'],
-                        logits = self._logits)
+                        logits = self._loss_logits)
 
 
             self._accuracy_calc = AccuracyCalculator.AccuracyCalculator()
@@ -147,11 +155,6 @@ class tf_trainer(trainercore):
                 self._metrics["Average/Non_Background_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
                 self._metrics["Average/Neutrino_IoU"]            = tf.reduce_mean(self._accuracy["neut_iou"])
                 self._metrics["Average/Cosmic_IoU"]              = tf.reduce_mean(self._accuracy["cosmic_iou"])
-
-
-
-
-            self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
 
 
             self._metrics['loss'] = self._loss
