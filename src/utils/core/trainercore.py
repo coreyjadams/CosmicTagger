@@ -50,6 +50,8 @@ class trainercore(object):
 
         sys.stdout.write(message + "\n")
 
+    def initialize(self, io_only=True):
+        self._initialize_io(color=0)
 
     def _initialize_io(self, color=None):
 
