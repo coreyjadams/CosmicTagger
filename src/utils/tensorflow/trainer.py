@@ -45,7 +45,6 @@ class tf_trainer(trainercore):
 
         # Net construction:
         start = time.time()
-        # sys.stdout.write("Begin constructing network\n")
 
         # Here, if using mixed precision, set a global policy:
         if self.args.mixed_precision:
@@ -203,6 +202,8 @@ class tf_trainer(trainercore):
         if io_only:
             return
 
+        if self.args.training:
+            self.build_lr_schedule()
 
         start = time.time()
         graph = tf.compat.v1.get_default_graph()
@@ -221,6 +222,9 @@ class tf_trainer(trainercore):
         # Take all of the metrics and turn them into summaries:
         for key in self._metrics:
             tf.compat.v1.summary.scalar(key, self._metrics[key])
+
+        # Add the learning rate as a summary too:
+        tf.compat.v1.summary.scalar('learning_rate', self._learning_rate)
 
         if self.args.mode != "inference":
 
@@ -252,7 +256,9 @@ class tf_trainer(trainercore):
 
 
     def init_learning_rate(self):
-        self._learning_rate = self.args.learning_rate
+        # Use a place holder for the learning rate :
+        self._learning_rate = tf.compat.v1.placeholder(floating_point_format, (), name="lr")
+
 
 
     def restore_model(self):
@@ -271,13 +277,17 @@ class tf_trainer(trainercore):
         self.print("Restoring checkpoint from ", path)
         self._saver.restore(self._sess, path)
 
+        # self.scheduler.set_current_step(self.get_current_global_step())
+
         return True
 
-    def checkpoint(self, global_step):
+    def checkpoint(self):
 
-        if global_step % self.args.checkpoint_iteration == 0 and global_step != 0:
+        gs = self.get_current_global_step()
+
+        if gs % self.args.checkpoint_iteration == 0 and gs != 0:
             # Save a checkpoint, but don't do it on the first pass
-            self.save_model(global_step)
+            self.save_model(gs)
 
     def get_checkpoint_dir(self):
 
@@ -401,29 +411,30 @@ class tf_trainer(trainercore):
         ''' Create images of the labels and prediction to show training progress
         '''
 
-        with tf.compat.v1.variable_scope('summary_images/'):
 
 
-            images = []
+        images = []
 
-            # Labels is an unsplit tensor, prediction is a split tensor
-            split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
-            prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
+        # Labels is an unsplit tensor, prediction is a split tensor
+        split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
+        prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
 
-            if self.args.data_format == "channels_first":
-                split_labels = [ tf.transpose(l, [0, 2, 3, 1]) for l in split_labels]
-                prediction   = [ tf.transpose(p, [0, 2, 3, 1]) for p in prediction]
+        if self.args.data_format == "channels_first":
+            split_labels = [ tf.transpose(l, [0, 2, 3, 1]) for l in split_labels]
+            prediction   = [ tf.transpose(p, [0, 2, 3, 1]) for p in prediction]
 
 
-            for p in range(len(split_labels)):
+        for p in range(len(split_labels)):
+
 
                 images.append(
-                    tf.compat.v1.summary.image('label_plane_{}'.format(p),
+                    tf.compat.v1.summary.image('label/plane_{}'.format(p),
                                  split_labels[p],
                                  max_outputs=1)
                     )
+
                 images.append(
-                    tf.compat.v1.summary.image('pred_plane_{}'.format(p),
+                    tf.compat.v1.summary.image('prediction/plane_{}'.format(p),
                                  prediction[p],
                                  max_outputs=1)
                     )
@@ -467,7 +478,7 @@ class tf_trainer(trainercore):
         # It allows a handle to the distributed network to allreduce metrics.
         return metrics
 
-    def val_step(self, gs):
+    def val_step(self):
 
         if self.args.aux_file is None:
             return
@@ -475,7 +486,8 @@ class tf_trainer(trainercore):
         if self._val_writer is None or self.args.synthetic:
             return
 
-        if gs % self.args.aux_iteration == 0:
+
+        if self._global_step % self.args.aux_iteration == 0:
 
 
             do_summary_images = self._iteration != 0 and self._iteration % 50*self.args.summary_iteration == 0
@@ -582,7 +594,8 @@ class tf_trainer(trainercore):
 
             ##############################################
             # This is for NOT profiling.
-            ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
+            fd = self.feed_dict(inputs = minibatch_data)
+            ops = self._sess.run(ops, feed_dict = fd)
             ##############################################
 
             # ##############################################
@@ -621,7 +634,9 @@ class tf_trainer(trainercore):
                     summary_images = ops['summary_images']
 
         # Lastly, update the weights:
-        self._sess.run(self._apply_gradients)
+
+        self._sess.run(self._apply_gradients, 
+            feed_dict = {self._learning_rate : fd[self._learning_rate]})
 
         # Normalize the metrics:
         for key in metrics:
@@ -674,10 +689,13 @@ class tf_trainer(trainercore):
         # Compute global step per second:
         self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
 
-        return ops["global_step"]
+        # self._global_step = ops["global_step"]
+
+        return
 
 
-
+    def get_current_global_step(self):
+        return self._sess.run(self._global_step)
 
 
     def stop(self):
@@ -826,39 +844,11 @@ class tf_trainer(trainercore):
 
             if inputs[key] is not None:
                 fd.update({self._input[key] : inputs[key]})
+
+        fd.update({self._learning_rate : self.lr_calculator(self.get_current_global_step())})
         return fd
 
-
-    def batch_process(self, verbose=True):
-
-        start = time.time()
-        post_one_time = None
-        post_two_time = None
-        # Run iterations
-        for self._iteration in range(self.args.iterations):
-            if self.args.training and self._iteration >= self.args.iterations:
-                self.print('Finished training (iteration %d)' % self._iteration)
-                break
-            if self.args.mode == 'train':
-                gs = self.train_step()
-                self.val_step(gs)
-                self.checkpoint(gs)
-            elif self.args.mode == 'inference':
-                self.ana_step()
-            else:
-                raise Exception("Don't know what to do with mode ", self.args.mode)
-
-            if post_one_time is None:
-                post_one_time = time.time()
-            elif post_two_time is None:
-                post_two_time = time.time()
-
+    def close_savers(self):
         if self.args.mode == 'inference':
             if self._larcv_interface._writer is not None:
                 self._larcv_interface._writer.finalize()
-
-        end = time.time()
-
-        self.print("Total time to batch_process: ", end - start)
-        self.print("Total time to batch process except first iteration: ", end - post_one_time)
-        self.print("Total time to batch process except first two iterations: ", end - post_two_time)
