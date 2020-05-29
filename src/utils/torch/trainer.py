@@ -63,7 +63,7 @@ class torch_trainer(trainercore):
         # Here we set up weights using the aggregate metrics for the dataset:
 
 
-        self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
+        self._log_keys = ['loss', 'Average/Non_Bkg_Accuracy', 'Average/mIoU']
 
     def initialize(self, io_only=False):
 
@@ -150,12 +150,12 @@ class torch_trainer(trainercore):
     def init_saver(self):
 
         # This sets up the summary saver:
-        self._saver = tensorboardX.SummaryWriter(self.args.log_directory)
+        self._saver = tensorboardX.SummaryWriter(self.args.log_directory + "/torch/train/")
 
         if self.args.aux_file is not None and self.args.training:
-            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/test/")
+            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/torch/test/")
         elif self.args.aux_file is not None and not self.args.training:
-            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/val/")
+            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/torch/val/")
         else:
             self._aux_saver = None
         # This code is supposed to add the graph definition.
@@ -295,10 +295,11 @@ class torch_trainer(trainercore):
         '''
 
         accuracy = {}
-        accuracy['accuracy']         = []
-        accuracy['acc-cosmic-iou']   = []
-        accuracy['acc-neutrino-iou'] = []
-        accuracy['acc-non-zero']     = []
+        accuracy['Average/Total_Accuracy']   = 0.0
+        accuracy['Average/Cosmic_IoU']       = 0.0
+        accuracy['Average/Neutrino_IoU']     = 0.0
+        accuracy['Average/Non_Bkg_Accuracy'] = 0.0
+        accuracy['Average/mIoU']             = 0.0
 
 
         for plane in [0,1,2]:
@@ -331,13 +332,18 @@ class torch_trainer(trainercore):
             cosmic_iou = ( (cosmic_prediction_locations & cosmic_label_locations).sum().float() + 0.01) /  ((cosmic_prediction_locations | cosmic_label_locations).sum().float() + 0.01)
 
 
-            accuracy['accuracy'].append(torch.mean(correct))
-            accuracy['acc-cosmic-iou'].append(cosmic_iou)
-            accuracy['acc-neutrino-iou'].append(neutrino_iou)
-            accuracy['acc-non-zero'].append(non_zero_accuracy)
+            accuracy[f'plane{plane}/Total_Accuracy']   = torch.mean(correct)
+            accuracy[f'plane{plane}/Cosmic_IoU']       = cosmic_iou
+            accuracy[f'plane{plane}/Neutrino_IoU']     = neutrino_iou
+            accuracy[f'plane{plane}/Non_Bkg_Accuracy'] = non_zero_accuracy
+            accuracy[f'plane{plane}/mIoU']             = 0.5*(cosmic_iou + neutrino_iou)
 
+            accuracy['Average/Total_Accuracy']   += (0.3333333)*torch.mean(correct)
+            accuracy['Average/Cosmic_IoU']       += (0.3333333)*cosmic_iou
+            accuracy['Average/Neutrino_IoU']     += (0.3333333)*neutrino_iou
+            accuracy['Average/Non_Bkg_Accuracy'] += (0.3333333)*non_zero_accuracy
+            accuracy['Average/mIoU']             += (0.3333333)*(0.5)*(cosmic_iou + neutrino_iou)
 
-        accuracy = { key : torch.mean(torch.stack(accuracy[key])) for key in accuracy }
 
 
         return accuracy

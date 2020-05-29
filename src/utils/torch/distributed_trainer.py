@@ -151,6 +151,7 @@ class distributed_trainer(torch_trainer):
         if self._rank == 0:
             torch_trainer.print(self, *argv)
 
+            
     def init_saver(self):
         if hvd.rank() == 0:
             torch_trainer.init_saver(self)

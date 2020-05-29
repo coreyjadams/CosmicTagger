@@ -135,21 +135,23 @@ class tf_trainer(trainercore):
 
             self._metrics = {}
             for p in [0,1,2]:
-                self._metrics[f"plane{p}/Total_Accuracy"]          = self._accuracy["total_accuracy"][p]
-                self._metrics[f"plane{p}/Non_Background_Accuracy"] = self._accuracy["non_bkg_accuracy"][p]
-                self._metrics[f"plane{p}/Neutrino_IoU"]            = self._accuracy["neut_iou"][p]
-                self._metrics[f"plane{p}/Cosmic_IoU"]              = self._accuracy["cosmic_iou"][p]
+                self._metrics[f"plane{p}/Total_Accuracy"]   = self._accuracy["total_accuracy"][p]
+                self._metrics[f"plane{p}/Non_Bkg_Accuracy"] = self._accuracy["non_bkg_accuracy"][p]
+                self._metrics[f"plane{p}/Neutrino_IoU"]     = self._accuracy["neut_iou"][p]
+                self._metrics[f"plane{p}/Cosmic_IoU"]       = self._accuracy["cosmic_iou"][p]
+                self._metrics[f"plane{p}/mIoU"]             = self._accuracy["miou"][p]
 
             with tf.compat.v1.variable_scope("accuracy"):
-                self._metrics["Average/Total_Accuracy"]          = tf.reduce_mean(self._accuracy["total_accuracy"])
-                self._metrics["Average/Non_Background_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
-                self._metrics["Average/Neutrino_IoU"]            = tf.reduce_mean(self._accuracy["neut_iou"])
-                self._metrics["Average/Cosmic_IoU"]              = tf.reduce_mean(self._accuracy["cosmic_iou"])
+                self._metrics["Average/Total_Accuracy"]   = tf.reduce_mean(self._accuracy["total_accuracy"])
+                self._metrics["Average/Non_Bkg_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
+                self._metrics["Average/Neutrino_IoU"]     = tf.reduce_mean(self._accuracy["neut_iou"])
+                self._metrics["Average/Cosmic_IoU"]       = tf.reduce_mean(self._accuracy["cosmic_iou"])
+                self._metrics["Average/mIoU"]             = tf.reduce_mean(self._accuracy["miou"])
 
 
             self._metrics['loss'] = self._loss
 
-        self._log_keys = ["loss", "Average/Non_Background_Accuracy"]
+        self._log_keys = ["loss", "Average/Non_Bkg_Accuracy", "Average/mIoU"]
 
         end = time.time()
         return end - start
@@ -159,7 +161,7 @@ class tf_trainer(trainercore):
         for var in tf.compat.v1.trainable_variables():
             n_trainable_parameters += numpy.prod(var.get_shape())
             # print(var.name, var.get_shape())
-        sys.stdout.write("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
+        self.print("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
 
 
     def set_compute_parameters(self):
@@ -206,7 +208,7 @@ class tf_trainer(trainercore):
         graph = tf.compat.v1.get_default_graph()
         net_time = self.init_network()
 
-        sys.stdout.write("Done constructing network. ({0:.2}s)\n".format(time.time()-start))
+        self.print("Done constructing network. ({0:.2}s)\n".format(time.time()-start))
 
 
         self.print_network_info()
@@ -257,11 +259,8 @@ class tf_trainer(trainercore):
         ''' This function attempts to restore the model from file
         '''
 
-        if self.args.checkpoint_directory == None:
-            file_path= self.args.log_directory  + "/checkpoints/"
-        else:
-            file_path= self.args.checkpoint_directory  + "/checkpoints/"
-
+        file_path = self.get_checkpoint_dir()
+        
         path = tf.train.latest_checkpoint(file_path)
 
 
@@ -280,19 +279,22 @@ class tf_trainer(trainercore):
             # Save a checkpoint, but don't do it on the first pass
             self.save_model(global_step)
 
+    def get_checkpoint_dir(self):
+
+        # Find the base path of the log directory
+        if self.args.checkpoint_directory == None:
+            file_path= self.args.log_directory  + "/tf/checkpoints/"
+        else:
+            file_path= self.args.checkpoint_directory  + "/tf/checkpoints/"
+
+        return file_path
 
     def save_model(self, global_step):
         '''Save the model to file
 
         '''
 
-        # name, checkpoint_file_path = self.get_model_filepath(global_step)
-        # Find the base path of the log directory
-        if self.args.checkpoint_directory == None:
-            file_path= self.args.log_directory  + "/checkpoints/"
-        else:
-            file_path= self.args.checkpoint_directory  + "/checkpoints/"
-
+        file_path = self.get_checkpoint_dir()
 
         # # Make sure the path actually exists:
         # if not os.path.isdir(os.path.dirname(file_path)):
@@ -306,12 +308,7 @@ class tf_trainer(trainercore):
 
         '''
 
-        # Find the base path of the log directory
-        if self.args.checkpoint_directory == None:
-            file_path= self.args.log_directory  + "/checkpoints/"
-        else:
-            file_path= self.args.checkpoint_directory  + "/checkpoints/"
-
+        file_path = self.get_checkpoint_dir()
 
         name = file_path + 'model-{}.ckpt'.format(global_step)
         checkpoint_file_path = file_path + "checkpoint"
@@ -321,11 +318,8 @@ class tf_trainer(trainercore):
 
     def init_saver(self):
 
-        if self.args.checkpoint_directory == None:
-            file_path= self.args.log_directory  + "/checkpoints/"
-        else:
-            file_path= self.args.checkpoint_directory  + "/checkpoints/"
-
+        file_path = self.get_checkpoint_dir()
+        
         try:
             os.makedirs(file_path)
         except:
@@ -333,14 +327,13 @@ class tf_trainer(trainercore):
 
         # Create a saver for snapshots of the network:
         self._saver = tf.compat.v1.train.Saver()
-        self._saver_dir = file_path
 
         # Create a file writer for training metrics:
-        self._main_writer = tf.compat.v1.summary.FileWriter(logdir=self.args.log_directory+"/train/")
+        self._main_writer = tf.compat.v1.summary.FileWriter(logdir=self.args.log_directory+"/tf/train/")
 
         # Additionally, in training mode if there is aux data use it for validation:
         if self.args.aux_file is not None:
-            self._val_writer = tf.compat.v1.summary.FileWriter(logdir=self.args.log_directory+"/test/")
+            self._val_writer = tf.compat.v1.summary.FileWriter(logdir=self.args.log_directory+"/tf/test/")
 
     def init_global_step(self):
         self._global_step = tf.compat.v1.train.get_or_create_global_step()
@@ -493,6 +486,9 @@ class tf_trainer(trainercore):
             # Fetch the next batch of data with larcv
             minibatch_data = self.larcv_fetcher.fetch_next_batch('aux',force_pop=True)
 
+            # Return if we get none:
+            if minibatch_data is None: return
+
             # For tensorflow, we have to build up an ops list to submit to the
             # session to run.
 
@@ -561,6 +557,10 @@ class tf_trainer(trainercore):
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
             minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
+            
+            # Abort if we get "None"
+            if minibatch_data is None: return
+            
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
@@ -694,6 +694,10 @@ class tf_trainer(trainercore):
         # Fetch the next batch of data with larcv
         io_start_time = datetime.datetime.now()
         minibatch_data = self.larcv_fetcher.fetch_next_batch("aux", metadata=True)
+
+        # Escape if we get None:
+        if minibatch_data is None: return
+
         io_end_time = datetime.datetime.now()
 
         # For tensorflow, we have to build up an ops list to submit to the

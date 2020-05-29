@@ -49,6 +49,7 @@ class trainercore(object):
         message = " ".join([ str(s) for s in argv] )
 
         sys.stdout.write(message + "\n")
+        sys.stdout.flush()
 
     def initialize(self, io_only=True):
         self._initialize_io(color=0)

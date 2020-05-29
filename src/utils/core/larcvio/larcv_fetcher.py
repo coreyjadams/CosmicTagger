@@ -1,5 +1,5 @@
 import os
-
+import time
 
 from . import data_transforms
 from . import io_templates
@@ -103,6 +103,9 @@ class larcv_fetcher(object):
             # This queues up the next data
             self._larcv_interface.prepare_next(name)
 
+            while self._larcv_interface.is_reading(name):
+                time.sleep(0.1)
+
             return self._larcv_interface.size(name)
 
 
@@ -120,6 +123,10 @@ class larcv_fetcher(object):
             minibatch_data = self._larcv_interface.fetch_minibatch_data(name,
                 pop=pop,fetch_meta_data=metadata)
             minibatch_dims = self._larcv_interface.fetch_minibatch_dims(name)
+
+            # If the returned data is None, return none and don't load more:
+            if minibatch_data is None:
+                return minibatch_data
 
             # This brings up the current data
             self._larcv_interface.prepare_next(name)
