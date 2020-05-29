@@ -9,7 +9,8 @@ from collections import OrderedDict
 import numpy
 
 # larcv_fetcher can also do synthetic IO without any larcv installation
-from . larcvio import larcv_fetcher
+from . larcvio   import larcv_fetcher
+from . scheduler import lr_scheduler
 
 import datetime
 
@@ -39,6 +40,9 @@ class trainercore(object):
             synthetic   = args.synthetic,
             sparse      = args.sparse )
 
+        if self.args.training:
+            self.scheduler = lr_scheduler(peak_lr = self.args.learning_rate)
+
         if args.data_format == "channels_first": self._channels_dim = 1
         if args.data_format == "channels_last" : self._channels_dim = -1
 
@@ -59,9 +63,82 @@ class trainercore(object):
         self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
             "train", self.args.file, self.args.minibatch_size, color)
 
+        self.scheduler.steps_per_epoch = (0.001 * self._train_data_size / self.args.minibatch_size)
+
         if self.args.aux_file is not None:
             self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
                 "aux", self.args.aux_file, self.args.minibatch_size, color)
+
+    def build_lr_schedule(self, learning_rate_schedule = None):
+        # Define the learning rate sequence:
+        
+        if learning_rate_schedule is None:
+            learning_rate_schedule = {
+                'warm_up' : {
+                    'function'      : 'linear',
+                    'start'         : 0,
+                    'n_epochs'      : 1,
+                    'initial_rate'  : 0.0001,
+                },
+                'flat' : {
+                    'function'      : 'flat',
+                    'start'         : 1,
+                    'n_epochs'      : 10,
+                },
+                'decay' : {
+                    'function'      : 'decay',
+                    'start'         : 11,
+                    'n_epochs'      : 5,
+                    'decay_rate'    : 0.99
+                },
+            }
+
+        # We build up the functions we need piecewise:
+        func_list = []
+        cond_list = []
+
+        for key in learning_rate_schedule:
+            if learning_rate_schedule[key]['function'] == 'linear':
+                start    = learning_rate_schedule[key]['start']
+                length   = learning_rate_schedule[key]['n_epochs'] 
+                initial_rate = learning_rate_schedule[key]['initial_rate']
+                if 'final_rate' in learning_rate_schedule[key]: final_rate = learning_rate_schedule[key]['final_rate']
+                else: final_rate = self.args.learning_rate
+
+                function = lambda x, s=start, l=length, i=initial_rate, f=final_rate : numpy.interp(x - s, [s, s + l] ,[i, f] )
+                condition = lambda x, s=start, l=length: x >= s and x < s + l
+                # condition = lambda x, s=start, l=length: x
+                func_list.append(function)
+                cond_list.append(condition)
+
+            elif learning_rate_schedule[key]['function'] == 'flat':
+                start    = learning_rate_schedule[key]['start']
+                length   = learning_rate_schedule[key]['n_epochs'] 
+                if 'rate' in learning_rate_schedule[key]: rate = learning_rate_schedule[key]['rate']
+                else: rate = self.args.learning_rate
+
+                function = lambda x : rate
+                condition = lambda x, s=start, l=length : x >= s and x < s + l
+                func_list.append(function)
+                cond_list.append(condition)
+                
+            elif learning_rate_schedule[key]['function'] == 'decay':
+                start    = learning_rate_schedule[key]['start']
+                length   = learning_rate_schedule[key]['n_epochs'] 
+                decay    = learning_rate_schedule[key]['decay_rate']
+                if 'rate' in learning_rate_schedule[key]: rate = learning_rate_schedule[key]['rate']
+                else: rate = self.args.learning_rate
+
+                function = lambda x, s=start, d=decay : rate * numpy.exp( -(d * (x - s)))
+                condition = lambda x, s=start, l=length : x >= s and x < s + l
+                func_list.append(function)
+                cond_list.append(condition)
+
+        self.cond_list = cond_list
+        self.func_list = func_list
+        self.lr_calculator = lambda x: numpy.piecewise(
+            x * (self.args.minibatch_size / self._train_data_size) , 
+            [c(x * (self.args.minibatch_size / self._train_data_size)) for c in cond_list], func_list)
 
 
     def init_network(self):
@@ -111,23 +188,43 @@ class trainercore(object):
         # self._larcv_interface.stop()
         pass
 
+    def close_savers(self):
+        pass
 
-    def batch_process(self, verbose=True):
+    def batch_process(self):
+
+
+        start = time.time()
+        post_one_time = None
+        post_two_time = None
+
+        # This is the 'master' function, so it controls a lot
 
         # Run iterations
-        for self._iteration in range(FLAGS.ITERATIONS):
-            if FLAGS.TRAINING and self._iteration >= FLAGS.ITERATIONS:
-                self.log('Finished training (iteration %d)' % self._iteration)
+        for self._iteration in range(self.args.iterations):
+            if self.args.training and self._iteration >= self.args.iterations:
+                self.print('Finished training (iteration %d)' % self._iteration)
+                self.checkpoint()
                 break
 
-            if FLAGS.MODE == 'train':
-                gs = self.train_step()
-                self.val_step(gs)
-                self.checkpoint(gs)
-            elif FLAGS.MODE == 'inference':
-                self.ana_step()
-            else:
-                raise Exception("Don't know what to do with mode ", FLAGS.MODE)
 
-        if FLAGS.MODE == 'inference':
-            self._larcv_interface._writer.finalize()
+            if self.args.training:
+                self.val_step()
+                self.train_step()
+                self.checkpoint()
+                # self.scheduler.step()
+            else:
+                self.ana_step()
+
+            if post_one_time is None:
+                post_one_time = time.time()
+            elif post_two_time is None:
+                post_two_time = time.time()
+
+        self.close_savers()
+
+        end = time.time()
+
+        self.print("Total time to batch_process: ", end - start)
+        self.print("Total time to batch process except first iteration: ", end - post_one_time)
+        self.print("Total time to batch process except first two iterations: ", end - post_two_time)
