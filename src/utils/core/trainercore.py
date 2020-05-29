@@ -10,7 +10,6 @@ import numpy
 
 # larcv_fetcher can also do synthetic IO without any larcv installation
 from . larcvio   import larcv_fetcher
-from . scheduler import lr_scheduler
 
 import datetime
 
@@ -40,9 +39,6 @@ class trainercore(object):
             synthetic   = args.synthetic,
             sparse      = args.sparse )
 
-        if self.args.training:
-            self.scheduler = lr_scheduler(peak_lr = self.args.learning_rate)
-
         if args.data_format == "channels_first": self._channels_dim = 1
         if args.data_format == "channels_last" : self._channels_dim = -1
 
@@ -62,8 +58,6 @@ class trainercore(object):
 
         self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
             "train", self.args.file, self.args.minibatch_size, color)
-
-        self.scheduler.steps_per_epoch = (0.001 * self._train_data_size / self.args.minibatch_size)
 
         if self.args.aux_file is not None:
             self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
@@ -212,7 +206,6 @@ class trainercore(object):
                 self.val_step()
                 self.train_step()
                 self.checkpoint()
-                # self.scheduler.step()
             else:
                 self.ana_step()
 
