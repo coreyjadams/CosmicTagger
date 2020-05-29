@@ -15,8 +15,8 @@ torch.backends.cudnn.benchmark = False
 
 # from torch.jit import trace
 
-from src.utils.core.trainercore     import trainercore
-from src.networks.torch             import LossCalculator
+from src.utils.core.trainercore import trainercore
+from src.networks.torch         import LossCalculator
 
 
 
@@ -37,6 +37,7 @@ class torch_trainer(trainercore):
         trainercore.__init__(self, args)
         self._rank = None
         self._loss_scale = 1.0
+
 
     def init_network(self):
 
@@ -71,6 +72,9 @@ class torch_trainer(trainercore):
 
         if io_only:
             return
+
+        if self.args.training:
+            self.build_lr_schedule()
 
         self.init_network()
 
@@ -122,27 +126,20 @@ class torch_trainer(trainercore):
 
     def init_optimizer(self):
 
+        # get the initial learning_rate:
+        initial_learning_rate = self.lr_calculator(self._global_step)
+
+        # IMPORTANT: the scheduler in torch is a multiplicative factor,
+        # but I've written it as learning rate itself.  So set the LR to 1.0
         if self.args.optimizer == "adam":
-            # Create an optimizer:
-            if self.args.learning_rate <= 0:
-                self._opt = torch.optim.Adam(self._net.parameters())
-            else:
-                self._opt = torch.optim.Adam(self._net.parameters(), self.args.learning_rate)
+            self._opt = torch.optim.Adam(self._net.parameters(), 1.0)
         elif self.args.optimizer == "rmsprop":
-            # Create an optimizer:
-            if self.args.learning_rate <= 0:
-                self._opt = torch.optim.RMSprop(self._net.parameters(), eps=1e-4)
-            else:
-                self._opt = torch.optim.RMSprop(self._net.parameters(), self.args.learning_rate, eps=1e-4)
+            self._opt = torch.optim.RMSprop(self._net.parameters(), 1.0, eps=1e-4)
         else:
-            # Create an optimizer:
-            if self.args.learning_rate <= 0:
-                self._opt = torch.optim.SGD(self._net.parameters())
-            else:
-                self._opt = torch.optim.SGD(self._net.parameters(), self.args.learning_rate)
+            self._opt = torch.optim.SGD(self._net.parameters(), 1.0)
 
 
-
+        self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
 
 
@@ -198,6 +195,10 @@ class torch_trainer(trainercore):
         self._net.load_state_dict(state['state_dict'])
         self._opt.load_state_dict(state['optimizer'])
         self._global_step = state['global_step']
+        self.lr_scheduler.load_state_dict(state['scheduler'])
+
+        # Set the current step in the LR scheduler:
+        self.scheduler.set_current_step(self._global_step)
 
         # If using GPUs, move the model to GPU:
         if self.args.compute_mode == "GPU":
@@ -220,6 +221,7 @@ class torch_trainer(trainercore):
             'global_step' : self._global_step,
             'state_dict'  : self._net.state_dict(),
             'optimizer'   : self._opt.state_dict(),
+            'scheduler'   : self.lr_scheduler.state_dict(),
         }
 
         # Make sure the path actually exists:
@@ -384,7 +386,7 @@ class torch_trainer(trainercore):
                 time_string.append("{:.2} IOs".format(metrics['io_fetch_time']))
 
             if 'step_time' in metrics.keys():
-                time_string.append("{:.2} Step(s)".format(metrics['step_time']))
+                time_string.append("{:.2} (Step)(s)".format(metrics['step_time']))
 
             if len(time_string) > 0:
                 s += " (" + " / ".join(time_string) + ")"
@@ -409,6 +411,7 @@ class torch_trainer(trainercore):
 
 
             # try to get the learning rate
+
             self._saver.add_scalar("learning_rate", self._opt.state_dict()['param_groups'][0]['lr'], self._global_step)
             return
 
@@ -642,6 +645,8 @@ class torch_trainer(trainercore):
         step_start_time = datetime.datetime.now()
         # Apply the parameter update:
         self._opt.step()
+        self.lr_scheduler.step()
+        
         if verbose: self.print("Updated Weights")
         global_end_time = datetime.datetime.now()
 
@@ -831,43 +836,9 @@ class torch_trainer(trainercore):
 
         return
 
-    def batch_process(self):
-
-
-        start = time.time()
-        post_one_time = None
-        post_two_time = None
-
-        # This is the 'master' function, so it controls a lot
-
-        # Run iterations
-        for self._iteration in range(self.args.iterations):
-            if self.args.training and self._iteration >= self.args.iterations:
-                self.print('Finished training (iteration %d)' % self._iteration)
-                self.checkpoint()
-                break
-
-
-            if self.args.training:
-                self.val_step()
-                self.train_step()
-                self.checkpoint()
-            else:
-                self.ana_step()
-
-            if post_one_time is None:
-                post_one_time = time.time()
-            elif post_two_time is None:
-                post_two_time = time.time()
-
-
+    def close_savers(self):
         if self._saver is not None:
             self._saver.close()
         if self._aux_saver is not None:
             self._aux_saver.close()
 
-        end = time.time()
-
-        self.print("Total time to batch_process: ", end - start)
-        self.print("Total time to batch process except first iteration: ", end - post_one_time)
-        self.print("Total time to batch process except first two iterations: ", end - post_two_time)
