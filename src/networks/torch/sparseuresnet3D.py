@@ -424,6 +424,16 @@ class UResNet3D(torch.nn.Module):
         #         nn.init.constant_(m.weight, 1)
         #         nn.init.constant_(m.bias, 0)
 
+        # Use this tensor to shift the background label predictions for empty locations
+        self.empty_voxel = torch.tensor([100., 0,0])
+        self.empty_image = torch.zeros(size=[3,spatial_size[0], spatial_size[1]])
+        self.empty_image[0,:,:] = 100
+        
+    def cuda(self, *args):
+        torch.nn.Module.cuda(self, *args)
+
+        self.empty_voxel = self.empty_voxel.cuda()
+        self.empty_image = self.empty_image.cuda()
 
     def convert_to_scn(self, _input):
 
@@ -452,15 +462,21 @@ class UResNet3D(torch.nn.Module):
 
         x = self.bottleneck(x)
 
+        # Shift all pixels down in the "background category:"
+        x.features -= self.empty_voxel
 
         # Convert the images to dense layout:
         x = self._s_to_d(x)
+
 
 
         # Break the images into 3 planes:
         x = torch.chunk(x, chunks=3, dim=2)
         x = [ _x.view(_x.shape[0], _x.shape[1], _x.shape[-2], _x.shape[-1]) for _x in x ]
 
+        # Replace all of the locations that are 0 from spare to SparseToDense
+        # With a very high background score:
+        x = [ _x + self.empty_image for _x in x ]
 
 
 

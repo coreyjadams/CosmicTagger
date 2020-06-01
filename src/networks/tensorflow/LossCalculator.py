@@ -57,7 +57,6 @@ class LossCalculator(object):
                         counts = self.label_counts(labels[i])
 
                         class_weights = tf.constant(0.3333, dtype=tf.float32)/(counts + tf.constant(1.0, dtype=tf.float32))
-
                         weights = tf.fill(labels[i].shape, class_weights[0])
                         for i in [1,2]:
                             local_weights = tf.fill(labels[i].shape, class_weights[i])
@@ -72,16 +71,19 @@ class LossCalculator(object):
                         per_pixel_weight = 1./(total_pixels)
                         per_pixel_weight = per_pixel_weight.astype(numpy.float32)
 
+
                         weights = tf.fill(labels[i].shape, per_pixel_weight)
                         for i in [1,2]:
-                            local_weights = tf.fill(labels[i].shape, 10.0)
+                            if i == 1:
+                                local_weights = tf.fill(labels[i].shape, 1.5)
+                            else:
+                                local_weights = tf.fill(labels[i].shape, 10.0)
                             weights = tf.where(labels[i] == i, local_weights, weights)
 
 
                     weights = tf.stop_gradient(weights)
 
-                    plane_loss *= weights
-                    plane_loss = tf.reduce_mean(input_tensor=plane_loss)
+                    # plane_loss = tf.reduce_mean(input_tensor=plane_loss)
                     total_weight = tf.reduce_sum(weights)
 
 

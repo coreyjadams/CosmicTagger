@@ -44,7 +44,7 @@ def larcvsparse_to_dense_2d(input_array, dense_shape, dataformat):
     values  = val_coords[batch_index, plane_index, voxel_index]
     x_index = numpy.int32(x_coords[batch_index, plane_index, voxel_index])
     y_index = numpy.int32(y_coords[batch_index, plane_index, voxel_index])
-    
+
     # print(numpy.min(x_index))
     # print(numpy.min(y_index))
     # print()
@@ -89,7 +89,7 @@ def larcvsparse_to_scnsparse_2d(input_array):
         plane = numpy.squeeze(plane, axis=1)
 
         # Next, figure out the x, y, value coordinates:
-        y,x,features = numpy.split(plane, 3, axis=-1)
+        x,y,features = numpy.split(plane, 3, axis=-1)
 
         # print("X: ",numpy.max(x))
         # print("Y: ", numpy.max(y))

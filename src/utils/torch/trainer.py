@@ -144,12 +144,16 @@ class torch_trainer(trainercore):
     def init_saver(self):
 
         # This sets up the summary saver:
-        self._saver = tensorboardX.SummaryWriter(self.args.log_directory + "/torch/train/")
+        dir = self.args.log_directory
+        if "torch" not in dir:
+            dir = dir + "/torch/"
+
+        self._saver = tensorboardX.SummaryWriter(dir + "/train/")
 
         if self.args.aux_file is not None and self.args.training:
-            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/torch/test/")
+            self._aux_saver = tensorboardX.SummaryWriter(dir + "/test/")
         elif self.args.aux_file is not None and not self.args.training:
-            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/torch/val/")
+            self._aux_saver = tensorboardX.SummaryWriter(dir + "/val/")
         else:
             self._aux_saver = None
         # This code is supposed to add the graph definition.
@@ -421,14 +425,12 @@ class torch_trainer(trainercore):
             for plane in range(3):
                 val, prediction = torch.max(logits_image[plane][0], dim=0)
                 # This is a reshape to add the required channels dimension:
-                print(prediction.shape)
                 prediction = prediction.view(
                     [1, prediction.shape[-2], prediction.shape[-1]]
                     ).float()
 
 
                 labels = labels_image[plane][0]
-                print(labels.shape)
                 labels =labels.view(
                     [1,labels.shape[-2],labels.shape[-1]]
                     ).float()
@@ -557,7 +559,6 @@ class torch_trainer(trainercore):
 
     def train_step(self):
 
-
         # For a train step, we fetch data, run a forward and backward pass, and
         # if this is a logging step, we compute some logging metrics.
 
@@ -643,13 +644,11 @@ class torch_trainer(trainercore):
 
         if verbose: self.print("Calculated metrics")
 
-
-
         step_start_time = datetime.datetime.now()
         # Apply the parameter update:
         self._opt.step()
         self.lr_scheduler.step()
-        
+
         if verbose: self.print("Updated Weights")
         global_end_time = datetime.datetime.now()
 
@@ -844,4 +843,3 @@ class torch_trainer(trainercore):
             self._saver.close()
         if self._aux_saver is not None:
             self._aux_saver.close()
-

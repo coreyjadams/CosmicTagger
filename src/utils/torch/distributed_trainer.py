@@ -43,11 +43,6 @@ class distributed_trainer(torch_trainer):
             os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
         self._rank            = hvd.rank()
 
-        sys.stdout.write(f"Rank {self._rank} entering the __init__ barrier")
-        sys.stdout.flush()
-        comm.Barrier()
-
-
         # Make sure that 'LEARNING_RATE' and 'TRAINING'
         # are in net network parameters:
 
@@ -66,8 +61,8 @@ class distributed_trainer(torch_trainer):
         # This takes the base optimizer (self._opt) and replaces
         # it with a distributed version
 
-
         torch_trainer.init_optimizer(self)
+
 
         self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
@@ -77,7 +72,7 @@ class distributed_trainer(torch_trainer):
         if self._rank == 0:
             torch_trainer.print(self, *argv)
 
-            
+
     def init_saver(self):
         if hvd.rank() == 0:
             torch_trainer.init_saver(self)
@@ -111,6 +106,15 @@ class distributed_trainer(torch_trainer):
 
         # Broadcast the optimizer state:
         hvd.broadcast_optimizer_state(self._opt, root_rank = 0)
+
+        # Horovod doesn't actually move the optimizer onto a GPU:
+        if self.args.compute_mode == "GPU":
+            for state in self._opt.state.values():
+                for k, v in state.items():
+                    if torch.is_tensor(v):
+                        state[k] = v.cuda()
+
+
 
         # Broadcast the LR Schedule state:
         state_dict = hvd.broadcast_object(self.lr_scheduler.state_dict(), root_rank = 0)
