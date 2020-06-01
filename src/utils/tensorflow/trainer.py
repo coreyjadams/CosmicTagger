@@ -18,6 +18,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
 
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+
 from tensorflow.python.client import timeline
 
 floating_point_format = tf.float32
@@ -358,9 +360,6 @@ class tf_trainer(trainercore):
             # Use RMS prop:
             self.print("Selected optimizer is RMS Prop")
             self._opt = tf.compat.v1.train.RMSPropOptimizer(self._learning_rate)
-        elif 'LARS' in self.args.optimizer.upper():
-            self.print("Selected optimizer is LARS")
-            self._opt = tf.contrib.opt.LARSOptimizer(self._learning_rate)
         else:
             # default is Adam:
             self.print("Using default Adam optimizer")
@@ -483,11 +482,12 @@ class tf_trainer(trainercore):
         if self.args.aux_file is None:
             return
 
-        if self._val_writer is None or self.args.synthetic:
+        if self.args.synthetic:
             return
 
+        gs = self.get_current_global_step()
 
-        if self._global_step % self.args.aux_iteration == 0:
+        if gs % self.args.aux_iteration == 0:
 
 
             do_summary_images = self._iteration != 0 and self._iteration % 50*self.args.summary_iteration == 0
@@ -506,7 +506,6 @@ class tf_trainer(trainercore):
 
             # These are ops that always run:
             ops = {}
-            ops['global_step'] = self._global_step
             ops['summary'] = self._summary_basic
 
             if do_summary_images:
@@ -527,23 +526,23 @@ class tf_trainer(trainercore):
             if verbose: self.print("Calculated metrics")
 
             # Report metrics on the terminal:
-            self.log(ops["metrics"], kind="Test", step=ops["global_step"])
+            self.log(ops["metrics"], kind="Test", step=gs)
 
 
             if verbose: self.print("Completed Log")
 
-            self.write_summaries(self._val_writer, ops["summary"], ops["global_step"])
+            self.write_summaries(self._val_writer, ops["summary"], gs)
 
 
             if do_summary_images:
-                self.write_summaries(self._val_writer, ops["summary_images"], ops["global_step"])
+                self.write_summaries(self._val_writer, ops["summary_images"], gs)
 
 
             if verbose: self.print("Summarized")
 
 
 
-            return ops["global_step"]
+            return gs
         return
 
     def train_step(self):

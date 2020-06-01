@@ -131,7 +131,7 @@ class trainercore(object):
         self.cond_list = cond_list
         self.func_list = func_list
         self.lr_calculator = lambda x: numpy.piecewise(
-            x * (self.args.minibatch_size / self._train_data_size) , 
+            x * (self.args.minibatch_size / self._train_data_size), 
             [c(x * (self.args.minibatch_size / self._train_data_size)) for c in cond_list], func_list)
 
 

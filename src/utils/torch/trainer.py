@@ -131,13 +131,10 @@ class torch_trainer(trainercore):
 
         # IMPORTANT: the scheduler in torch is a multiplicative factor,
         # but I've written it as learning rate itself.  So set the LR to 1.0
-        if self.args.optimizer == "adam":
-            self._opt = torch.optim.Adam(self._net.parameters(), 1.0)
-        elif self.args.optimizer == "rmsprop":
+        if "RMS" in self.args.optimizer.upper():
             self._opt = torch.optim.RMSprop(self._net.parameters(), 1.0, eps=1e-4)
         else:
-            self._opt = torch.optim.SGD(self._net.parameters(), 1.0)
-
+            self._opt = torch.optim.Adam(self._net.parameters(), 1.0)
 
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 

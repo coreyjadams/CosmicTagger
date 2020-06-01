@@ -66,7 +66,7 @@ class AccuracyCalculator(object):
                     else :
                         accuracies['neut_iou'][p]   = iou
 
-                accuracies['miou'][p] = tf.reduce_mean(accuracies['cosmic_iou'][p] + accuracies['neut_iou'][p])
+                accuracies['miou'][p] = 0.5*(accuracies['cosmic_iou'][p] + accuracies['neut_iou'][p])
 
 
             return accuracies

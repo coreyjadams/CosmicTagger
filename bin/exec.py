@@ -331,8 +331,8 @@ The most commonly used commands are:
     def add_io_arguments(self, parser):
 
         # data_directory = "/lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/"
-        # data_directory = "/Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging/"
-        data_directory = "/gpfs/jlse-fs0/users/cadams/datasets/cosmic_tagging/"
+        data_directory = "/Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging/"
+        # data_directory = "/gpfs/jlse-fs0/users/cadams/datasets/cosmic_tagging/"
 
         # IO PARAMETERS FOR INPUT:
         parser.add_argument('-f','--file',
