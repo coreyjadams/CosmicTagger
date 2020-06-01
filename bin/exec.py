@@ -166,8 +166,8 @@ The most commonly used commands are:
 
         self.make_trainer()
 
-        print("Running Training")
-        print(self.__str__())
+        self.trainer.print("Running Training")
+        self.trainer.print(self.__str__())
 
         self.trainer.initialize()
         self.trainer.batch_process()
