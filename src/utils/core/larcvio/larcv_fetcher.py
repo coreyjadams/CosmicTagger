@@ -48,7 +48,7 @@ class larcv_fetcher(object):
         self.image_shape = [ int(i / self.ds) for i in self.full_image_shape ]
 
 
-    def image_shape(self):
+    def image_size(self):
         '''Return the input shape to the networks (no batch size)'''
         return self.image_shape
 

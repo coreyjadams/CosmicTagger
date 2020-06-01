@@ -50,7 +50,7 @@ class torch_trainer(trainercore):
             else:
                 from src.networks.torch.uresnet3D       import UResNet3D
 
-            self._net = UResNet3D(self.args)
+            self._net = UResNet3D(self.args, self.larcv_fetcher.image_size())
 
         # self._net.half()
 
@@ -415,12 +415,14 @@ class torch_trainer(trainercore):
             for plane in range(3):
                 val, prediction = torch.max(logits_image[plane][0], dim=0)
                 # This is a reshape to add the required channels dimension:
+                print(prediction.shape)
                 prediction = prediction.view(
                     [1, prediction.shape[-2], prediction.shape[-1]]
                     ).float()
 
 
                 labels = labels_image[plane][0]
+                print(labels.shape)
                 labels =labels.view(
                     [1,labels.shape[-2],labels.shape[-1]]
                     ).float()
@@ -618,6 +620,10 @@ class torch_trainer(trainercore):
                     metrics[key] += interior_metrics[key]
                 else:
                     metrics[key] = interior_metrics[key]
+
+        # Here, make sure to normalize the interior metrics:
+        for key in metrics:
+            metrics[key] /= self.args.gradient_accumulation
 
         # Add the global step / second to the tensorboard log:
         try:
