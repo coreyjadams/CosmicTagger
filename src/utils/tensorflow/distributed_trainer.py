@@ -66,10 +66,6 @@ class distributed_trainer(tf_trainer):
             self._val_writer = None
 
 
-        # In the distributed case, we may want a learning rate behavior:
-        self._learning_rate = self.generate_learning_rate(self.args.learning_rate, self._global_step)
-
-
     # def get_gradients(self, loss, tape, trainable_variables):
 
     #     print(gradients[0])
@@ -140,54 +136,6 @@ class distributed_trainer(tf_trainer):
             return None
 
 
-
-    def generate_learning_rate(self,
-        base_learning_rate,
-        global_step,
-        warmup_steps = 1000,
-        decay_after_step=20000):
-
-        ''' Compute the peak learning rate, the start point, and such
-        '''
-
-        # Learning rate scales linearly from a very low value to the base learning rate *sqrt(N)
-        # for the duration of the warm up steps.
-
-        # After some number of steps, the learning rate undergoes a decay by 10
-
-        # For the calculations, we need to set some constants:
-
-        core_learning_rate = tf.constant(base_learning_rate*numpy.sqrt(hvd.size()), dtype=tf.float32)
-        initial_learning_rate = tf.constant(0.000001, dtype=tf.float32)
-        warmup_steps = tf.constant(warmup_steps, dtype = tf.float32)
-
-
-        # So, there are 3 phases: warm up, steady state, decay
-
-
-        # First, have to decide what state we are in.
-
-        scaled_learning_rate = initial_learning_rate +  core_learning_rate * (tf.cast(global_step, tf.float32) / warmup_steps)
-
-        # Warm up phase:
-        this_learning_rate = tf.math.minimum(scaled_learning_rate, core_learning_rate)
-
-
-        # # Cool down phase:
-        # this_learning_rate = tf.cond( global_step > decay_after_step,
-        #     lambda: 0.1* core_learning_rate,
-        #     lambda: this_learning_rate
-        #     )
-
-        lr_summary = tf.summary.scalar("LearningRate", this_learning_rate)
-
-        # # Need to add this directly to the merged summary op:
-        # self._summary_basic = tf.summary.merge([lr_summary, self._summary_basic])
-
-        return this_learning_rate
-
-
-
     def save_model(self, gs):
         if hvd.rank() != 0:
             return
@@ -206,9 +154,9 @@ class distributed_trainer(tf_trainer):
         else:
             tf_trainer.log(self, metrics, kind, step)
 
-    def batch_process(self):
+    # def batch_process(self):
 
-        if hvd.rank() == 0:
-            tf_trainer.batch_process(self, verbose=True)
-        else:
-            tf_trainer.batch_process(self, verbose=False)
+    #     if hvd.rank() == 0:
+    #         tf_trainer.batch_process(self)
+    #     else:
+    #         tf_trainer.batch_process(self)

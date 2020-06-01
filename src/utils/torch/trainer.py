@@ -15,8 +15,8 @@ torch.backends.cudnn.benchmark = False
 
 # from torch.jit import trace
 
-from src.utils.core.trainercore     import trainercore
-from src.networks.torch             import LossCalculator
+from src.utils.core.trainercore import trainercore
+from src.networks.torch         import LossCalculator
 
 
 
@@ -37,6 +37,7 @@ class torch_trainer(trainercore):
         trainercore.__init__(self, args)
         self._rank = None
         self._loss_scale = 1.0
+
 
     def init_network(self):
 
@@ -63,7 +64,7 @@ class torch_trainer(trainercore):
         # Here we set up weights using the aggregate metrics for the dataset:
 
 
-        self._log_keys = ['loss', 'accuracy', 'acc-cosmic-iou', 'acc-neutrino-iou']
+        self._log_keys = ['loss', 'Average/Non_Bkg_Accuracy', 'Average/mIoU']
 
     def initialize(self, io_only=False):
 
@@ -71,6 +72,9 @@ class torch_trainer(trainercore):
 
         if io_only:
             return
+
+        if self.args.training:
+            self.build_lr_schedule()
 
         self.init_network()
 
@@ -122,27 +126,17 @@ class torch_trainer(trainercore):
 
     def init_optimizer(self):
 
-        if self.args.optimizer == "adam":
-            # Create an optimizer:
-            if self.args.learning_rate <= 0:
-                self._opt = torch.optim.Adam(self._net.parameters())
-            else:
-                self._opt = torch.optim.Adam(self._net.parameters(), self.args.learning_rate)
-        elif self.args.optimizer == "rmsprop":
-            # Create an optimizer:
-            if self.args.learning_rate <= 0:
-                self._opt = torch.optim.RMSprop(self._net.parameters(), eps=1e-4)
-            else:
-                self._opt = torch.optim.RMSprop(self._net.parameters(), self.args.learning_rate, eps=1e-4)
+        # get the initial learning_rate:
+        initial_learning_rate = self.lr_calculator(self._global_step)
+
+        # IMPORTANT: the scheduler in torch is a multiplicative factor,
+        # but I've written it as learning rate itself.  So set the LR to 1.0
+        if "RMS" in self.args.optimizer.upper():
+            self._opt = torch.optim.RMSprop(self._net.parameters(), 1.0, eps=1e-4)
         else:
-            # Create an optimizer:
-            if self.args.learning_rate <= 0:
-                self._opt = torch.optim.SGD(self._net.parameters())
-            else:
-                self._opt = torch.optim.SGD(self._net.parameters(), self.args.learning_rate)
+            self._opt = torch.optim.Adam(self._net.parameters(), 1.0)
 
-
-
+        self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
 
 
@@ -150,12 +144,12 @@ class torch_trainer(trainercore):
     def init_saver(self):
 
         # This sets up the summary saver:
-        self._saver = tensorboardX.SummaryWriter(self.args.log_directory)
+        self._saver = tensorboardX.SummaryWriter(self.args.log_directory + "/torch/train/")
 
         if self.args.aux_file is not None and self.args.training:
-            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/test/")
+            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/torch/test/")
         elif self.args.aux_file is not None and not self.args.training:
-            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/val/")
+            self._aux_saver = tensorboardX.SummaryWriter(self.args.log_directory + "/torch/val/")
         else:
             self._aux_saver = None
         # This code is supposed to add the graph definition.
@@ -198,6 +192,10 @@ class torch_trainer(trainercore):
         self._net.load_state_dict(state['state_dict'])
         self._opt.load_state_dict(state['optimizer'])
         self._global_step = state['global_step']
+        self.lr_scheduler.load_state_dict(state['scheduler'])
+
+        # Set the current step in the LR scheduler:
+        self.scheduler.set_current_step(self._global_step)
 
         # If using GPUs, move the model to GPU:
         if self.args.compute_mode == "GPU":
@@ -220,6 +218,7 @@ class torch_trainer(trainercore):
             'global_step' : self._global_step,
             'state_dict'  : self._net.state_dict(),
             'optimizer'   : self._opt.state_dict(),
+            'scheduler'   : self.lr_scheduler.state_dict(),
         }
 
         # Make sure the path actually exists:
@@ -295,10 +294,11 @@ class torch_trainer(trainercore):
         '''
 
         accuracy = {}
-        accuracy['accuracy']         = []
-        accuracy['acc-cosmic-iou']   = []
-        accuracy['acc-neutrino-iou'] = []
-        accuracy['acc-non-zero']     = []
+        accuracy['Average/Total_Accuracy']   = 0.0
+        accuracy['Average/Cosmic_IoU']       = 0.0
+        accuracy['Average/Neutrino_IoU']     = 0.0
+        accuracy['Average/Non_Bkg_Accuracy'] = 0.0
+        accuracy['Average/mIoU']             = 0.0
 
 
         for plane in [0,1,2]:
@@ -331,13 +331,18 @@ class torch_trainer(trainercore):
             cosmic_iou = ( (cosmic_prediction_locations & cosmic_label_locations).sum().float() + 0.01) /  ((cosmic_prediction_locations | cosmic_label_locations).sum().float() + 0.01)
 
 
-            accuracy['accuracy'].append(torch.mean(correct))
-            accuracy['acc-cosmic-iou'].append(cosmic_iou)
-            accuracy['acc-neutrino-iou'].append(neutrino_iou)
-            accuracy['acc-non-zero'].append(non_zero_accuracy)
+            accuracy[f'plane{plane}/Total_Accuracy']   = torch.mean(correct)
+            accuracy[f'plane{plane}/Cosmic_IoU']       = cosmic_iou
+            accuracy[f'plane{plane}/Neutrino_IoU']     = neutrino_iou
+            accuracy[f'plane{plane}/Non_Bkg_Accuracy'] = non_zero_accuracy
+            accuracy[f'plane{plane}/mIoU']             = 0.5*(cosmic_iou + neutrino_iou)
 
+            accuracy['Average/Total_Accuracy']   += (0.3333333)*torch.mean(correct)
+            accuracy['Average/Cosmic_IoU']       += (0.3333333)*cosmic_iou
+            accuracy['Average/Neutrino_IoU']     += (0.3333333)*neutrino_iou
+            accuracy['Average/Non_Bkg_Accuracy'] += (0.3333333)*non_zero_accuracy
+            accuracy['Average/mIoU']             += (0.3333333)*(0.5)*(cosmic_iou + neutrino_iou)
 
-        accuracy = { key : torch.mean(torch.stack(accuracy[key])) for key in accuracy }
 
 
         return accuracy
@@ -378,7 +383,7 @@ class torch_trainer(trainercore):
                 time_string.append("{:.2} IOs".format(metrics['io_fetch_time']))
 
             if 'step_time' in metrics.keys():
-                time_string.append("{:.2} Step(s)".format(metrics['step_time']))
+                time_string.append("{:.2} (Step)(s)".format(metrics['step_time']))
 
             if len(time_string) > 0:
                 s += " (" + " / ".join(time_string) + ")"
@@ -403,6 +408,7 @@ class torch_trainer(trainercore):
 
 
             # try to get the learning rate
+
             self._saver.add_scalar("learning_rate", self._opt.state_dict()['param_groups'][0]['lr'], self._global_step)
             return
 
@@ -642,6 +648,8 @@ class torch_trainer(trainercore):
         step_start_time = datetime.datetime.now()
         # Apply the parameter update:
         self._opt.step()
+        self.lr_scheduler.step()
+        
         if verbose: self.print("Updated Weights")
         global_end_time = datetime.datetime.now()
 
@@ -831,43 +839,9 @@ class torch_trainer(trainercore):
 
         return
 
-    def batch_process(self):
-
-
-        start = time.time()
-        post_one_time = None
-        post_two_time = None
-
-        # This is the 'master' function, so it controls a lot
-
-        # Run iterations
-        for self._iteration in range(self.args.iterations):
-            if self.args.training and self._iteration >= self.args.iterations:
-                self.print('Finished training (iteration %d)' % self._iteration)
-                self.checkpoint()
-                break
-
-
-            if self.args.training:
-                self.val_step()
-                self.train_step()
-                self.checkpoint()
-            else:
-                self.ana_step()
-
-            if post_one_time is None:
-                post_one_time = time.time()
-            elif post_two_time is None:
-                post_two_time = time.time()
-
-
+    def close_savers(self):
         if self._saver is not None:
             self._saver.close()
         if self._aux_saver is not None:
             self._aux_saver.close()
 
-        end = time.time()
-
-        self.print("Total time to batch_process: ", end - start)
-        self.print("Total time to batch process except first iteration: ", end - post_one_time)
-        self.print("Total time to batch process except first two iterations: ", end - post_two_time)

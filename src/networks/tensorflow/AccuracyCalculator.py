@@ -20,7 +20,8 @@ class AccuracyCalculator(object):
                 "total_accuracy"   : [None]*n_planes,
                 "non_bkg_accuracy" : [None]*n_planes,
                 "neut_iou"         : [None]*n_planes,
-                "cosmic_iou"       : [None]*n_planes
+                "cosmic_iou"       : [None]*n_planes,
+                "miou"             : [None]*n_planes
             }
 
             for p in range(n_planes):
@@ -65,6 +66,7 @@ class AccuracyCalculator(object):
                     else :
                         accuracies['neut_iou'][p]   = iou
 
+                accuracies['miou'][p] = 0.5*(accuracies['cosmic_iou'][p] + accuracies['neut_iou'][p])
 
 
             return accuracies
