@@ -198,9 +198,6 @@ class torch_trainer(trainercore):
         self._global_step = state['global_step']
         self.lr_scheduler.load_state_dict(state['scheduler'])
 
-        # Set the current step in the LR scheduler:
-        self.scheduler.set_current_step(self._global_step)
-
         # If using GPUs, move the model to GPU:
         if self.args.compute_mode == "GPU":
             for state in self._opt.state.values():
