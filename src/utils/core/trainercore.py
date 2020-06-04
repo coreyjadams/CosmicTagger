@@ -84,7 +84,7 @@ class trainercore(object):
                     'start'         : 21,
                     'n_epochs'      : 4,
                     'floor'         : 0.00001,
-                    'decay_rate'    : 0.99
+                    'decay_rate'    : 0.999
                 },
             }
 
@@ -120,7 +120,6 @@ class trainercore(object):
 
         for i, key in enumerate(learning_rate_schedule):
 
-            print(learning_rate_schedule[key]['function'])
             # First, create the condition for this stage
             start    = learning_rate_schedule[key]['start']
             length   = learning_rate_schedule[key]['n_epochs'] 
@@ -138,9 +137,6 @@ class trainercore(object):
                 initial_rate = learning_rate_schedule[key]['initial_rate']
                 if 'final_rate' in learning_rate_schedule[key]: final_rate = learning_rate_schedule[key]['final_rate']
                 else: final_rate = self.args.learning_rate
-
-                print(initial_rate)
-                print(final_rate)
 
                 function = lambda x, s=start, l=length, i=initial_rate, f=final_rate : numpy.interp(x, [s, s + l] ,[i, f] )
 
@@ -162,8 +158,8 @@ class trainercore(object):
             func_list.append(function)
 
         self.lr_calculator = lambda x: numpy.piecewise(
-            x * 3000*(self.args.minibatch_size / self._train_data_size), 
-            [c(x * 3000*(self.args.minibatch_size / self._train_data_size)) for c in cond_list], func_list)
+            x * (self.args.minibatch_size / self._train_data_size), 
+            [c(x * (self.args.minibatch_size / self._train_data_size)) for c in cond_list], func_list)
 
 
     def init_network(self):
