@@ -72,67 +72,98 @@ class trainercore(object):
                     'function'      : 'linear',
                     'start'         : 0,
                     'n_epochs'      : 1,
-                    'initial_rate'  : 0.0001,
+                    'initial_rate'  : 0.00001,
                 },
                 'flat' : {
                     'function'      : 'flat',
                     'start'         : 1,
-                    'n_epochs'      : 10,
+                    'n_epochs'      : 20,
                 },
                 'decay' : {
                     'function'      : 'decay',
-                    'start'         : 11,
-                    'n_epochs'      : 5,
+                    'start'         : 21,
+                    'n_epochs'      : 4,
+                    'floor'         : 0.00001,
                     'decay_rate'    : 0.99
                 },
             }
+
+        # one_cycle_schedule = {
+        #     'ramp_up' : {
+        #         'function'      : 'linear',
+        #         'start'         : 0,
+        #         'n_epochs'      : 10,
+        #         'initial_rate'  : 0.00001,
+        #         'final_rate'    : 0.001,
+        #     },
+        #     'ramp_down' : {
+        #         'function'      : 'linear',
+        #         'start'         : 10,
+        #         'n_epochs'      : 10,
+        #         'initial_rate'  : 0.001,
+        #         'final_rate'    : 0.00001,
+        #     },
+        #     'decay' : {
+        #         'function'      : 'decay',
+        #         'start'         : 20,
+        #         'n_epochs'      : 5,
+        #         'rate'          : 0.00001
+        #         'floor'         : 0.00001,
+        #         'decay_rate'    : 0.99
+        #     },
+        # }
+        # learning_rate_schedule = one_cycle_schedule
 
         # We build up the functions we need piecewise:
         func_list = []
         cond_list = []
 
-        for key in learning_rate_schedule:
+        for i, key in enumerate(learning_rate_schedule):
+
+            print(learning_rate_schedule[key]['function'])
+            # First, create the condition for this stage
+            start    = learning_rate_schedule[key]['start']
+            length   = learning_rate_schedule[key]['n_epochs'] 
+
+            if i +1 == len(learning_rate_schedule):
+                # Make sure the condition is open ended if this is the last stage
+                condition = lambda x, s=start, l=length: x >= s
+            else:
+                # otherwise bounded
+                condition = lambda x, s=start, l=length: x >= s and x < s + l
+
+
             if learning_rate_schedule[key]['function'] == 'linear':
-                start    = learning_rate_schedule[key]['start']
-                length   = learning_rate_schedule[key]['n_epochs'] 
+
                 initial_rate = learning_rate_schedule[key]['initial_rate']
                 if 'final_rate' in learning_rate_schedule[key]: final_rate = learning_rate_schedule[key]['final_rate']
                 else: final_rate = self.args.learning_rate
 
-                function = lambda x, s=start, l=length, i=initial_rate, f=final_rate : numpy.interp(x - s, [s, s + l] ,[i, f] )
-                condition = lambda x, s=start, l=length: x >= s and x < s + l
-                # condition = lambda x, s=start, l=length: x
-                func_list.append(function)
-                cond_list.append(condition)
+                print(initial_rate)
+                print(final_rate)
+
+                function = lambda x, s=start, l=length, i=initial_rate, f=final_rate : numpy.interp(x, [s, s + l] ,[i, f] )
 
             elif learning_rate_schedule[key]['function'] == 'flat':
-                start    = learning_rate_schedule[key]['start']
-                length   = learning_rate_schedule[key]['n_epochs'] 
                 if 'rate' in learning_rate_schedule[key]: rate = learning_rate_schedule[key]['rate']
                 else: rate = self.args.learning_rate
 
                 function = lambda x : rate
-                condition = lambda x, s=start, l=length : x >= s and x < s + l
-                func_list.append(function)
-                cond_list.append(condition)
                 
             elif learning_rate_schedule[key]['function'] == 'decay':
-                start    = learning_rate_schedule[key]['start']
-                length   = learning_rate_schedule[key]['n_epochs'] 
                 decay    = learning_rate_schedule[key]['decay_rate']
+                floor    = learning_rate_schedule[key]['floor']
                 if 'rate' in learning_rate_schedule[key]: rate = learning_rate_schedule[key]['rate']
                 else: rate = self.args.learning_rate
 
-                function = lambda x, s=start, d=decay : rate * numpy.exp( -(d * (x - s)))
-                condition = lambda x, s=start, l=length : x >= s and x < s + l
-                func_list.append(function)
-                cond_list.append(condition)
+                function = lambda x, s=start, d=decay, f=floor: (rate-f) * numpy.exp( -(d * (x - s))) + f
+            
+            cond_list.append(condition)
+            func_list.append(function)
 
-        self.cond_list = cond_list
-        self.func_list = func_list
         self.lr_calculator = lambda x: numpy.piecewise(
-            x * (self.args.minibatch_size / self._train_data_size), 
-            [c(x * (self.args.minibatch_size / self._train_data_size)) for c in cond_list], func_list)
+            x * 3000*(self.args.minibatch_size / self._train_data_size), 
+            [c(x * 3000*(self.args.minibatch_size / self._train_data_size)) for c in cond_list], func_list)
 
 
     def init_network(self):
