@@ -69,8 +69,6 @@ class tf_trainer(trainercore):
 
         # Build the network object, forward pass only:
 
-        self._metrics = {}
-
         if self.args.conv_mode == '2D':
             self._net = uresnet2D.UResNet(self.args)
         else:
@@ -124,6 +122,10 @@ class tf_trainer(trainercore):
                 self._loss = self.loss_calculator(
                         labels = self._input['split_labels'],
                         logits = self._loss_logits)
+
+
+            if self.args.mode == "inference":
+                self._output['softmax'] = [tf.nn.softmax(x, axis=self._channels_dim) for x in self._logits]
 
 
             self._accuracy_calc = AccuracyCalculator.AccuracyCalculator()
@@ -225,8 +227,9 @@ class tf_trainer(trainercore):
         for key in self._metrics:
             tf.compat.v1.summary.scalar(key, self._metrics[key])
 
-        # Add the learning rate as a summary too:
-        tf.compat.v1.summary.scalar('learning_rate', self._learning_rate)
+        if self.args.training:
+            # Add the learning rate as a summary too:
+            tf.compat.v1.summary.scalar('learning_rate', self._learning_rate)
 
         if self.args.mode != "inference":
 
@@ -657,7 +660,6 @@ class tf_trainer(trainercore):
 
         if verbose: self.print("Calculated metrics")
 
-
         # Report metrics on the terminal:
         self.log(metrics, kind="Train", step=ops["global_step"])
 
@@ -710,7 +712,7 @@ class tf_trainer(trainercore):
 
         # Fetch the next batch of data with larcv
         io_start_time = datetime.datetime.now()
-        minibatch_data = self.larcv_fetcher.fetch_next_batch("aux", metadata=True)
+        minibatch_data = self.larcv_fetcher.fetch_next_batch("aux")
 
         # Escape if we get None:
         if minibatch_data is None: return
@@ -844,7 +846,8 @@ class tf_trainer(trainercore):
             if inputs[key] is not None:
                 fd.update({self._input[key] : inputs[key]})
 
-        fd.update({self._learning_rate : self.lr_calculator(self.get_current_global_step())})
+        if self.args.training:
+            fd.update({self._learning_rate : self.lr_calculator(self.get_current_global_step())})
         return fd
 
     def close_savers(self):
