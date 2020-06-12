@@ -159,13 +159,20 @@ class tf_trainer(trainercore):
         end = time.time()
         return end - start
 
-    def print_network_info(self):
+    def print_network_info(self, verbose=False):
+        if verbose:
+            for var in tf.compat.v1.trainable_variables():
+                print(var)
+
+        self.print("Total number of trainable parameters in this network: {}\n".format(self.n_parameters()))
+
+
+    def n_parameters(self):
         n_trainable_parameters = 0
         for var in tf.compat.v1.trainable_variables():
             n_trainable_parameters += numpy.prod(var.get_shape())
-            # print(var.name, var.get_shape())
-        self.print("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
 
+        return n_trainable_parameters
 
     def set_compute_parameters(self):
 
@@ -758,53 +765,53 @@ class tf_trainer(trainercore):
 
         # Here is the part where we have to add output:
 
-        if self.args.aux_file is not None:
+        # if self.args.aux_file is not None:
 
-            if self.args.data_format == "channels_last":
-                locs = [ numpy.where(minibatch_data['image'][0,:,:,i] != 0) for i in [0,1,2]]
-            else:
-                locs = [ numpy.where(minibatch_data['image'][0,i,:,:] != 0) for i in [0,1,2]]
+        #     if self.args.data_format == "channels_last":
+        #         locs = [ numpy.where(minibatch_data['image'][0,:,:,i] != 0) for i in [0,1,2]]
+        #     else:
+        #         locs = [ numpy.where(minibatch_data['image'][0,i,:,:] != 0) for i in [0,1,2]]
 
-            for i, label in zip([1,2], ['neutrino', 'cosmic']):
-                softmax    = []
-                prediction = []
-                for plane in [0,1,2]:
-                    if self.args.data_format == "channels_first":
-                        softmax.append(ops['softmax'][plane][0,i,:,:])
-                        # locs = numpy.where(ops['prediction'][plane][0,:,:]) == i
-                        # prediction.append({
-                        #         'index'  : locs,
-                        #         'values' : ops['prediction'][plane][locs],
-                        #         'shape'  : ops['prediction'][plane].shape
-                        #         }
-                        #     )
-                    else:
-                        softmax.append(ops['softmax'][plane][0,:,:,i])
+        #     for i, label in zip([1,2], ['neutrino', 'cosmic']):
+        #         softmax    = []
+        #         prediction = []
+        #         for plane in [0,1,2]:
+        #             if self.args.data_format == "channels_first":
+        #                 softmax.append(ops['softmax'][plane][0,i,:,:])
+        #                 # locs = numpy.where(ops['prediction'][plane][0,:,:]) == i
+        #                 # prediction.append({
+        #                 #         'index'  : locs,
+        #                 #         'values' : ops['prediction'][plane][locs],
+        #                 #         'shape'  : ops['prediction'][plane].shape
+        #                 #         }
+        #                 #     )
+        #             else:
+        #                 softmax.append(ops['softmax'][plane][0,:,:,i])
 
-                    shape = ops['prediction'][plane][0].shape
-                    locs_flat = numpy.ravel_multi_index(
-                        multi_index = locs[plane],
-                        dims        = shape
-                    )
-                    prediction.append({
-                            'index'  : locs_flat,
-                            'values' : ops['softmax'][plane][0][locs[plane]],
-                            'shape'  : shape
-                            }
-                        )
+        #             shape = ops['prediction'][plane][0].shape
+        #             locs_flat = numpy.ravel_multi_index(
+        #                 multi_index = locs[plane],
+        #                 dims        = shape
+        #             )
+        #             prediction.append({
+        #                     'index'  : locs_flat,
+        #                     'values' : ops['softmax'][plane][0][locs[plane]],
+        #                     'shape'  : shape
+        #                     }
+        #                 )
 
-                # self._larcv_interface.write_output(data=softmax,
-                #     datatype='image2d',
-                #     producer="seg_{}".format(label),
-                #     entries=minibatch_data['entries'],
-                #     event_ids=minibatch_data['event_ids'])
+        #         # self._larcv_interface.write_output(data=softmax,
+        #         #     datatype='image2d',
+        #         #     producer="seg_{}".format(label),
+        #         #     entries=minibatch_data['entries'],
+        #         #     event_ids=minibatch_data['event_ids'])
 
-                self._larcv_interface.write_output(
-                    data=prediction,
-                    datatype='sparse2d',
-                    producer = 'seg_{}'.format(label),
-                    entries=minibatch_data['entries'],
-                    event_ids=minibatch_data['event_ids'])
+        #         self._larcv_interface.write_output(
+        #             data=prediction,
+        #             datatype='sparse2d',
+        #             producer = 'seg_{}'.format(label),
+        #             entries=minibatch_data['entries'],
+        #             event_ids=minibatch_data['event_ids'])
 
 
 
@@ -814,7 +821,7 @@ class tf_trainer(trainercore):
 
         # Compute global step per second:
         self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
-        self._global_step += 1
+        # self._global_step += 1
 
         return ops["global_step"]
 
@@ -851,6 +858,7 @@ class tf_trainer(trainercore):
         return fd
 
     def close_savers(self):
-        if self.args.mode == 'inference':
-            if self._larcv_interface._writer is not None:
-                self._larcv_interface._writer.finalize()
+        pass
+        # if self.args.mode == 'inference':
+        #     if self.larcv_fetcher._writer is not None:
+        #         self.larcv_fetcher._writer.finalize()

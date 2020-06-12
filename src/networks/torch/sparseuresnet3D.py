@@ -374,7 +374,7 @@ class UResNet3D(torch.nn.Module):
         self.initial_convolution = scn.SubmanifoldConvolution(dimension=3,
             nIn         = 1,
             nOut        = params.n_initial_filters,
-            filter_size = [1,3,3],
+            filter_size = [1,5,5],
             bias        = params.use_bias)
 
 

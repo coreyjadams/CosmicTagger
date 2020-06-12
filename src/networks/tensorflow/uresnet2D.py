@@ -496,7 +496,7 @@ class UResNet(tf.keras.models.Model):
         
         self.initial_convolution = Block(
             n_filters   = params.n_initial_filters,
-            kernel      = [7,7],
+            kernel      = [5,5],
             activation  = tf.nn.leaky_relu,
             params      = params)
 
@@ -522,15 +522,15 @@ class UResNet(tf.keras.models.Model):
                 params      = params)
 
 
-        self.bottleneck = Block(
-            n_filters    = 3,
-            kernel       = [1,1],
-            strides      = [1,1],
-            params       = params,
-            activation   = None,
 
+        self.bottleneck = tf.keras.layers.Conv2D(
+            filters             = 3,
+            kernel_size         = [1,1],
+            strides             = [1,1],
+            use_bias            = params.use_bias,
+            data_format         = params.data_format,
+            kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
-
 
 
     def call(self, input_tensor, training):
@@ -558,7 +558,7 @@ class UResNet(tf.keras.models.Model):
             x = [ self.final_layer(_x, training) for _x in x ]
 
         # x = [ tf.concat([x[i], split_input[i]], axis=self.channels_axis) for i in range(3)]
-        x = [ self.bottleneck(_x, training) for _x in x ]
+        x = [ self.bottleneck(_x) for _x in x ]
 
 
         # Might need to do some reshaping here

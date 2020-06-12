@@ -26,7 +26,7 @@ class Block3D(tf.keras.models.Model):
             activation          = None,
             use_bias            = params.use_bias,
             data_format         = params.data_format,
-            kernel_regularizer  = tf.keras.regularizers.l2(l=params.regularize)
+            kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
 
 
@@ -75,7 +75,7 @@ class ConvolutionUpsample3D(tf.keras.models.Model):
             activation          = None,
             use_bias            = params.use_bias,
             data_format         = params.data_format,
-            kernel_regularizer  = tf.keras.regularizers.l2(l=params.regularize)
+            kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
 
         self.activation = activation
@@ -203,7 +203,6 @@ class DeepestBlock3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-
         if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
@@ -211,19 +210,39 @@ class DeepestBlock3D(tf.keras.models.Model):
 
         # The deepest block concats across planes, applies convolutions,
         # Then splits into planes again
-
+        n_filters_bottleneck = params.bottleneck_deepest
+        self.bottleneck = Block3D(
+                 n_filters  = n_filters_bottleneck,
+                 kernel     = [3,1,1],
+                 strides    = [1,1,1],
+                 params     = params)
 
         self.blocks = BlockSeries3D(
-            out_filters = in_filters,
+            out_filters = n_filters_bottleneck,
+            kernel      = [1, 
+                           params.filter_size_deepest,
+                           params.filter_size_deepest],
             n_blocks    = params.blocks_deepest_layer,
-            kernel      = [3,3,3],
             params      = params)
+
+        self.unbottleneck = Block3D(
+                n_filters  = in_filters,
+                kernel     = [3,1,1],
+                strides    = [1,1,1],
+                params     = params)
+
+        # self.blocks = BlockSeries3D(
+        #     out_filters = n_filters,
+        #     n_blocks    = params.blocks_deepest_layer,
+        #     kernel      = [3,3,3],
+        #     params      = params)
 
 
 
     def call(self, x, training):
-
+        x = self.bottleneck(x)
         x = self.blocks(x, training)
+        x = self.unbottleneck(x)
 
         return x
 
@@ -302,8 +321,7 @@ class InterpolationUpsample3D(tf.keras.models.Model):
 
 
         self.up = tf.keras.layers.UpSampling3D(size=[1,2,2],
-                    data_format=params.data_format,
-                    interpolation="bilinear")
+                    data_format=params.data_format)
 
         self.bottleneck = Block3D(
             n_filters   = n_filters,
@@ -392,10 +410,10 @@ class UNetCore3D(tf.keras.models.Model):
                     strides     = (1,2,2),
                     params      = params)
             else:
-                raise Exception("This ought to be unreachable!")
-                # self.upsample = InterpolationUpsample3D(
-                #     n_filters   = in_filters,
-                #     params      = params)
+                # raise Exception("This ought to be unreachable!")
+                self.upsample = InterpolationUpsample3D(
+                    n_filters   = in_filters,
+                    params      = params)
 
             # Convolutional or residual blocks for the upsampling pass:
 
@@ -472,14 +490,14 @@ class UResNet3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if data_format == "channels_first":
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
 
         self.initial_convolution = Block3D(
             n_filters   = params.n_initial_filters,
-            kernel      = [1,7,7],
+            kernel      = [1,5,5],
             activation  = tf.nn.relu,
             params      = params)
 
@@ -506,15 +524,16 @@ class UResNet3D(tf.keras.models.Model):
                 params      = params)
 
 
-        self.bottleneck = Block3D(
-            n_filters    = 3,
-            kernel       = [1,1,1],
-            strides      = [1,1,1],
-            params       = params,
-            activation   = None,
 
+        self.bottleneck = tf.keras.layers.Conv3D(
+            filters             = 3,
+            kernel_size         = [1,1,1],
+            strides             = [1,1,1],
+            activation          = None,
+            use_bias            = params.use_bias,
+            data_format         = params.data_format,
+            kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
-
 
 
     def call(self, input_tensor, training):
@@ -563,7 +582,7 @@ class UResNet3D(tf.keras.models.Model):
             x = self.final_layer(x, training)
 
         # x = [ tf.concat([x[i], split_input[i]], axis=self.channels_axis) for i in range(3)]
-        x = self.bottleneck(x, training)
+        x = self.bottleneck(x)
 
 
         # For the 3D conv case, we are still using 2D loss functions.
