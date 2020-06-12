@@ -246,5 +246,7 @@ class trainercore(object):
         end = time.time()
 
         self.print("Total time to batch_process: ", end - start)
-        self.print("Total time to batch process except first iteration: ", end - post_one_time)
-        self.print("Total time to batch process except first two iterations: ", end - post_two_time)
+        if post_one_time is not None:
+            self.print("Total time to batch process except first iteration: ", end - post_one_time)
+        if post_two_time is not None: 
+            self.print("Total time to batch process except first two iterations: ", end - post_two_time)
