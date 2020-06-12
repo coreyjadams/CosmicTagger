@@ -71,6 +71,8 @@ class larcv_fetcher(object):
             self.synthetic_images = numpy.random.random_sample(shape).astype(numpy.float32)
             self.synthetic_labels = numpy.random.randint(low=0, high=3, size=shape)
 
+            return 1e6
+
         else:
             config = io_templates.dataset_io(
                     input_file  = input_file,
