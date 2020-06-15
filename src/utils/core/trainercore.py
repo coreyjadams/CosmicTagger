@@ -59,14 +59,15 @@ class trainercore(object):
         if self.args.mode == "build_net": return
 
         # Check that the training file exists:
-        if not os.path.isfile(self.args.file):
+        if not self.args.synthetic and not os.path.isfile(self.args.file):
             raise Exception(f"Can not continue with file {self.args.file} - does not exist.")
-        if not os.path.isfile(self.args.aux_file):
+        if not self.args.synthetic and not os.path.isfile(self.args.aux_file):
             if self.args.mode == "train":
                 self.print("WARNING: Aux file does not exist.  Setting to None for training")
                 self.args.aux_file = None
             else:
-                raise Exception("Writing of output currently not supported but will be soon.")
+                self.print("Writing of output currently not supported but will be soon.")
+                self.args.aux_file = None
 
         self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
             "train", self.args.file, self.args.minibatch_size, color)

@@ -719,7 +719,7 @@ class tf_trainer(trainercore):
 
         # Fetch the next batch of data with larcv
         io_start_time = datetime.datetime.now()
-        minibatch_data = self.larcv_fetcher.fetch_next_batch("aux")
+        minibatch_data = self.larcv_fetcher.fetch_next_batch()
 
         # Escape if we get None:
         if minibatch_data is None: return
