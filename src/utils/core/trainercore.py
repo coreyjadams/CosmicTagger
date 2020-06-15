@@ -62,8 +62,10 @@ class trainercore(object):
             "train", self.args.file, self.args.minibatch_size, color)
 
         if self.args.aux_file is not None:
-            self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
-                "aux", self.args.aux_file, self.args.minibatch_size, color)
+            # Check if the file exists:
+            if os.path.isfile(self.args.aux_file):
+                self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
+                    "aux", self.args.aux_file, self.args.minibatch_size, color)
 
     def build_lr_schedule(self, learning_rate_schedule = None):
         # Define the learning rate sequence:

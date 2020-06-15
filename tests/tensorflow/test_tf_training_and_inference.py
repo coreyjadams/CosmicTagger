@@ -12,50 +12,50 @@ sys.path.insert(0,network_dir)
 
 
 
-# @pytest.mark.parametrize('synthetic', [False, True])
-# @pytest.mark.parametrize('downsample_images', [1, 2])
-# def test_tensorflow_default_network(tmpdir, synthetic, downsample_images):
+@pytest.mark.parametrize('synthetic', [False, True])
+@pytest.mark.parametrize('downsample_images', [1, 2])
+def test_tensorflow_default_network(tmpdir, synthetic, downsample_images):
     
-#     # Instead of calling the python objects, use subprocesses 
+    # Instead of calling the python objects, use subprocesses 
 
-#     # first, where is the exec.py?
-#     exec_script = network_dir + "/bin/exec.py"
+    # first, where is the exec.py?
+    exec_script = network_dir + "/bin/exec.py"
 
-#     file_path = network_dir + "/example_data/"
-#     file_path += "cosmic_tagging_light.h5"
+    file_path = network_dir + "/example_data/"
+    file_path += "cosmic_tagging_light.h5"
 
-#     args = [exec_script, "train"]
-#     args += ["--framework", "tensorflow"]
-#     args += ["--synthetic", f"{synthetic}"]
+    args = [exec_script, "train"]
+    args += ["--framework", "tensorflow"]
+    args += ["--synthetic", f"{synthetic}"]
 
-#     if not synthetic:
-#         args += ["--file", f"{file_path}"]
+    if not synthetic:
+        args += ["--file", f"{file_path}"]
 
 
-#     args += ["--iterations",  "5"]
-#     args += ["--n-initial-filters",  "1"]
-#     args += ["--network-depth",  "{}".format(6 - downsample_images)]
-#     args += ["--downsample-images",  f"{downsample_images}"]
+    args += ["--iterations",  "5"]
+    args += ["--n-initial-filters",  "1"]
+    args += ["--network-depth",  "{}".format(6 - downsample_images)]
+    args += ["--downsample-images",  f"{downsample_images}"]
     
 
 
-#     random_file_name = str(tmpdir + "/tensorflow_log_dir/")
-#     args += ["--log-directory", random_file_name]
-#     print(args)
+    random_file_name = str(tmpdir + "/tensorflow_log_dir/")
+    args += ["--log-directory", random_file_name]
+    print(args)
 
-#     completed_proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    completed_proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
-#     if completed_proc.returncode == 0:
-#         assert True
-#     else:
-#         print(completed_proc.stdout)
-#         try:
-#             print(completed_proc.stderr)
-#         except:
-#             pass
+    if completed_proc.returncode == 0:
+        assert True
+    else:
+        print(completed_proc.stdout)
+        try:
+            print(completed_proc.stderr)
+        except:
+            pass
 
-#         assert False
+        assert False
 
 
 def test_tensorflow_model_inference(tmpdir):
