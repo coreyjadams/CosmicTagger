@@ -58,14 +58,23 @@ class trainercore(object):
 
         if self.args.mode == "build_net": return
 
+        # Check that the training file exists:
+        if not os.path.isfile(self.args.file):
+            raise Exception(f"Can not continue with file {self.args.file} - does not exist.")
+        if not os.path.isfile(self.args.aux_file):
+            if self.args.mode == "train":
+                self.print("WARNING: Aux file does not exist.  Setting to None for training")
+                self.args.aux_file = None
+            else:
+                raise Exception("Writing of output currently not supported but will be soon.")
+
         self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
             "train", self.args.file, self.args.minibatch_size, color)
 
         if self.args.aux_file is not None:
             # Check if the file exists:
-            if os.path.isfile(self.args.aux_file):
-                self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
-                    "aux", self.args.aux_file, self.args.minibatch_size, color)
+            self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
+                "aux", self.args.aux_file, self.args.minibatch_size, color)
 
     def build_lr_schedule(self, learning_rate_schedule = None):
         # Define the learning rate sequence:

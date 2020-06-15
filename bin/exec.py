@@ -358,6 +358,7 @@ The most commonly used commands are:
 
         return parser
 
+
     def add_io_arguments(self, parser):
 
         # data_directory = "/lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/"
@@ -370,6 +371,12 @@ The most commonly used commands are:
             default = data_directory + "cosmic_tagging_train.h5",
             help    = "IO Input File")
 
+        parser.add_argument('--aux-file',
+            type    = str,
+            default = data_directory + "cosmic_tagging_test.h5",
+            help    = "IO Aux Input File, or output file in inference mode")
+
+
         parser.add_argument('--start-index',
             type    = int,
             default = 0,
@@ -379,14 +386,6 @@ The most commonly used commands are:
             type    = int,
             default = 2,
             help    = "Number of images in the minibatch size")
-
-        # IO PARAMETERS FOR AUX INPUT:
-        parser.add_argument('--aux-file',
-            type    = str,
-            # default = None,
-            default = data_directory + "cosmic_tagging_test.h5",
-            help    = "IO Aux Input File, or output file in inference mode")
-
 
         parser.add_argument('--aux-iteration',
             type    = int,
