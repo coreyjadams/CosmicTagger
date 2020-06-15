@@ -29,6 +29,7 @@ The most commonly used commands are:
    train         Train a network, either from scratch or restart
    inference     Run inference with a trained network
    iotest        Run IO testing without training a network
+   build_net     Build and dump network parameters, no training or IO
 ''')
         parser.add_argument('command', help='Subcommand to run')
         # parse_args defaults to [1:] for args, but you need to
@@ -268,11 +269,40 @@ The most commonly used commands are:
 
         self.make_trainer()
 
-        print("Running Inference")
-        print(self.__str__())
+        self.trainer.print("Running Inference")
+        self.trainer.print(self.__str__())
 
         self.trainer.initialize()
         self.trainer.batch_process()
+
+
+    def build_net(self):
+        self.parser = argparse.ArgumentParser(
+            description     = 'Build network and return parameters',
+            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
+
+        self.add_io_arguments(self.parser)
+        self.add_core_configuration(self.parser)
+        self.add_shared_training_arguments(self.parser)
+
+        self.add_network_parser(self.parser)
+
+        self.args = self.parser.parse_args(sys.argv[2:])
+        self.args.training = False
+        self.args.mode = "inference"
+
+
+        self.make_trainer()
+
+        self.trainer.print("Running Inference")
+        self.trainer.print(self.__str__())
+
+        # self.trainer.initialize()
+        # self.trainer.print()
+        self.trainer.init_network()
+        self.trainer.print_network_info(verbose=True)
+        self.trainer.print(F"NUMBER_OF_PARAMETERS: {self.trainer.n_parameters()}")
+        # self.trainer.batch_process()
 
     def __str__(self):
         s = "\n\n-- CONFIG --\n"

@@ -36,6 +36,7 @@ def test_torch_default_network(tmpdir, synthetic, downsample_images):
     args += ["--n-initial-filters",  "1"]
     args += ["--network-depth",  "{}".format(6 - downsample_images)]
     args += ["--downsample-images",  f"{downsample_images}"]
+    args += ["-m", "CPU"]
     
 
 
@@ -78,6 +79,7 @@ def test_torch_model_inference(tmpdir):
     args += ["--n-initial-filters",  "1"]
     args += ["--network-depth",  "4"]
     args += ["--downsample-images",  "2"]
+    args += ["-m", "CPU"]
     
 
 
@@ -108,6 +110,7 @@ def test_torch_model_inference(tmpdir):
     args += ["--network-depth",  "4"]
     args += ["--downsample-images",  "2"]
     args += ["--file", f"{file_path}"]
+    args += ["-m", "CPU"]
 
 
     random_file_name = str(tmpdir + "/torch_log_dir/")
@@ -120,6 +123,10 @@ def test_torch_model_inference(tmpdir):
     if completed_proc.returncode == 0:
         assert True
     else:
+        print()
+        print("Executed command: ")
+        print(" ".join(args))
+        print()
         print(completed_proc.stdout)
         try:
             print(completed_proc.stderr)

@@ -80,7 +80,8 @@ class torch_trainer(trainercore):
 
         self.print_network_info()
 
-        self.init_optimizer()
+        if self.args.mode == "train":
+            self.init_optimizer()
 
         self.init_saver()
 
@@ -106,15 +107,20 @@ class torch_trainer(trainercore):
             if self.args.gradient_accumulation > 1:
                 raise Exception("Can not accumulate gradients in half precision.")
 
-    def print_network_info(self):
+    def print_network_info(self, verbose=False):
+        if verbose:
+            for name, var in self._net.named_parameters():
+                print(name, var.shape)
 
+        self.print("Total number of trainable parameters in this network: {}".format(self.n_parameters()))
+
+
+    def n_parameters(self):
         n_trainable_parameters = 0
         for name, var in self._net.named_parameters():
             n_trainable_parameters += numpy.prod(var.shape)
             # print(name, var.shape)
-
-        self.print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
-
+        return n_trainable_parameters
 
     def restore_model(self):
 
@@ -194,9 +200,11 @@ class torch_trainer(trainercore):
 
 
         self._net.load_state_dict(state['state_dict'])
-        self._opt.load_state_dict(state['optimizer'])
+        if self.args.mode == "train":
+            self._opt.load_state_dict(state['optimizer'])
+            self.lr_scheduler.load_state_dict(state['scheduler'])
+        
         self._global_step = state['global_step']
-        self.lr_scheduler.load_state_dict(state['scheduler'])
 
         # If using GPUs, move the model to GPU:
         if self.args.compute_mode == "GPU":
@@ -409,8 +417,8 @@ class torch_trainer(trainercore):
 
 
             # try to get the learning rate
-
-            self._saver.add_scalar("learning_rate", self._opt.state_dict()['param_groups'][0]['lr'], self._global_step)
+            if self.args.mode == "train":
+                self._saver.add_scalar("learning_rate", self._opt.state_dict()['param_groups'][0]['lr'], self._global_step)
             return
 
 
@@ -744,81 +752,81 @@ class torch_trainer(trainercore):
 
 
 
-        # If there is an aux file, for ana that means an output file.
-        # Call the larcv interface to write data:
-        if self.args.aux_file is not None:
+        # # If there is an aux file, for ana that means an output file.
+        # # Call the larcv interface to write data:
+        # if self.args.aux_file is not None:
 
-            # To use the PyUtils class, we have to massage the data
-            # features = (logits.features).cpu()
-            # coords   = (logits.get_spatial_locations()).cpu()
-            # coords = coords[:,0:-1]
+        #     # To use the PyUtils class, we have to massage the data
+        #     # features = (logits.features).cpu()
+        #     # coords   = (logits.get_spatial_locations()).cpu()
+        #     # coords = coords[:,0:-1]
 
-            # Compute the softmax:
-            features = torch.nn.Softmax(dim=1)(features)
-            val, prediction = torch.max(features, dim=-1)
+        #     # Compute the softmax:
+        #     features = torch.nn.Softmax(dim=1)(logits_image)
+        #     val, prediction = torch.max(features, dim=-1)
 
-            # Assuming batch size of 1 here so we don't need to fiddle with the batch dimension.
-
-
-            # We store the prediction for each plane, as well as it's 3 scores, seperately.
-            # Each type, though (bkg/cosmic/neut) is rolled up into one producer
-
-            list_of_dicts_by_label = {
-                0 : [None] * 3,
-                1 : [None] * 3,
-                2 : [None] * 3,
-                'pred' : [None] * 3,
-            }
-
-            for plane in range(3):
-                locs = coords[:,0] == plane
-                # self.print("Locs shape: ", locs.shape)
-                this_coords = coords[locs]
-                this_features = features[locs]
-
-                # self.print("Sub coords shape: ", this_coords.shape)
-                # self.print("Sub features shape: ", this_features.shape)
-
-                # Ravel the cooridinates into flat indexes:
-                indexes = self._y_spatial_size * this_coords[:,1] + this_coords[:,2]
-                meta = [0, 0,
-                        self._y_spatial_size, self._x_spatial_size,
-                        self._y_spatial_size, self._x_spatial_size,
-                        plane,
-                    ]
-                # self.print("Indexes shape: ", indexes.shape)
-
-                for feature_type in [0,1,2]:
-                    writeable_features = this_features[:, feature_type]
-                    # self.print("Write features shape: ", writeable_features.shape)
-
-                    list_of_dicts_by_label[feature_type][plane] = {
-                        'value' : numpy.asarray(writeable_features).flatten(),
-                        'index' : numpy.asarray(indexes.flatten()),
-                        'meta'  : meta
-                    }
+        #     # Assuming batch size of 1 here so we don't need to fiddle with the batch dimension.
 
 
-                # Also do the prediction:
-                this_prediction = prediction[locs]
-                # self.print("Sub prediction shape: ", this_prediction.shape)
-                list_of_dicts_by_label['pred'][plane] = {
-                    'value' : numpy.asarray(this_prediction).flatten(),
-                    'index' : numpy.asarray(indexes.flatten()),
-                    'meta'  : meta
-                }
+        #     # We store the prediction for each plane, as well as it's 3 scores, seperately.
+        #     # Each type, though (bkg/cosmic/neut) is rolled up into one producer
+
+        #     list_of_dicts_by_label = {
+        #         0 : [None] * 3,
+        #         1 : [None] * 3,
+        #         2 : [None] * 3,
+        #         'pred' : [None] * 3,
+        #     }
+
+        #     for plane in range(3):
+        #         locs = coords[:,0] == plane
+        #         # self.print("Locs shape: ", locs.shape)
+        #         this_coords = coords[locs]
+        #         this_features = features[locs]
+
+        #         # self.print("Sub coords shape: ", this_coords.shape)
+        #         # self.print("Sub features shape: ", this_features.shape)
+
+        #         # Ravel the cooridinates into flat indexes:
+        #         indexes = self._y_spatial_size * this_coords[:,1] + this_coords[:,2]
+        #         meta = [0, 0,
+        #                 self._y_spatial_size, self._x_spatial_size,
+        #                 self._y_spatial_size, self._x_spatial_size,
+        #                 plane,
+        #             ]
+        #         # self.print("Indexes shape: ", indexes.shape)
+
+        #         for feature_type in [0,1,2]:
+        #             writeable_features = this_features[:, feature_type]
+        #             # self.print("Write features shape: ", writeable_features.shape)
+
+        #             list_of_dicts_by_label[feature_type][plane] = {
+        #                 'value' : numpy.asarray(writeable_features).flatten(),
+        #                 'index' : numpy.asarray(indexes.flatten()),
+        #                 'meta'  : meta
+        #             }
 
 
-            for l in [0,1,2]:
-                self._larcv_interface.write_output(data=list_of_dicts_by_label[l],
-                    datatype='sparse2d', producer='label_{}'.format(l),
-                    entries=minibatch_data['entries'],
-                    event_ids=minibatch_data['event_ids'])
+        #         # Also do the prediction:
+        #         this_prediction = prediction[locs]
+        #         # self.print("Sub prediction shape: ", this_prediction.shape)
+        #         list_of_dicts_by_label['pred'][plane] = {
+        #             'value' : numpy.asarray(this_prediction).flatten(),
+        #             'index' : numpy.asarray(indexes.flatten()),
+        #             'meta'  : meta
+        #         }
 
-            self._larcv_interface.write_output(data=list_of_dicts_by_label['pred'],
-                datatype='sparse2d', producer='prediction'.format(l),
-                entries=minibatch_data['entries'],
-                event_ids=minibatch_data['event_ids'])
+
+        #     for l in [0,1,2]:
+        #         self._larcv_interface.write_output(data=list_of_dicts_by_label[l],
+        #             datatype='sparse2d', producer='label_{}'.format(l),
+        #             entries=minibatch_data['entries'],
+        #             event_ids=minibatch_data['event_ids'])
+
+        #     self._larcv_interface.write_output(data=list_of_dicts_by_label['pred'],
+        #         datatype='sparse2d', producer='prediction'.format(l),
+        #         entries=minibatch_data['entries'],
+        #         event_ids=minibatch_data['event_ids'])
 
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
