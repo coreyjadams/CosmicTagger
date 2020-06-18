@@ -727,7 +727,6 @@ class torch_trainer(trainercore):
             # Save a checkpoint, but don't do it on the first pass
             self.save_model()
 
-
     def ana_step(self):
 
         # First, validation only occurs on training:
@@ -740,7 +739,11 @@ class torch_trainer(trainercore):
         # self._net.train()
 
         # Fetch the next batch of data with larcv
-        minibatch_data = self.larcv_fetcher.fetch_next_batch("train", force_pop=True)
+        if self._iteration == 0:
+            force_pop = False
+        else:
+            force_pop = True
+        minibatch_data = self.larcv_fetcher.fetch_next_batch("train", force_pop=force_pop)
 
         # Convert the input data to torch tensors
         minibatch_data = self.to_torch(minibatch_data)
@@ -751,83 +754,86 @@ class torch_trainer(trainercore):
             logits_image, labels_image = self.forward_pass(minibatch_data)
 
 
+        # If there is an aux file, for ana that means an output file.
+        # Call the larcv interface to write data:
+        if self.args.aux_file is not None:
 
-        # # If there is an aux file, for ana that means an output file.
-        # # Call the larcv interface to write data:
-        # if self.args.aux_file is not None:
+            # For writing output, we get the non-zero locations from the labels.
+            # Then, we get the neutrino and cosmic scores for those locations in the logits,
+            # After applying a softmax.
 
-        #     # To use the PyUtils class, we have to massage the data
-        #     # features = (logits.features).cpu()
-        #     # coords   = (logits.get_spatial_locations()).cpu()
-        #     # coords = coords[:,0:-1]
-
-        #     # Compute the softmax:
-        #     features = torch.nn.Softmax(dim=1)(logits_image)
-        #     val, prediction = torch.max(features, dim=-1)
-
-        #     # Assuming batch size of 1 here so we don't need to fiddle with the batch dimension.
+            # To do this, we just need to capture the following objects:
+            # - the dense shape
+            # - the location of all non-zero pixels, flattened
+            # - the softmax score for all non-zero pixels, flattened.
 
 
-        #     # We store the prediction for each plane, as well as it's 3 scores, seperately.
-        #     # Each type, though (bkg/cosmic/neut) is rolled up into one producer
-
-        #     list_of_dicts_by_label = {
-        #         0 : [None] * 3,
-        #         1 : [None] * 3,
-        #         2 : [None] * 3,
-        #         'pred' : [None] * 3,
-        #     }
-
-        #     for plane in range(3):
-        #         locs = coords[:,0] == plane
-        #         # self.print("Locs shape: ", locs.shape)
-        #         this_coords = coords[locs]
-        #         this_features = features[locs]
-
-        #         # self.print("Sub coords shape: ", this_coords.shape)
-        #         # self.print("Sub features shape: ", this_features.shape)
-
-        #         # Ravel the cooridinates into flat indexes:
-        #         indexes = self._y_spatial_size * this_coords[:,1] + this_coords[:,2]
-        #         meta = [0, 0,
-        #                 self._y_spatial_size, self._x_spatial_size,
-        #                 self._y_spatial_size, self._x_spatial_size,
-        #                 plane,
-        #             ]
-        #         # self.print("Indexes shape: ", indexes.shape)
-
-        #         for feature_type in [0,1,2]:
-        #             writeable_features = this_features[:, feature_type]
-        #             # self.print("Write features shape: ", writeable_features.shape)
-
-        #             list_of_dicts_by_label[feature_type][plane] = {
-        #                 'value' : numpy.asarray(writeable_features).flatten(),
-        #                 'index' : numpy.asarray(indexes.flatten()),
-        #                 'meta'  : meta
-        #             }
+            # Compute the softmax over all images in the batch:
+            softmax = [ torch.nn.Softmax(dim=1)(l) for l in logits_image]
 
 
-        #         # Also do the prediction:
-        #         this_prediction = prediction[locs]
-        #         # self.print("Sub prediction shape: ", this_prediction.shape)
-        #         list_of_dicts_by_label['pred'][plane] = {
-        #             'value' : numpy.asarray(this_prediction).flatten(),
-        #             'index' : numpy.asarray(indexes.flatten()),
-        #             'meta'  : meta
-        #         }
+            for b_index in range(self.args.minibatch_size):
+
+                # We want to make sure we get the locations from the non-zero input pixels:
+                images = torch.chunk(minibatch_data['image'][b_index,:,:,:], chunks=3, dim=0)
+
+                # Reshape images here to remove the empty index:
+                images = [image.squeeze() for image in images]
+
+                # Locations is a list of a tuple of coordinates for each image
+                locations = [torch.where(image != 0) for image in images]
+
+                # Shape is a list of shapes for each image:
+                shape = [ image.shape for image in images ]
+
+                # Batch softmax is a list of the softmax tensor on each plane
+                batch_softmax = [s[b_index] for s in softmax]
+
+                # To get the neutrino scores, we want to access the softmax at the neutrino index
+                # And slice over just the non-zero locations:
+                neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]] 
+                    for plane, b in enumerate(batch_softmax) ]
+                cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]] 
+                    for plane, b in enumerate(batch_softmax) ]
+
+                # Lastly, flatten the locations.
+                # For the unraveled index, there is a complication that torch stores images 
+                # with [H,W] and larcv3 stores images with [W, H] by default.
+                # To solve this - 
+                # Reverse the shape:
+                shape = [ s[::-1] for s in shape ]
+                # Go through the locations in reverse:
+                locations = [ numpy.ravel_multi_index(l[::-1], s) for l, s in zip(locations, shape) ]
 
 
-        #     for l in [0,1,2]:
-        #         self._larcv_interface.write_output(data=list_of_dicts_by_label[l],
-        #             datatype='sparse2d', producer='label_{}'.format(l),
-        #             entries=minibatch_data['entries'],
-        #             event_ids=minibatch_data['event_ids'])
 
-        #     self._larcv_interface.write_output(data=list_of_dicts_by_label['pred'],
-        #         datatype='sparse2d', producer='prediction'.format(l),
-        #         entries=minibatch_data['entries'],
-        #         event_ids=minibatch_data['event_ids'])
+                # Now, package up the objects to send to the file writer:
+                neutrino_data = []
+                cosmic_data = []
+                for plane in range(3):
+                    neutrino_data.append({
+                        'values' : neutrino_scores[plane].numpy(),
+                        'index'  : locations[plane],
+                        'shape'  : shape[plane]
+                    })
+                    cosmic_data.append({
+                        'values' : cosmic_scores[plane].numpy(),
+                        'index'  : locations[plane],
+                        'shape'  : shape[plane]
+                    })
 
+
+                # Write the data through the writer:
+                self.larcv_fetcher.write(cosmic_data, 
+                    producer = "cosmic_prediction",
+                    entry    = minibatch_data['entries'][b_index], 
+                    event_id = minibatch_data['event_ids'][b_index])
+
+                self.larcv_fetcher.write(neutrino_data, 
+                    producer = "neutrino_prediction",
+                    entry    = minibatch_data['entries'][b_index], 
+                    event_id = minibatch_data['event_ids'][b_index])
+ 
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss

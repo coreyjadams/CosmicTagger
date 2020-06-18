@@ -88,7 +88,7 @@ class IOManagerConfig(object):
     def set_defaults(self):
 
         if self._params['Verbosity'] is None:
-            self._params['Verbosity'] = "0"
+            self._params['Verbosity'] = "5"
         if self._params["IOMode"] is None:
             self._params["IOMode"] = "2"
         # if self._params["OutFileName"] is None:
