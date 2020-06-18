@@ -806,7 +806,7 @@ class torch_trainer(trainercore):
 
                 # Here, move to CPU if needed:
                 if self.args.compute_mode == "GPU":
-                    locations       = [location.cpu() for location in locations]
+                    locations       = [[ l.cpu() for l in location] for location in locations]
                     neutrino_scores = [s.cpu() for s in neutrino_scores]
                     cosmic_scores   = [s.cpu() for s in cosmic_scores]
 
