@@ -59,19 +59,19 @@ class trainercore(object):
         if self.args.mode == "build_net": return
 
         # Check that the training file exists:
-        if not self.args.synthetic and not os.path.isfile(self.args.file):
+        if not self.args.synthetic and not self.args.file.exists():
             raise Exception(f"Can not continue with file {self.args.file} - does not exist.")
-        if not self.args.synthetic and not os.path.isfile(self.args.aux_file):
+        if not self.args.synthetic and not self.args.aux_file.exists():
             if self.args.mode == "train":
                 self.print("WARNING: Aux file does not exist.  Setting to None for training")
                 self.args.aux_file = None
             else:
                 # In inference mode, we are creating the aux file.  So we need to check 
                 # that the directory exists.  Otherwise, no writing.
-                if not os.path.isdir(os.path.basename(self.args.aux_file)):
+                if not self.args.aux_file.parent.exists():
                     self.print("WARNING: Aux file's directory does not exist.")
                     self.args.aux_file = None
-                elif self.args.aux_file is None or self.args.aux_file.lower() == "none":
+                elif self.args.aux_file is None or str(self.args.aux_file).lower() == "none":
                     self.print("WARNING: no aux file set, so not writing inference results.")
                     self.args.aux_file = None
 
@@ -86,7 +86,7 @@ class trainercore(object):
                     "aux", self.args.aux_file, self.args.minibatch_size, color)
             elif self.args.mode == "inference":
                 self._aux_data_size = self.larcv_fetcher.prepare_writer(
-                    input_file = self.args.file, output_file = self.args.aux_file)
+                    input_file = self.args.file, output_file = str(self.args.aux_file))
 
 
     def build_lr_schedule(self, learning_rate_schedule = None):

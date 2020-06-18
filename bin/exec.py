@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os,sys,signal
 import time
+import pathlib
 
 import numpy
 
@@ -367,12 +368,12 @@ The most commonly used commands are:
 
         # IO PARAMETERS FOR INPUT:
         parser.add_argument('-f','--file',
-            type    = str,
+            type    = pathlib.Path,
             default = data_directory + "cosmic_tagging_train.h5",
             help    = "IO Input File")
 
         parser.add_argument('--aux-file',
-            type    = str,
+            type    = pathlib.Path,
             default = data_directory + "cosmic_tagging_test.h5",
             help    = "IO Aux Input File, or output file in inference mode")
 
