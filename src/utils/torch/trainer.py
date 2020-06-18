@@ -207,7 +207,7 @@ class torch_trainer(trainercore):
         self._global_step = state['global_step']
 
         # If using GPUs, move the model to GPU:
-        if self.args.compute_mode == "GPU":
+        if self.args.compute_mode == "GPU" and self.args.mode == "train":
             for state in self._opt.state.values():
                 for k, v in state.items():
                     if torch.is_tensor(v):
