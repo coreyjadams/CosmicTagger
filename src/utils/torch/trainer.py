@@ -780,6 +780,11 @@ class torch_trainer(trainercore):
                 # Reshape images here to remove the empty index:
                 images = [image.squeeze() for image in images]
 
+                # Here, move to CPU if needed:
+                if self.args.compute_mode == "GPU":
+                    images  = [image.cpu() for image in images]
+                    softmax = [s.cpu() for s in softmax]
+
                 # Locations is a list of a tuple of coordinates for each image
                 locations = [torch.where(image != 0) for image in images]
 
