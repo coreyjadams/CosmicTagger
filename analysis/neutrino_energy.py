@@ -40,6 +40,8 @@ def plot(energy, flavor, cc_nc):
     cc_mask = cc_nc == 0
 
 
+    total_events = len(energy)
+
     nue_mask  = numpy.bitwise_and(numpy.bitwise_or(flavor == 12 , flavor == -12), cc_mask)
     numu_mask = numpy.bitwise_and(numpy.bitwise_or(flavor == 14 , flavor == -14), cc_mask)
     nc_mask   = cc_nc == 1
@@ -53,16 +55,21 @@ def plot(energy, flavor, cc_nc):
     numu_energy, _ = numpy.histogram(energy[numu_mask], bins=bins)
     nc_energy, _ = numpy.histogram(energy[nc_mask], bins=bins)
 
+    nue_energy  = 100. * nue_energy / total_events # Converting to a percentage
+    numu_energy = 100. * numu_energy / total_events # Converting to a percentage
+    nc_energy   = 100. * nc_energy / total_events # Converting to a percentage
+
     print(nue_energy)
     print(numu_energy)
     print(nc_energy)
 
-    plt.step(bin_centers-0.5*0.1, nue_energy, where='post', label=r"$\nu_e~C.C.$")
-    plt.step(bin_centers-0.5*0.1, numu_energy,where='post', label=r"$\nu_\mu~C.C.$")
+    plt.step(bin_centers-0.5*0.1, nue_energy, where='post', label=r"$\nu_e~$ C.C.")
+    plt.step(bin_centers-0.5*0.1, numu_energy,where='post', label=r"$\nu_\mu~$ C.C.")
     plt.step(bin_centers-0.5*0.1, nc_energy,  where='post', label="N.C.")
     
     plt.grid(True)
     plt.xlabel("Neutrino Energy [GeV]")
+    plt.ylabel("Fraction of Dataset [%]")
     plt.xlim([0,3.0])
     plt.legend()
     plt.show()
