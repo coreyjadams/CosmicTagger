@@ -6,6 +6,7 @@ from . import io_templates
 import tempfile
 
 import numpy
+import h5py
 
 
 class larcv_fetcher(object):
@@ -20,20 +21,22 @@ class larcv_fetcher(object):
 
         if not synthetic:
 
+            if mode == "inference":
+                random_access_mode = "serial_access"
+            else:
+                random_access_mode = "random_blocks"
+
             if distributed:
                 from larcv import distributed_queue_interface
-                self._larcv_interface = distributed_queue_interface.queue_interface()
+                self._larcv_interface = distributed_queue_interface.queue_interface(
+                    random_access_mode=random_access_mode, seed=seed)
             else:
                 from larcv import queueloader
-                if mode == "inference":
-                    self._larcv_interface = queueloader.queue_interface(
-                        random_access_mode="serial_access", seed=seed)
-                elif mode == "train" or mode == "iotest":
-                    self._larcv_interface = queueloader.queue_interface(
-                        random_access_mode="random_blocks", seed=seed)
-                else:
-                    # Must be synthetic
-                    self._larcv_interface = None
+                self._larcv_interface = queueloader.queue_interface(
+                    random_access_mode=random_access_mode, seed=seed)
+        else:
+            # Must be synthetic
+            self._larcv_interface = None
 
         self.mode       = mode
         self.downsample = downsample
@@ -48,6 +51,8 @@ class larcv_fetcher(object):
         self.ds = 2**downsample
 
         self.image_shape = [ int(i / self.ds) for i in self.full_image_shape ]
+
+        self.truth_variables = {}
 
     def __del__(self):
         if self.writer is not None:
@@ -85,6 +90,25 @@ class larcv_fetcher(object):
                     name        = name,
                     compression = self.downsample)
 
+            # In inference mode, we use h5py to pull out the energy and interaction flavor.
+            if self.mode == "inference":
+                try:
+                    # Open the file:
+                    f = h5py.File(input_file, 'r')
+                    # Read the right tables from the file:
+                    particle_data = f['Data/particle_sbndneutrino_group/particles']
+                    extents = f['Data/particle_sbndneutrino_group/extents']
+
+                    # We index into the particle table with extents:
+                    indexes = extents['first']
+                    self.truth_variables[name] = {}
+                    self.truth_variables[name]['energy'] = particle_data['energy_init'][indexes]
+                    self.truth_variables[name]['ccnc']   = particle_data['current_type'][indexes]
+                    self.truth_variables[name]['pdg']    = particle_data['pdg'][indexes]
+
+                    f.close()
+                except:
+                    pass
 
             # Generate a named temp file:
             main_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
@@ -116,6 +140,7 @@ class larcv_fetcher(object):
                 time.sleep(0.1)
 
             return self._larcv_interface.size(name)
+
 
 
     def fetch_next_batch(self, name, force_pop=False):

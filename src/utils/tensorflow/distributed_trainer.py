@@ -101,7 +101,8 @@ class distributed_trainer(tf_trainer):
         # print(bcast)
 
         hvd.broadcast_variables(self._net.variables, root_rank=0)
-        hvd.broadcast_variables(self._opt.variables(), root_rank=0)
+        if self.args.mode == "train":
+            hvd.broadcast_variables(self._opt.variables(), root_rank=0)
 
     def restore_model(self):
 
@@ -126,6 +127,30 @@ class distributed_trainer(tf_trainer):
             lbs = int(self.args.minibatch_size / hvd.size())
             return lbs
 
+
+    def ana_epoch(self):
+
+        from mpi4py import MPI
+
+
+        metrics_array = tf_trainer.ana_epoch(self)
+        metrics_array = MPI.COMM_WORLD.gather(metrics_array)
+
+        if self._rank == 0:
+            metrics_array = numpy.concatenate(metrics_array)
+
+            if self.args.aux_file is not None and self.args.aux_file != "none":
+                # Write the output, as long as 
+                # 1) the directory exists, and
+                # 2) the file in that directory doesn't exist
+                if self.args.aux_file.parent.exists() and not self.args.aux_file.exists():
+                    numpy.save(metrics_array, self.args.aux_file)
+            else:
+                # Reduce the metrics array and print the averages:
+                means = { key : numpy.mean(metrics_array[key]) for key in metrics_array.dtype.names }
+                std   = { key : numpy.std(metrics_array[key]) for key in metrics_array.dtype.names }
+                for key in means:
+                    print(f"{key}: {means[key]:.3f} +/- {std[key]:.3f}")
 
     def restore_model(self):
         # Restore model has to restore on one rank and broadcast to other ranks

@@ -712,8 +712,111 @@ class tf_trainer(trainercore):
         # self._larcv_interface.stop()
         pass
 
+    def ana_ops(self):
+        # These are ops that always run:
+        ops = {}
+        ops['logits']     = self._logits
+        ops['softmax']    = self._output['softmax']
+        ops['prediction'] = self._output['prediction']
+        ops['metrics']    = self._metrics
+
+        return ops
+
+    def _ana_epoch_steps(self):
+        #  Compute how many steps needed for an epoch of the ana file.
+
+        dataset_size = self._train_data_size
+        minibatch_size = self.args.minibatch_size
+        return int(dataset_size / minibatch_size)
+
     def ana_epoch(self):
-        pass
+        
+        global_start_time = datetime.datetime.now()
+
+
+        # For each step, we record the metrics plus the energy, neutrino flavor and interaction type.
+
+        # Cache the truth variables here:
+        truth_variables = self.larcv_fetcher.truth_variables["train"]
+
+        # build out a numpy record array for the metrics, plus the ones to add:
+        dtypes = [ (key, numpy.float32) for key in self._metrics ]
+        dtypes.append(('entry',  numpy.float32))
+        dtypes.append(('energy', numpy.float32))
+        dtypes.append(('ccnc',   numpy.float32))
+        dtypes.append(('pdg',    numpy.float32))
+        metrics_array = numpy.zeros(shape=(self._ana_epoch_steps()), dtype=dtypes)
+
+        pop = False
+        for i in range(self._ana_epoch_steps()):
+
+            # Fetch the next batch of data with larcv
+            io_start_time = datetime.datetime.now()
+
+            minibatch_data = self.larcv_fetcher.fetch_next_batch("train", force_pop=pop)
+            pop = True
+
+
+
+            # Escape if we get None:
+            if minibatch_data is None: return
+
+            io_end_time = datetime.datetime.now()
+
+            # For tensorflow, we have to build up an ops list to submit to the
+            # session to run.
+
+            # These are ops that always run:
+            ops = self.ana_ops()
+            ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
+            ops['global_step'] = self._global_step
+
+
+            metrics = self.metrics(ops["metrics"])
+            for entry in minibatch_data['entries']:
+                for metric_name in metrics:
+                    metrics_array[i][metric_name] = metrics[metric_name]
+                metrics_array[i]['entry']  = entry
+                metrics_array[i]['energy'] = truth_variables['energy'][entry]
+                metrics_array[i]['ccnc']   = truth_variables['ccnc'][entry]
+                metrics_array[i]['pdg']    = truth_variables['pdg'][entry]
+
+            verbose = False
+
+            # Add the global step / second to the tensorboard log:
+            try:
+                metrics['global_step_per_sec'] = 1./self._seconds_per_global_step
+                metrics['images_per_second'] = self.args.minibatch_size / self._seconds_per_global_step
+            except AttributeError:
+                metrics['global_step_per_sec'] = 0.0
+                metrics['images_per_second'] = 0.0
+
+
+
+            metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
+
+            if verbose: self.print("Calculated metrics")
+
+            # Report metrics on the terminal:
+            self.log(ops["metrics"], kind="Inference", step=i)
+
+            # self.print(ops["metrics"])
+
+
+        
+            if verbose: self.print("Completed Log")
+
+            global_end_time = datetime.datetime.now()
+
+            # Compute global step per second:
+            self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
+            # self._global_step += 1
+
+
+        return metrics_array
+
+
+
 
     def ana_step(self):
 
@@ -722,6 +825,7 @@ class tf_trainer(trainercore):
 
         # Fetch the next batch of data with larcv
         io_start_time = datetime.datetime.now()
+
 
         if self._iteration == 0:
             force_pop = False
@@ -739,11 +843,7 @@ class tf_trainer(trainercore):
         # session to run.
 
         # These are ops that always run:
-        ops = {}
-        ops['logits']     = self._logits
-        ops['softmax']    = self._output['softmax']
-        ops['prediction'] = self._output['prediction']
-        ops['metrics']    = self._metrics
+        ops = self.ana_ops()
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
         ops['global_step'] = self._global_step
 
@@ -866,8 +966,6 @@ class tf_trainer(trainercore):
 
         return ops["global_step"]
 
-
-        raise NotImplementedError("You must implement this function")
 
     def feed_dict(self, inputs):
         '''Build the feed dict
