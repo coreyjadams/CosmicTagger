@@ -278,7 +278,7 @@ class tf_trainer(trainercore):
         '''
 
         file_path = self.get_checkpoint_dir()
-        
+
         path = tf.train.latest_checkpoint(file_path)
 
 
@@ -341,7 +341,7 @@ class tf_trainer(trainercore):
     def init_saver(self):
 
         file_path = self.get_checkpoint_dir()
-        
+
         try:
             os.makedirs(file_path)
         except:
@@ -578,11 +578,11 @@ class tf_trainer(trainercore):
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
             minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
-            
+
 
             # Abort if we get "None"
             if minibatch_data is None: return
-            
+
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
@@ -645,7 +645,7 @@ class tf_trainer(trainercore):
 
         # Lastly, update the weights:
 
-        self._sess.run(self._apply_gradients, 
+        self._sess.run(self._apply_gradients,
             feed_dict = {self._learning_rate : fd[self._learning_rate]})
 
         # Normalize the metrics:
@@ -712,6 +712,8 @@ class tf_trainer(trainercore):
         # self._larcv_interface.stop()
         pass
 
+    def ana_epoch(self):
+        pass
 
     def ana_step(self):
 
@@ -807,20 +809,20 @@ class tf_trainer(trainercore):
                 # To get the neutrino scores, we want to access the softmax at the neutrino index
                 # And slice over just the non-zero locations:
                 if self._channels_dim == 1:
-                    neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]] 
+                    neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]]
                         for plane, b in enumerate(batch_softmax) ]
-                    cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]] 
+                    cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]]
                         for plane, b in enumerate(batch_softmax) ]
                 else:
-                    neutrino_scores = [ b[locations[plane]][:,self.NEUTRINO_INDEX] 
+                    neutrino_scores = [ b[locations[plane]][:,self.NEUTRINO_INDEX]
                         for plane, b in enumerate(batch_softmax) ]
                     cosmic_scores   = [ b[locations[plane]][:,self.COSMIC_INDEX]
                         for plane, b in enumerate(batch_softmax) ]
 
                 # Lastly, flatten the locations.
-                # For the unraveled index, there is a complication that torch stores images 
+                # For the unraveled index, there is a complication that torch stores images
                 # with [H,W] and larcv3 stores images with [W, H] by default.
-                # To solve this - 
+                # To solve this -
                 # Reverse the shape:
                 shape = [ s[::-1] for s in shape ]
                 # Go through the locations in reverse:
@@ -843,16 +845,16 @@ class tf_trainer(trainercore):
 
 
                 # Write the data through the writer:
-                self.larcv_fetcher.write(cosmic_data, 
+                self.larcv_fetcher.write(cosmic_data,
                     producer = "cosmic_prediction",
-                    entry    = minibatch_data['entries'][b_index], 
+                    entry    = minibatch_data['entries'][b_index],
                     event_id = minibatch_data['event_ids'][b_index])
 
-                self.larcv_fetcher.write(neutrino_data, 
+                self.larcv_fetcher.write(neutrino_data,
                     producer = "neutrino_prediction",
-                    entry    = minibatch_data['entries'][b_index], 
+                    entry    = minibatch_data['entries'][b_index],
                     event_id = minibatch_data['event_ids'][b_index])
- 
+
 
         if verbose: self.print("Completed Log")
 

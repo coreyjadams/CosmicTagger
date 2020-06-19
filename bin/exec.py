@@ -30,7 +30,6 @@ The most commonly used commands are:
    train         Train a network, either from scratch or restart
    inference     Run inference with a trained network
    iotest        Run IO testing without training a network
-   build_net     Build and dump network parameters, no training or IO
 ''')
         parser.add_argument('command', help='Subcommand to run')
         # parse_args defaults to [1:] for args, but you need to
@@ -205,7 +204,7 @@ The most commonly used commands are:
         self.args.mode = "iotest"
 
         self.make_trainer()
-        
+
         self.trainer.print("Running IO Test")
         self.trainer.print(self.__str__())
 
@@ -274,36 +273,8 @@ The most commonly used commands are:
         self.trainer.print(self.__str__())
 
         self.trainer.initialize()
+
         self.trainer.batch_process()
-
-
-    def build_net(self):
-        self.parser = argparse.ArgumentParser(
-            description     = 'Build network and return parameters',
-            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
-
-        self.add_io_arguments(self.parser)
-        self.add_core_configuration(self.parser)
-        self.add_shared_training_arguments(self.parser)
-
-        self.add_network_parser(self.parser)
-
-        self.args = self.parser.parse_args(sys.argv[2:])
-        self.args.training = False
-        self.args.mode = "inference"
-
-
-        self.make_trainer()
-
-        self.trainer.print("Running Inference")
-        self.trainer.print(self.__str__())
-
-        # self.trainer.initialize()
-        # self.trainer.print()
-        self.trainer.init_network()
-        self.trainer.print_network_info(verbose=True)
-        self.trainer.print(F"NUMBER_OF_PARAMETERS: {self.trainer.n_parameters()}")
-        # self.trainer.batch_process()
 
     def __str__(self):
         s = "\n\n-- CONFIG --\n"
@@ -359,24 +330,17 @@ The most commonly used commands are:
 
         return parser
 
-
     def add_io_arguments(self, parser):
 
         # data_directory = "/lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/"
-        # data_directory = "/Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging/"
-        data_directory = "/gpfs/alpine/lrn008/world-shared/data/cosmic_tagging/"
+        data_directory = "/Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging/"
+        # data_directory = "/gpfs/jlse-fs0/users/cadams/datasets/cosmic_tagging/"
 
         # IO PARAMETERS FOR INPUT:
         parser.add_argument('-f','--file',
             type    = pathlib.Path,
             default = data_directory + "cosmic_tagging_train.h5",
             help    = "IO Input File")
-
-        parser.add_argument('--aux-file',
-            type    = pathlib.Path,
-            default = data_directory + "cosmic_tagging_test.h5",
-            help    = "IO Aux Input File, or output file in inference mode")
-
 
         parser.add_argument('--start-index',
             type    = int,
@@ -387,6 +351,14 @@ The most commonly used commands are:
             type    = int,
             default = 2,
             help    = "Number of images in the minibatch size")
+
+        # IO PARAMETERS FOR AUX INPUT:
+        parser.add_argument('--aux-file',
+            type    = pathlib.Path,
+            # default = None,
+            default = data_directory + "cosmic_tagging_test.h5",
+            help    = "IO Aux Input File, or output file in inference mode")
+
 
         parser.add_argument('--aux-iteration',
             type    = int,
@@ -433,3 +405,4 @@ The most commonly used commands are:
 
 if __name__ == '__main__':
     s = exec()
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
