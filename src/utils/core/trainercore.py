@@ -56,12 +56,38 @@ class trainercore(object):
 
     def _initialize_io(self, color=None):
 
+        if self.args.mode == "build_net": return
+
+        # Check that the training file exists:
+        if not self.args.synthetic and not self.args.file.exists():
+            raise Exception(f"Can not continue with file {self.args.file} - does not exist.")
+        if not self.args.synthetic and not self.args.aux_file.exists():
+            if self.args.mode == "train":
+                self.print("WARNING: Aux file does not exist.  Setting to None for training")
+                self.args.aux_file = None
+            else:
+                # In inference mode, we are creating the aux file.  So we need to check 
+                # that the directory exists.  Otherwise, no writing.
+                if not self.args.aux_file.parent.exists():
+                    self.print("WARNING: Aux file's directory does not exist.")
+                    self.args.aux_file = None
+                elif self.args.aux_file is None or str(self.args.aux_file).lower() == "none":
+                    self.print("WARNING: no aux file set, so not writing inference results.")
+                    self.args.aux_file = None
+
+
         self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
             "train", self.args.file, self.args.minibatch_size, color)
 
         if self.args.aux_file is not None:
-            self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
-                "aux", self.args.aux_file, self.args.minibatch_size, color)
+            if self.args.mode == "train":
+                # Fetching data for on the fly testing:
+                self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
+                    "aux", self.args.aux_file, self.args.minibatch_size, color)
+            elif self.args.mode == "inference":
+                self._aux_data_size = self.larcv_fetcher.prepare_writer(
+                    input_file = self.args.file, output_file = str(self.args.aux_file))
+
 
     def build_lr_schedule(self, learning_rate_schedule = None):
         # Define the learning rate sequence:
@@ -246,5 +272,7 @@ class trainercore(object):
         end = time.time()
 
         self.print("Total time to batch_process: ", end - start)
-        self.print("Total time to batch process except first iteration: ", end - post_one_time)
-        self.print("Total time to batch process except first two iterations: ", end - post_two_time)
+        if post_one_time is not None:
+            self.print("Total time to batch process except first iteration: ", end - post_one_time)
+        if post_two_time is not None: 
+            self.print("Total time to batch process except first two iterations: ", end - post_two_time)

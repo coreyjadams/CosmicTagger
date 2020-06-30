@@ -11,7 +11,7 @@ After the downsampling step, the output goes into the next lowest layer.  The ne
 layer performs it's steps (recursively down the network) and then returns an upsampled
 image.  So, each layer returns an image of the same resolution as it's input.
 
-On the upsampling pass, the layer recieves a downsampled image.  It performs a series of convolutions,
+On the upsampling pass, the layer receives a downsampled image.  It performs a series of convolutions,
 and merges across the downsampled layers either before or after the convolutions.
 
 It then performs an upsampling step, and returns the upsampled tensor.
@@ -23,7 +23,7 @@ class Block3D(nn.Module):
     def __init__(self, *, inplanes, outplanes, kernel = [3,3], padding=[1,1], n_planes=1, params):
         nn.Module.__init__(self)
 
-        print("Receive outplanes ", outplanes)
+        # print("Receive outplanes ", outplanes)
 
         if n_planes == 3:
             stride = [1, 1, 1]
@@ -43,7 +43,6 @@ class Block3D(nn.Module):
             stride       = stride,
             padding      = padding,
             bias         = params.use_bias)
-        print(self.conv.weight.shape)
 
         self.do_batch_norm = params.batch_norm
 
@@ -53,13 +52,10 @@ class Block3D(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        print("Block 3D input ", x.shape)
-        print("outplanes: ", self.outplanes)
         out = self.conv(x)
         if self.do_batch_norm:
             out = self.bn(out)
         out = self.relu(out)
-        print("Block 3D output ", out.shape)
         return out
 
 
@@ -178,15 +174,15 @@ class ConvolutionUpsample3D(nn.Module):
 class BlockSeries3D(torch.nn.Module):
 
 
-    def __init__(self, *, inplanes, n_blocks, n_planes, params):
+    def __init__(self, *, inplanes, n_blocks, n_planes, kernel, padding, params):
         torch.nn.Module.__init__(self)
 
         if not params.residual:
             self.blocks = [ Block3D(inplanes = inplanes, outplanes = inplanes,
-                n_planes = n_planes, params = params) for i in range(n_blocks) ]
+                n_planes = n_planes, kernel=kernel, padding=padding, params = params) for i in range(n_blocks) ]
         else:
             self.blocks = [ ResidualBlock3D(inplanes = inplanes, outplanes = inplanes,
-                n_planes = n_planes, params = params) for i in range(n_blocks)]
+                n_planes = n_planes, kernel=kernel, padding=padding, params = params) for i in range(n_blocks)]
 
         for i, block in enumerate(self.blocks):
             self.add_module('block_{}'.format(i), block)
@@ -209,7 +205,6 @@ class DeepestBlock3D(nn.Module):
         # Then splits into planes again
 
 
-        print("params.bottleneck_deepest: ", params.bottleneck_deepest)
         self.merger = Block3D(
             outplanes = params.bottleneck_deepest,
             inplanes  = inplanes,
@@ -219,18 +214,21 @@ class DeepestBlock3D(nn.Module):
             params    = params
         )
 
-        print(self.merger)
+        kernel  = [params.filter_size_deepest, params.filter_size_deepest]
+        padding = [ int((k - 1) / 2) for k in kernel ]
 
         self.blocks = BlockSeries3D(
             inplanes = params.bottleneck_deepest,
             n_blocks = params.blocks_deepest_layer,
             n_planes = 1,
+            kernel   = kernel,
+            padding  = padding,
             params   = params,
         )
 
 
 
-        self.merger = Block3D(
+        self.splitter = Block3D(
             inplanes  = params.bottleneck_deepest,
             outplanes = inplanes,
             kernel    = [1,1],
@@ -240,9 +238,7 @@ class DeepestBlock3D(nn.Module):
         )
 
     def forward(self, x):
-        print("Deepest block input ", x.shape)
         x = self.merger(x)
-        print("Deepest block merged ", x.shape)
         x = self.blocks(x)
         x = self.splitter(x)
         return x
@@ -341,6 +337,8 @@ class UNetCore3D(nn.Module):
             self.down_blocks = BlockSeries3D(inplanes = inplanes,
                                              n_blocks = self.layers,
                                              n_planes = 1,
+                                             kernel   = [3,3],
+                                             padding  = [1,1],
                                              params   = params)
 
             if params.growth_rate == "multiplicative":
@@ -382,6 +380,8 @@ class UNetCore3D(nn.Module):
             self.up_blocks = BlockSeries3D(inplanes = inplanes,
                                            n_blocks = self.layers,
                                            n_planes = 1,
+                                           kernel   = [3,3],
+                                           padding  = [1,1],
                                            params   = params)
 
             # Residual connection operation:
@@ -431,7 +431,7 @@ class objectview(object):
 
 class UResNet3D(torch.nn.Module):
 
-    def __init__(self, params):
+    def __init__(self, params, spatial_size):
 
 
         torch.nn.Module.__init__(self)
@@ -446,8 +446,8 @@ class UResNet3D(torch.nn.Module):
         self.initial_convolution = Block3D(
             inplanes    = 1,
             outplanes   = params.n_initial_filters,
-            kernel      = [7,7],
-            padding     = [3,3],
+            kernel      = [5,5],
+            padding     = [2,2],
             params      = params)
 
 
@@ -466,6 +466,8 @@ class UResNet3D(torch.nn.Module):
             inplanes = params.n_initial_filters,
             n_blocks = params.blocks_final,
             n_planes = 1,
+            kernel   = [3,3],
+            padding  = [1,1],
             params   = params )
 
 
@@ -492,8 +494,6 @@ class UResNet3D(torch.nn.Module):
 
 
         batch_size = input_tensor.shape[0]
-
-
 
         # Reshape this tensor into the right shape to apply this multiplane network.
 

@@ -58,78 +58,78 @@ def test_tensorflow_default_network(tmpdir, synthetic, downsample_images):
         assert False
 
 
-def test_tensorflow_model_inference(tmpdir):
+# def test_tensorflow_model_inference(tmpdir):
     
 
-    # Instead of calling the python objects, use subprocesses 
+#     # Instead of calling the python objects, use subprocesses 
 
-    # first, where is the exec.py?
-    exec_script = network_dir + "/bin/exec.py"
+#     # first, where is the exec.py?
+#     exec_script = network_dir + "/bin/exec.py"
 
-    file_path = network_dir + "/example_data/"
-    file_path += "cosmic_tagging_light.h5"
+#     file_path = network_dir + "/example_data/"
+#     file_path += "cosmic_tagging_light.h5"
 
-    args = [exec_script, "train"]
-    args += ["--framework", "tensorflow"]
+#     args = [exec_script, "train"]
+#     args += ["--framework", "tensorflow"]
 
-    args += ["--file", f"{file_path}"]
+#     args += ["--file", f"{file_path}"]
 
-    args += ["--iterations",  "5"]
-    args += ["--n-initial-filters",  "1"]
-    args += ["--network-depth",  "4"]
-    args += ["--downsample-images",  "2"]
-    
-
-
-    random_file_name = str(tmpdir + "/tensorflow_log_dir/")
-    args += ["--log-directory", random_file_name]
-
-    completed_proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-
-    if completed_proc.returncode != 0:
-        print(completed_proc.stdout)
-        try:
-            print(completed_proc.stderr)
-        except:
-            pass
-
-        assert False
-
-    # Now, reload the model and run inference:
-
-
-    args = [exec_script, "inference"]
-    args += ["--framework", "tensorflow"]
-
-
-    args += ["--iterations",  "5"]
-    args += ["--n-initial-filters",  "1"]
-    args += ["--network-depth",  "4"]
-    args += ["--downsample-images",  "2"]
-    args += ["--file", f"{file_path}"]
-
-
-    random_file_name = str(tmpdir + "/tensorflow_log_dir/")
-    args += ["--log-directory", random_file_name]
-
-    completed_proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#     args += ["--iterations",  "5"]
+#     args += ["--n-initial-filters",  "1"]
+#     args += ["--network-depth",  "4"]
+#     args += ["--downsample-images",  "2"]
     
 
 
-    if completed_proc.returncode == 0:
-        assert True
-    else:
-        print(completed_proc.stdout)
-        try:
-            print(completed_proc.stderr)
-        except:
-            pass
+#     random_file_name = str(tmpdir + "/tensorflow_log_dir/")
+#     args += ["--log-directory", random_file_name]
 
-        assert False
+#     completed_proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-if __name__ == '__main__':
-    test_tensorflow_default_network("./", synthetic=True, downsample_images=2)
+
+#     if completed_proc.returncode != 0:
+#         print(completed_proc.stdout)
+#         try:
+#             print(completed_proc.stderr)
+#         except:
+#             pass
+
+#         assert False
+
+#     # Now, reload the model and run inference:
+
+
+#     args = [exec_script, "inference"]
+#     args += ["--framework", "tensorflow"]
+
+
+#     args += ["--iterations",  "5"]
+#     args += ["--n-initial-filters",  "1"]
+#     args += ["--network-depth",  "4"]
+#     args += ["--downsample-images",  "2"]
+#     args += ["--file", f"{file_path}"]
+
+
+#     random_file_name = str(tmpdir + "/tensorflow_log_dir/")
+#     args += ["--log-directory", random_file_name]
+
+#     completed_proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    
+
+
+#     if completed_proc.returncode == 0:
+#         assert True
+#     else:
+#         print(completed_proc.stdout)
+#         try:
+#             print(completed_proc.stderr)
+#         except:
+#             pass
+
+#         assert False
+
+# if __name__ == '__main__':
+#     test_tensorflow_default_network("./", synthetic=True, downsample_images=2)
 
 
 

@@ -159,13 +159,20 @@ class tf_trainer(trainercore):
         end = time.time()
         return end - start
 
-    def print_network_info(self):
+    def print_network_info(self, verbose=False):
+        if verbose:
+            for var in tf.compat.v1.trainable_variables():
+                print(var)
+
+        self.print("Total number of trainable parameters in this network: {}\n".format(self.n_parameters()))
+
+
+    def n_parameters(self):
         n_trainable_parameters = 0
         for var in tf.compat.v1.trainable_variables():
             n_trainable_parameters += numpy.prod(var.get_shape())
-            # print(var.name, var.get_shape())
-        self.print("Total number of trainable parameters in this network: {}\n".format(n_trainable_parameters))
 
+        return n_trainable_parameters
 
     def set_compute_parameters(self):
 
@@ -572,6 +579,7 @@ class tf_trainer(trainercore):
             io_start_time = datetime.datetime.now()
             minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
             
+
             # Abort if we get "None"
             if minibatch_data is None: return
             
@@ -712,7 +720,13 @@ class tf_trainer(trainercore):
 
         # Fetch the next batch of data with larcv
         io_start_time = datetime.datetime.now()
-        minibatch_data = self.larcv_fetcher.fetch_next_batch("aux")
+
+        if self._iteration == 0:
+            force_pop = False
+        else:
+            force_pop = True
+        minibatch_data = self.larcv_fetcher.fetch_next_batch("train", force_pop=force_pop)
+
 
         # Escape if we get None:
         if minibatch_data is None: return
@@ -751,62 +765,94 @@ class tf_trainer(trainercore):
         if verbose: self.print("Calculated metrics")
 
         # Report metrics on the terminal:
-        self.log(ops["metrics"], kind="Inference", step=ops["global_step"])
+        self.log(ops["metrics"], kind="Inference", step=self.get_current_global_step())
 
-        self.print(ops["metrics"])
+        # self.print(ops["metrics"])
 
 
-        # Here is the part where we have to add output:
-
+        # If there is an aux file, for ana that means an output file.
+        # Call the larcv interface to write data:
         if self.args.aux_file is not None:
 
-            if self.args.data_format == "channels_last":
-                locs = [ numpy.where(minibatch_data['image'][0,:,:,i] != 0) for i in [0,1,2]]
-            else:
-                locs = [ numpy.where(minibatch_data['image'][0,i,:,:] != 0) for i in [0,1,2]]
+            # For writing output, we get the non-zero locations from the labels.
+            # Then, we get the neutrino and cosmic scores for those locations in the logits,
+            # After applying a softmax.
 
-            for i, label in zip([1,2], ['neutrino', 'cosmic']):
-                softmax    = []
-                prediction = []
-                for plane in [0,1,2]:
-                    if self.args.data_format == "channels_first":
-                        softmax.append(ops['softmax'][plane][0,i,:,:])
-                        # locs = numpy.where(ops['prediction'][plane][0,:,:]) == i
-                        # prediction.append({
-                        #         'index'  : locs,
-                        #         'values' : ops['prediction'][plane][locs],
-                        #         'shape'  : ops['prediction'][plane].shape
-                        #         }
-                        #     )
-                    else:
-                        softmax.append(ops['softmax'][plane][0,:,:,i])
-
-                    shape = ops['prediction'][plane][0].shape
-                    locs_flat = numpy.ravel_multi_index(
-                        multi_index = locs[plane],
-                        dims        = shape
-                    )
-                    prediction.append({
-                            'index'  : locs_flat,
-                            'values' : ops['softmax'][plane][0][locs[plane]],
-                            'shape'  : shape
-                            }
-                        )
-
-                # self._larcv_interface.write_output(data=softmax,
-                #     datatype='image2d',
-                #     producer="seg_{}".format(label),
-                #     entries=minibatch_data['entries'],
-                #     event_ids=minibatch_data['event_ids'])
-
-                self._larcv_interface.write_output(
-                    data=prediction,
-                    datatype='sparse2d',
-                    producer = 'seg_{}'.format(label),
-                    entries=minibatch_data['entries'],
-                    event_ids=minibatch_data['event_ids'])
+            # To do this, we just need to capture the following objects:
+            # - the dense shape
+            # - the location of all non-zero pixels, flattened
+            # - the softmax score for all non-zero pixels, flattened.
 
 
+            # Compute the softmax over all images in the batch:
+            softmax = ops['softmax']
+            for b_index in range(self.args.minibatch_size):
+
+                # We want to make sure we get the locations from the non-zero input pixels:
+                images = numpy.split(minibatch_data['image'][b_index,:,:,:], 3, axis=self._channels_dim)
+
+                # Reshape images here to remove the empty index:
+                images = [image.squeeze() for image in images]
+
+                # Locations is a list of a tuple of coordinates for each image
+                locations = [numpy.where(image != 0) for image in images]
+
+                # Shape is a list of shapes for each image:
+                shape = [ image.shape for image in images ]
+
+                # Batch softmax is a list of the softmax tensor on each plane
+                batch_softmax = [s[b_index] for s in softmax]
+
+
+                # To get the neutrino scores, we want to access the softmax at the neutrino index
+                # And slice over just the non-zero locations:
+                if self._channels_dim == 1:
+                    neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]] 
+                        for plane, b in enumerate(batch_softmax) ]
+                    cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]] 
+                        for plane, b in enumerate(batch_softmax) ]
+                else:
+                    neutrino_scores = [ b[locations[plane]][:,self.NEUTRINO_INDEX] 
+                        for plane, b in enumerate(batch_softmax) ]
+                    cosmic_scores   = [ b[locations[plane]][:,self.COSMIC_INDEX]
+                        for plane, b in enumerate(batch_softmax) ]
+
+                # Lastly, flatten the locations.
+                # For the unraveled index, there is a complication that torch stores images 
+                # with [H,W] and larcv3 stores images with [W, H] by default.
+                # To solve this - 
+                # Reverse the shape:
+                shape = [ s[::-1] for s in shape ]
+                # Go through the locations in reverse:
+                locations = [ numpy.ravel_multi_index(l[::-1], s) for l, s in zip(locations, shape) ]
+
+                # Now, package up the objects to send to the file writer:
+                neutrino_data = []
+                cosmic_data = []
+                for plane in range(3):
+                    neutrino_data.append({
+                        'values' : neutrino_scores[plane],
+                        'index'  : locations[plane],
+                        'shape'  : shape[plane]
+                    })
+                    cosmic_data.append({
+                        'values' : cosmic_scores[plane],
+                        'index'  : locations[plane],
+                        'shape'  : shape[plane]
+                    })
+
+
+                # Write the data through the writer:
+                self.larcv_fetcher.write(cosmic_data, 
+                    producer = "cosmic_prediction",
+                    entry    = minibatch_data['entries'][b_index], 
+                    event_id = minibatch_data['event_ids'][b_index])
+
+                self.larcv_fetcher.write(neutrino_data, 
+                    producer = "neutrino_prediction",
+                    entry    = minibatch_data['entries'][b_index], 
+                    event_id = minibatch_data['event_ids'][b_index])
+ 
 
         if verbose: self.print("Completed Log")
 
@@ -814,7 +860,7 @@ class tf_trainer(trainercore):
 
         # Compute global step per second:
         self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
-        self._global_step += 1
+        # self._global_step += 1
 
         return ops["global_step"]
 
@@ -851,6 +897,7 @@ class tf_trainer(trainercore):
         return fd
 
     def close_savers(self):
-        if self.args.mode == 'inference':
-            if self._larcv_interface._writer is not None:
-                self._larcv_interface._writer.finalize()
+        pass
+        # if self.args.mode == 'inference':
+        #     if self.larcv_fetcher._writer is not None:
+        #         self.larcv_fetcher._writer.finalize()

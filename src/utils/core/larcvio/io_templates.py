@@ -48,7 +48,7 @@ def ana_io(input_file, name="", ):
 
 def output_io(input_file):
 
-    config = larcv_io.IOManagerConfig()
+    config = larcv_io.IOManagerConfig(name="IOManager")
 
     config.set_param("InputFiles", input_file)
 

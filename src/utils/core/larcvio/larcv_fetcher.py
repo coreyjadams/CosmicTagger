@@ -41,11 +41,17 @@ class larcv_fetcher(object):
         self.synthetic  = synthetic
         self.sparse     = sparse
 
+        self.writer     = None
+
         # Compute the realized image shape:
         self.full_image_shape = [self.FULL_RESOLUTION_H, self.FULL_RESOLUTION_W]
         self.ds = 2**downsample
 
         self.image_shape = [ int(i / self.ds) for i in self.full_image_shape ]
+
+    def __del__(self):
+        if self.writer is not None:
+            self.writer.finalize()
 
 
     def image_size(self):
@@ -86,6 +92,7 @@ class larcv_fetcher(object):
 
             main_file.close()
 
+
             io_config = {
                 'filler_name' : config._name,
                 'filler_cfg'  : main_file.name,
@@ -103,7 +110,7 @@ class larcv_fetcher(object):
             os.unlink(main_file.name)
 
             # This queues up the next data
-            self._larcv_interface.prepare_next(name)
+            # self._larcv_interface.prepare_next(name)
 
             while self._larcv_interface.is_reading(name):
                 time.sleep(0.1)
@@ -130,8 +137,9 @@ class larcv_fetcher(object):
             if minibatch_data is None:
                 return minibatch_data
 
-            # This brings up the current data
-            self._larcv_interface.prepare_next(name)
+            # This brings up the next data to current data
+            if pop:
+                self._larcv_interface.prepare_next(name)
 
             for key in minibatch_data:
                 if key == 'entries' or key == 'event_ids':
@@ -171,3 +179,24 @@ class larcv_fetcher(object):
             self.synthetic_index += 1
 
         return minibatch_data
+
+    def prepare_writer(self, input_file, output_file):
+
+        from larcv import larcv_writer
+        config = io_templates.output_io(input_file  = input_file)
+
+        # Generate a named temp file:
+        main_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+        main_file.write(config.generate_config_str())
+
+        main_file.close()
+
+        self.writer = larcv_writer.larcv_writer(main_file.name, output_file)
+
+    def write(self, data, producer, entry, event_id):
+        self.writer.write(data, datatype='sparse2d', producer=producer, entry=entry, event_id=event_id)
+
+
+
+
+
