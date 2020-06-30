@@ -10,7 +10,7 @@ import torch
 torch.manual_seed(0)
 
 # torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+# torch.backends.cudnn.benchmark = False
 
 
 # from torch.jit import trace
@@ -96,7 +96,7 @@ class torch_trainer(trainercore):
         if self.args.compute_mode == "CPU":
             pass
         if self.args.compute_mode == "GPU":
-            self._net.cuda()
+            self._net.sycl()
 
         self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
 
@@ -203,7 +203,7 @@ class torch_trainer(trainercore):
         if self.args.mode == "train":
             self._opt.load_state_dict(state['optimizer'])
             self.lr_scheduler.load_state_dict(state['scheduler'])
-        
+
         self._global_step = state['global_step']
 
         # If using GPUs, move the model to GPU:
@@ -211,7 +211,7 @@ class torch_trainer(trainercore):
             for state in self._opt.state.values():
                 for k, v in state.items():
                     if torch.is_tensor(v):
-                        state[k] = v.cuda()
+                        state[k] = v.sycl()
 
         return True
 
@@ -500,7 +500,7 @@ class torch_trainer(trainercore):
         # Convert the input data to torch tensors
         if self.args.compute_mode == "GPU":
             if device is None:
-                device = torch.device('cuda')
+                device = torch.device('sycl')
         else:
             if device is None:
                 device = torch.device('cpu')
@@ -791,15 +791,15 @@ class torch_trainer(trainercore):
 
                 # To get the neutrino scores, we want to access the softmax at the neutrino index
                 # And slice over just the non-zero locations:
-                neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]] 
+                neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]]
                     for plane, b in enumerate(batch_softmax) ]
-                cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]] 
+                cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]]
                     for plane, b in enumerate(batch_softmax) ]
 
                 # Lastly, flatten the locations.
-                # For the unraveled index, there is a complication that torch stores images 
+                # For the unraveled index, there is a complication that torch stores images
                 # with [H,W] and larcv3 stores images with [W, H] by default.
-                # To solve this - 
+                # To solve this -
                 # Reverse the shape:
                 shape = [ s[::-1] for s in shape ]
                 # Go through the locations in reverse:
@@ -824,16 +824,16 @@ class torch_trainer(trainercore):
 
 
                 # Write the data through the writer:
-                self.larcv_fetcher.write(cosmic_data, 
+                self.larcv_fetcher.write(cosmic_data,
                     producer = "cosmic_prediction",
-                    entry    = minibatch_data['entries'][b_index], 
+                    entry    = minibatch_data['entries'][b_index],
                     event_id = minibatch_data['event_ids'][b_index])
 
-                self.larcv_fetcher.write(neutrino_data, 
+                self.larcv_fetcher.write(neutrino_data,
                     producer = "neutrino_prediction",
-                    entry    = minibatch_data['entries'][b_index], 
+                    entry    = minibatch_data['entries'][b_index],
                     event_id = minibatch_data['event_ids'][b_index])
- 
+
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss
