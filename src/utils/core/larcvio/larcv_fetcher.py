@@ -6,7 +6,6 @@ from . import io_templates
 import tempfile
 
 import numpy
-import h5py
 
 
 class larcv_fetcher(object):
@@ -93,6 +92,7 @@ class larcv_fetcher(object):
             # In inference mode, we use h5py to pull out the energy and interaction flavor.
             if self.mode == "inference":
                 try:
+                    import h5py
                     # Open the file:
                     f = h5py.File(input_file, 'r')
                     # Read the right tables from the file:

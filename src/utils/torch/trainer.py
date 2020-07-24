@@ -7,9 +7,9 @@ from collections import OrderedDict
 import numpy
 
 import torch
-torch.manual_seed(0)
+# torch.manual_seed(0)
 
-torch.backends.cudnn.deterministic = True
+# torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 
@@ -78,9 +78,15 @@ class torch_trainer(trainercore):
 
         self.init_network()
 
+
+
         self.print_network_info()
 
+
         if self.args.mode == "train":
+            # If using half precision on the model, convert it before going to the optimizer:
+            if self.args.mixed_precision:
+                self._net.half()
             self.init_optimizer()
 
         self.init_saver()

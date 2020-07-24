@@ -222,7 +222,8 @@ The most commonly used commands are:
 
             self.trainer.print(i, ": Time to fetch a minibatch of data: {}".format(end - start))
 
-        self.trainerprint("Total IO Time: ", time.time() - global_start)
+        self.trainer.print("Total IO Time: ", time.time() - global_start)
+
     def make_trainer(self):
 
         self.validate_arguments()
