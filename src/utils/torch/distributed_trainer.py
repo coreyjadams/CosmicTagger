@@ -104,6 +104,9 @@ class distributed_trainer(torch_trainer):
         # Broadcast the state of the model:
         hvd.broadcast_parameters(self._net.state_dict(), root_rank = 0)
 
+        if self.args.mixed_precision == True:
+            self._net.half()
+
         # Broadcast the optimizer state:
         hvd.broadcast_optimizer_state(self._opt, root_rank = 0)
 

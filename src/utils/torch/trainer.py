@@ -145,6 +145,8 @@ class torch_trainer(trainercore):
         # but I've written it as learning rate itself.  So set the LR to 1.0
         if "RMS" in self.args.optimizer.upper():
             self._opt = torch.optim.RMSprop(self._net.parameters(), 1.0, eps=1e-4)
+        elif "SGD" in self.args.optimizer.upper():
+            self._opt = torch.optim.SGD(self._net.parameters(), 1.0)
         else:
             self._opt = torch.optim.Adam(self._net.parameters(), 1.0)
 

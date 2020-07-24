@@ -88,7 +88,7 @@ The most commonly used commands are:
 
         parser.add_argument('--optimizer',
             type    = str,
-            choices = ['adam', 'rmsprop',],
+            choices = ['adam', 'rmsprop', 'sgd'],
             default = 'rmsprop',
             help    = 'Optimizer to use')
 
