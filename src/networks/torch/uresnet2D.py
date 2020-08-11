@@ -57,9 +57,9 @@ class ResidualBlock(nn.Module):
         self.conv1 = nn.Conv2d(
             in_channels  = inplanes,
             out_channels = outplanes,
-            kernel_size  = kernel,
-            stride       = [1, 1],
-            padding      = padding,
+            kernel_size  = tuple(kernel),
+            stride       = (1, 1),
+            padding      = tuple(padding),
             bias         = params.use_bias)
 
 
@@ -69,12 +69,13 @@ class ResidualBlock(nn.Module):
 
         self.relu = nn.LeakyReLU(inplace=True)
 
+
         self.conv2 = nn.Conv2d(
             in_channels  = outplanes,
             out_channels = outplanes,
-            kernel_size  = kernel,
+            kernel_size  = tuple(kernel),
             stride       = [1, 1],
-            padding      = padding,
+            padding      = tuple(padding),
             bias         = params.use_bias)
 
         if self.do_batch_norm:
@@ -164,25 +165,24 @@ class BlockSeries(torch.nn.Module):
     def __init__(self, *, inplanes, n_blocks, kernel = [3,3], padding = [1,1], params):
         torch.nn.Module.__init__(self)
 
-        if not params.residual:
-            self.blocks = [ Block(
-                                inplanes  = inplanes,
-                                outplanes = inplanes,
-                                kernel    = kernel,
-                                padding   = padding,
-                                params    = params)
-                            for i in range(n_blocks) ]
-        else:
-            self.blocks = [ ResidualBlock(
-                                inplanes  = inplanes,
-                                outplanes = inplanes,
-                                kernel    = kernel,
-                                padding   = padding,
-                                params    = params)
-                            for i in range(n_blocks)]
 
-        for i, block in enumerate(self.blocks):
-            self.add_module('block_{}'.format(i), block)
+        self.blocks = torch.nn.ModuleList()
+        if not params.residual:
+            for i in range(n_blocks):
+                self.blocks.append(Block(
+                                inplanes  = inplanes,
+                                outplanes = inplanes,
+                                kernel    = kernel,
+                                padding   = padding,
+                                params    = params))
+        else:
+            for i in range(n_blocks):
+                self.blocks.append(ResidualBlock(
+                                inplanes  = inplanes,
+                                outplanes = inplanes,
+                                kernel    = kernel,
+                                padding   = padding,
+                                params    = params))
 
 
     def forward(self, x):
@@ -221,8 +221,8 @@ class DeepestBlock(nn.Module):
                     padding    = [0,0],
                     params     = params)
 
-            kernel  = [params.filter_size_deepest, params.filter_size_deepest]
-            padding = [ int((k - 1) / 2) for k in kernel ]
+            kernel  = (params.filter_size_deepest, params.filter_size_deepest)
+            padding = tuple( int((k - 1) / 2) for k in kernel )
 
             self.blocks = BlockSeries(
                 inplanes    = n_filters_bottleneck,
@@ -248,8 +248,8 @@ class DeepestBlock(nn.Module):
                     padding    = [0,0],
                     params     = params)
 
-            kernel  = [params.filter_size_deepest, params.filter_size_deepest]
-            padding = [ int((k - 1) / 2) for k in kernel ]
+            kernel  = (params.filter_size_deepest, params.filter_size_deepest)
+            padding = tuple( int((k - 1) / 2) for k in kernel )
 
             self.blocks = BlockSeries(
                 inplanes    = n_filters_bottleneck,
@@ -274,9 +274,9 @@ class DeepestBlock(nn.Module):
         #     x = [ self.blocks(_x) for _x in x ]
         # else:
         if self.block_concat:
-            x = [ self.bottleneck(_x) for _x in x ]
-            x = [ self.blocks(_x) for _x in x ]
-            x = [ self.unbottleneck(_x) for _x in x ]
+            x = ( self.bottleneck(_x) for _x in x )
+            x = ( self.blocks(_x) for _x in x )
+            x = ( self.unbottleneck(_x) for _x in x )
         else:
 
             x = torch.cat(x, dim=1)
@@ -324,7 +324,7 @@ class ConcatConnection(nn.Module):
         #     bias          = params.use_bias)
 
     def forward(self, x, residual):
-        x = torch.cat([x, residual], dim=1)
+        x = torch.cat((x, residual), dim=1)
         x = self.bottleneck(x)
         return x
 
@@ -447,10 +447,10 @@ class UNetCore(nn.Module):
 
             residual = x
 
-            x = [ self.down_blocks(_x) for _x in x ]
+            x = tuple( self.down_blocks(_x) for _x in x )
 
             # perform the downsampling operation:
-            x = [ self.downsample(_x) for _x in x ]
+            x = tuple( self.downsample(_x) for _x in x )
         #
         # if FLAGS.VERBOSITY >1:
         #     for p in range(len(x)):
@@ -464,14 +464,17 @@ class UNetCore(nn.Module):
 
             # perform the upsampling step:
             # perform the downsampling operation:
-            x = [ self.upsample(_x) for _x in x ]
+            x = tuple( self.upsample(_x) for _x in x )
 
             # Connect with the residual if necessary:
-            for i in range(len(x)):
-                x[i] = self.connection(x[i], residual=residual[i])
+            # for i in range(len(x)):
+            #     x[i] = self.connection(x[i], residual=residual[i])
+
+            x = tuple( self.connection(_x, _r) for _x, _r in zip(x, residual))
+
 
             # Apply the convolutional steps:
-            x = [ self.up_blocks(_x) for _x in x ]
+            x = tuple( self.up_blocks(_x) for _x in x )
 
 
 
@@ -557,9 +560,11 @@ class UResNet(torch.nn.Module):
         x = torch.chunk(x, chunks=3, dim=1)
 
 
-
         # Apply the initial convolutions:
-        x = [ self.initial_convolution(_x) for _x in x ]
+        x = tuple( self.initial_convolution(_x) for _x in x )
+
+
+
         #
         # if VERBOSITY >1:
         #     print("After Initial convolution: ")
@@ -570,7 +575,7 @@ class UResNet(torch.nn.Module):
         x = self.net_core(x)
 
         # Apply the final residual block to each plane:
-        x = [ self.final_layer(_x) for _x in x ]
-        x = [ self.bottleneck(_x) for _x in x ]
+        x = tuple( self.final_layer(_x) for _x in x )
+        x = tuple( self.bottleneck(_x) for _x in x )
         # Might need to do some reshaping here
         return x
