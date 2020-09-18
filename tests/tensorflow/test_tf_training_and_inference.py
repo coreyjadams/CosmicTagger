@@ -14,7 +14,8 @@ sys.path.insert(0,network_dir)
 
 @pytest.mark.parametrize('synthetic', [False, True])
 @pytest.mark.parametrize('downsample_images', [1, 2])
-def test_tensorflow_default_network(tmpdir, synthetic, downsample_images):
+@pytest.mark.parametrize('data_format', ["channels_first", "channels_last"]
+def test_tensorflow_default_network(tmpdir, synthetic, downsample_images, data_format):
     
     # Instead of calling the python objects, use subprocesses 
 
@@ -27,6 +28,7 @@ def test_tensorflow_default_network(tmpdir, synthetic, downsample_images):
     args = [exec_script, "train"]
     args += ["--framework", "tensorflow"]
     args += ["--synthetic", f"{synthetic}"]
+    args += ["--data-format", f"{data_format}"]
 
     if not synthetic:
         args += ["--file", f"{file_path}"]
