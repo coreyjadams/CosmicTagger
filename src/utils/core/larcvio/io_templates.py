@@ -9,7 +9,7 @@ from . import larcv_io
 def dataset_io(input_file, name, compression, RandomAccess=None):
     data_proc  = gen_sparse2d_data_filler(name=name + "data",  producer="sbndwire")
     label_proc = gen_sparse2d_data_filler(name=name + "label", producer="sbnd_cosmicseg")
-    
+
     config = larcv_io.ThreadIOConfig(name=name)
 
     if compression != 0:
@@ -74,7 +74,8 @@ def gen_sparse2d_data_filler(name, producer):
     proc = larcv_io.ProcessConfig(proc_name=name, proc_type="BatchFillerSparseTensor2D")
 
     proc.set_param("Verbosity",         "3")
-    proc.set_param("Tensor2DProducer",  producer)
+    proc.set_param("TensorType",        "sparse")
+    proc.set_param("TensorProducer",    producer)
     proc.set_param("IncludeValues",     "true")
     proc.set_param("MaxVoxels",         50000)
     proc.set_param("Channels",          "[0,1,2]")

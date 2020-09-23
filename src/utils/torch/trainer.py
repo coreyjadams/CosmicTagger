@@ -36,7 +36,6 @@ class torch_trainer(trainercore):
     def __init__(self,args):
         trainercore.__init__(self, args)
         self._rank = None
-        self._loss_scale = 1.0
 
 
     def init_network(self):
@@ -90,8 +89,8 @@ class torch_trainer(trainercore):
         self.restore_model()
 
         # If using half precision on the model, convert it now:
-        if self.args.mixed_precision:
-            self._net.half()
+        # if self.args.mixed_precision:
+        #     self._net.half()
 
         if self.args.compute_mode == "CPU":
             pass
@@ -144,6 +143,8 @@ class torch_trainer(trainercore):
 
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
+        if self.args.mixed_precision and self.args.compute_mode == "GPU":
+            self.scaler = torch.cuda.amp.GradScaler()
 
 
 
@@ -362,7 +363,7 @@ class torch_trainer(trainercore):
         # Call all of the functions in the metrics dictionary:
         metrics = {}
 
-        metrics['loss']     = loss.data * self._loss_scale
+        metrics['loss']     = loss.data
         accuracy = self._calculate_accuracy(logits, labels)
         metrics.update(accuracy)
 
@@ -531,13 +532,13 @@ class torch_trainer(trainercore):
                 minibatch_data['weight'] = minibatch_data['weight'].float()
 
 
-        self.reduce_precision(minibatch_data)
+        # self.reduce_precision(minibatch_data)
 
         return minibatch_data
 
-    def reduce_precision(self, minibatch_data):
-        if self.args.mixed_precision:
-            minibatch_data['image'] = minibatch_data['image'].half()
+    # def reduce_precision(self, minibatch_data):
+    #     if self.args.mixed_precision:
+    #         minibatch_data['image'] = minibatch_data['image'].half()
 
 
     def forward_pass(self, minibatch_data):
@@ -587,7 +588,12 @@ class torch_trainer(trainercore):
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
-            logits_image, labels_image = self.forward_pass(minibatch_data)
+            # if mixed precision, and cuda, use autocast:
+            if self.args.mixed_precision and self.args.compute_mode == "GPU":
+                with torch.cuda.amp.autocast():
+                    logits_image, labels_image = self.forward_pass(minibatch_data)
+            else:
+                logits_image, labels_image = self.forward_pass(minibatch_data)
 
 
             verbose = False
@@ -597,27 +603,14 @@ class torch_trainer(trainercore):
 
 
             loss = self.loss_calculator(labels_image, logits_image)
-            # We do dynamic loss scaling to put the loss in a reasonable range:
-            if self.args.mixed_precision:
-                if loss > 1e3:
-                    self._loss_scale = 1000
-                elif loss < 1e-3:
-                    self._loss_scale = 0.001
-                else:
-                    self._loss_scale = 1.0
-
-                loss /= self._loss_scale
-                loss = loss.half()
 
             if verbose: self.print("Completed loss")
 
             # Compute the gradients for the network parameters:
-            loss.backward()
-
-            # If the loss is scaled, we have to un-scale after the backwards pass
-            if self._loss_scale != 1.0:
-                for param in self._net.parameters():
-                    param.grad *= self._loss_scale
+            if self.args.mixed_precision and self.args.compute_mode == "GPU":
+                self.scaler.scale(loss).backward()
+            else:
+                loss.backward()
 
 
 
@@ -651,7 +644,12 @@ class torch_trainer(trainercore):
 
         step_start_time = datetime.datetime.now()
         # Apply the parameter update:
-        self._opt.step()
+        if self.args.mixed_precision and self.args.compute_mode == "GPU":
+            self.scaler.step(self._opt)
+            self.scaler.update()
+        else:
+            self._opt.step()
+
         self.lr_scheduler.step()
 
         if verbose: self.print("Updated Weights")
@@ -702,14 +700,6 @@ class torch_trainer(trainercore):
 
             # Compute the loss based on the logits
             loss = self.loss_calculator(labels_image, logits_image)
-
-            if self.args.mixed_precision:
-                if loss > 1e-3:
-                    self._loss_scale = 1000
-                elif loss < 1e-3:
-                    self._loss_scale = 0.001
-
-                loss /= self._loss_scale
 
             # Compute any necessary metrics:
             metrics = self._compute_metrics(logits_image, labels_image, loss)
