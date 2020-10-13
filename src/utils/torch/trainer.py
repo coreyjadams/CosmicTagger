@@ -52,16 +52,13 @@ class torch_trainer(trainercore):
 
             self._net = UResNet3D(self.args, self.larcv_fetcher.image_size())
 
-        # self._net.half()
 
-        # self._net = trace(self._net, torch.empty(1, 3, 640, 1024).uniform_(0,1))
 
 
         if self.args.training:
             self._net.train(True)
 
         # Here we set up weights using the aggregate metrics for the dataset:
-
 
         self._log_keys = ['loss', 'Average/Non_Bkg_Accuracy', 'Average/mIoU']
 
@@ -89,8 +86,8 @@ class torch_trainer(trainercore):
         self.restore_model()
 
         # If using half precision on the model, convert it now:
-        # if self.args.mixed_precision:
-        #     self._net.half()
+        if self.args.precision == "bfloat16":
+            self._net = self._net.bfloat16()
 
         if self.args.compute_mode == "CPU":
             pass
@@ -102,7 +99,7 @@ class torch_trainer(trainercore):
 
         # For half precision, we disable gradient accumulation.  This is to allow
         # dynamic loss scaling
-        if self.args.mixed_precision:
+        if self.args.precision == "mixed":
             if self.args.gradient_accumulation > 1:
                 raise Exception("Can not accumulate gradients in half precision.")
 
@@ -143,7 +140,7 @@ class torch_trainer(trainercore):
 
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
-        if self.args.mixed_precision and self.args.compute_mode == "GPU":
+        if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
             self.scaler = torch.cuda.amp.GradScaler()
 
 
@@ -204,7 +201,7 @@ class torch_trainer(trainercore):
         if self.args.mode == "train":
             self._opt.load_state_dict(state['optimizer'])
             self.lr_scheduler.load_state_dict(state['scheduler'])
-        
+
         self._global_step = state['global_step']
 
         # If using GPUs, move the model to GPU:
@@ -531,13 +528,15 @@ class torch_trainer(trainercore):
             if self.args.loss_balance_scheme == "even" or self.args.loss_balance_scheme == "light":
                 minibatch_data['weight'] = minibatch_data['weight'].float()
 
+        if self.args.precision == "bfloat16":
+            minibatch_data["image"] = minibatch_data["image"].bfloat16()
 
         # self.reduce_precision(minibatch_data)
 
         return minibatch_data
 
     # def reduce_precision(self, minibatch_data):
-    #     if self.args.mixed_precision:
+    #     if self.args.precision == "mixed":
     #         minibatch_data['image'] = minibatch_data['image'].half()
 
 
@@ -589,7 +588,7 @@ class torch_trainer(trainercore):
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
             # if mixed precision, and cuda, use autocast:
-            if self.args.mixed_precision and self.args.compute_mode == "GPU":
+            if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
                 with torch.cuda.amp.autocast():
                     logits_image, labels_image = self.forward_pass(minibatch_data)
             else:
@@ -607,7 +606,7 @@ class torch_trainer(trainercore):
             if verbose: self.print("Completed loss")
 
             # Compute the gradients for the network parameters:
-            if self.args.mixed_precision and self.args.compute_mode == "GPU":
+            if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
                 self.scaler.scale(loss).backward()
             else:
                 loss.backward()
@@ -644,7 +643,7 @@ class torch_trainer(trainercore):
 
         step_start_time = datetime.datetime.now()
         # Apply the parameter update:
-        if self.args.mixed_precision and self.args.compute_mode == "GPU":
+        if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
             self.scaler.step(self._opt)
             self.scaler.update()
         else:
@@ -681,6 +680,7 @@ class torch_trainer(trainercore):
         # First, validation only occurs on training:
         if not self.args.training: return
 
+        if self.args.synthetic: return
         # Second, validation can not occur without a validation dataloader.
         if self.args.aux_file is None: return
 
@@ -781,15 +781,15 @@ class torch_trainer(trainercore):
 
                 # To get the neutrino scores, we want to access the softmax at the neutrino index
                 # And slice over just the non-zero locations:
-                neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]] 
+                neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]]
                     for plane, b in enumerate(batch_softmax) ]
-                cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]] 
+                cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]]
                     for plane, b in enumerate(batch_softmax) ]
 
                 # Lastly, flatten the locations.
-                # For the unraveled index, there is a complication that torch stores images 
+                # For the unraveled index, there is a complication that torch stores images
                 # with [H,W] and larcv3 stores images with [W, H] by default.
-                # To solve this - 
+                # To solve this -
                 # Reverse the shape:
                 shape = [ s[::-1] for s in shape ]
                 # Go through the locations in reverse:
@@ -814,16 +814,16 @@ class torch_trainer(trainercore):
 
 
                 # Write the data through the writer:
-                self.larcv_fetcher.write(cosmic_data, 
+                self.larcv_fetcher.write(cosmic_data,
                     producer = "cosmic_prediction",
-                    entry    = minibatch_data['entries'][b_index], 
+                    entry    = minibatch_data['entries'][b_index],
                     event_id = minibatch_data['event_ids'][b_index])
 
-                self.larcv_fetcher.write(neutrino_data, 
+                self.larcv_fetcher.write(neutrino_data,
                     producer = "neutrino_prediction",
-                    entry    = minibatch_data['entries'][b_index], 
+                    entry    = minibatch_data['entries'][b_index],
                     event_id = minibatch_data['event_ids'][b_index])
- 
+
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss

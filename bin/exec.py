@@ -114,15 +114,11 @@ The most commonly used commands are:
         ### Torch Specific
         ##################################################################
 
-        parser.add_argument('--mixed-precision',
-            type    = str2bool,
-            default = False,
-            help    = "Use mixed precision for training.")
+        parser.add_argument('--precision',
+            type    = str,
+            default = 'float32',
+            choices = ['float32', 'bfloat16', 'mixed'])
 
-        parser.add_argument('--loss-scale',
-            type    = float,
-            default = 1.0,
-            help    = "Amount to scale the loss function before back prop.")
 
         ##################################################################
         ### Tensorflow Specific

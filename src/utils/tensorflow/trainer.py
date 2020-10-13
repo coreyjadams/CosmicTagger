@@ -49,7 +49,7 @@ class tf_trainer(trainercore):
         start = time.time()
 
         # Here, if using mixed precision, set a global policy:
-        if self.args.mixed_precision:
+        if self.args.precision == "mixed":
             from tensorflow.keras.mixed_precision import experimental as mixed_precision
             self.policy = mixed_precision.Policy('mixed_float16')
             mixed_precision.set_policy(self.policy)
@@ -278,7 +278,7 @@ class tf_trainer(trainercore):
         '''
 
         file_path = self.get_checkpoint_dir()
-        
+
         path = tf.train.latest_checkpoint(file_path)
 
 
@@ -341,7 +341,7 @@ class tf_trainer(trainercore):
     def init_saver(self):
 
         file_path = self.get_checkpoint_dir()
-        
+
         try:
             os.makedirs(file_path)
         except:
@@ -369,29 +369,37 @@ class tf_trainer(trainercore):
         if 'RMS' in self.args.optimizer.upper():
             # Use RMS prop:
             self.print("Selected optimizer is RMS Prop")
-            self._opt = tf.compat.v1.train.RMSPropOptimizer(self._learning_rate)
+            if tf.__version__.startswith("2"):
+                self._opt = tf.keras.optimizers.RMSprop(self._learning_rate)
+            else:
+                self._opt = tf.compat.v1.train.RMSPropOptimizer(self._learning_rate)
         else:
             # default is Adam:
             self.print("Using default Adam optimizer")
-            self._opt = tf.compat.v1.train.AdamOptimizer(self._learning_rate)
+            if tf.__version__.startswith("2"):
+                self._opt = tf.keras.optimizers.Adam(self._learning_rate)
+            else:
+                self._opt = tf.compat.v1.train.AdamOptimizer(self._learning_rate)
 
-
-        if self.args.mixed_precision:
+        if self.args.precision == "mixed":
             from tensorflow.keras.mixed_precision import experimental as mixed_precision
             self._opt = mixed_precision.LossScaleOptimizer(self._opt, loss_scale='dynamic')
 
 
 
-        # self._train_op = self._opt.minimize(self._loss, self._global_step)
+        else:
+            with tf.name_scope('gradient_accumulation'):
 
-        with tf.name_scope('gradient_accumulation'):
+                self._zero_gradients =  [tv.assign(tf.zeros_like(tv)) for tv in self._accum_vars]
+                if tf.__version__.startswith("2"):
+                    self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
+                                            i, gv in enumerate(self._opt.get_gradients(self._loss, tf.compat.v1.trainable_variables()))]
+                else:
+                    self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
+                                             i, gv in enumerate(self._opt.compute_gradients(self._loss))]
 
-            self._zero_gradients =  [tv.assign(tf.zeros_like(tv)) for tv in self._accum_vars]
-            self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
-                                     i, gv in enumerate(self._opt.compute_gradients(self._loss))]
-
-            self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.compat.v1.trainable_variables()),
-                global_step = self._global_step)
+                self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.compat.v1.trainable_variables()),
+                    global_step = self._global_step)
 
 
     def log(self, metrics, kind, step):
@@ -578,11 +586,11 @@ class tf_trainer(trainercore):
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
             minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
-            
+
 
             # Abort if we get "None"
             if minibatch_data is None: return
-            
+
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
@@ -645,7 +653,7 @@ class tf_trainer(trainercore):
 
         # Lastly, update the weights:
 
-        self._sess.run(self._apply_gradients, 
+        self._sess.run(self._apply_gradients,
             feed_dict = {self._learning_rate : fd[self._learning_rate]})
 
         # Normalize the metrics:
@@ -807,20 +815,20 @@ class tf_trainer(trainercore):
                 # To get the neutrino scores, we want to access the softmax at the neutrino index
                 # And slice over just the non-zero locations:
                 if self._channels_dim == 1:
-                    neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]] 
+                    neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]]
                         for plane, b in enumerate(batch_softmax) ]
-                    cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]] 
+                    cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]]
                         for plane, b in enumerate(batch_softmax) ]
                 else:
-                    neutrino_scores = [ b[locations[plane]][:,self.NEUTRINO_INDEX] 
+                    neutrino_scores = [ b[locations[plane]][:,self.NEUTRINO_INDEX]
                         for plane, b in enumerate(batch_softmax) ]
                     cosmic_scores   = [ b[locations[plane]][:,self.COSMIC_INDEX]
                         for plane, b in enumerate(batch_softmax) ]
 
                 # Lastly, flatten the locations.
-                # For the unraveled index, there is a complication that torch stores images 
+                # For the unraveled index, there is a complication that torch stores images
                 # with [H,W] and larcv3 stores images with [W, H] by default.
-                # To solve this - 
+                # To solve this -
                 # Reverse the shape:
                 shape = [ s[::-1] for s in shape ]
                 # Go through the locations in reverse:
@@ -843,16 +851,16 @@ class tf_trainer(trainercore):
 
 
                 # Write the data through the writer:
-                self.larcv_fetcher.write(cosmic_data, 
+                self.larcv_fetcher.write(cosmic_data,
                     producer = "cosmic_prediction",
-                    entry    = minibatch_data['entries'][b_index], 
+                    entry    = minibatch_data['entries'][b_index],
                     event_id = minibatch_data['event_ids'][b_index])
 
-                self.larcv_fetcher.write(neutrino_data, 
+                self.larcv_fetcher.write(neutrino_data,
                     producer = "neutrino_prediction",
-                    entry    = minibatch_data['entries'][b_index], 
+                    entry    = minibatch_data['entries'][b_index],
                     event_id = minibatch_data['event_ids'][b_index])
- 
+
 
         if verbose: self.print("Completed Log")
 
