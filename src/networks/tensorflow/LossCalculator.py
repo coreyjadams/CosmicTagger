@@ -29,6 +29,7 @@ class LossCalculator(object):
 
         return counts
 
+    @tf.function
     def __call__(self, labels, logits):
 
         # This function receives the inputs labels and logits and returns a loss.\

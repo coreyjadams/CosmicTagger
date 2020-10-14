@@ -231,13 +231,23 @@ The most commonly used commands are:
 
         if self.args.framework == "tensorflow" or self.args.framework == "tf":
 
+            # Import tensorflow and see what the version is.
+            import tensorflow as tf
 
-            if self.args.distributed:
-                from src.utils.tensorflow import distributed_trainer
-                self.trainer = distributed_trainer.distributed_trainer(self.args)
+            if tf.__version__.startswith("2"):
+                if self.args.distributed:
+                    from src.utils.tensorflow2 import distributed_trainer
+                    self.trainer = distributed_trainer.distributed_trainer(self.args)
+                else:
+                    from src.utils.tensorflow2 import trainer
+                    self.trainer = trainer.tf_trainer(self.args)
             else:
-                from src.utils.tensorflow import trainer
-                self.trainer = trainer.tf_trainer(self.args)
+                if self.args.distributed:
+                    from src.utils.tensorflow1 import distributed_trainer
+                    self.trainer = distributed_trainer.distributed_trainer(self.args)
+                else:
+                    from src.utils.tensorflow1 import trainer
+                    self.trainer = trainer.tf_trainer(self.args)
 
         elif self.args.framework == "torch":
             if self.args.distributed:

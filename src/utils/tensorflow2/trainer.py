@@ -17,10 +17,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
 
 
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-
-from tensorflow.python.client import timeline
 
 floating_point_format = tf.float32
 integer_format = tf.int64
@@ -59,13 +55,16 @@ class tf_trainer(trainercore):
         # We compute the
         batch_dims[0] = self.local_batch_size()
 
-        # We have to make placeholders for input objects:
+        #
+        self._global_step = tf.Variable(0, dtype=tf.int64)
 
-        self._input = {
-            'image'   : tf.compat.v1.placeholder(floating_point_format, batch_dims, name="input_image"),
-            'label'   : tf.compat.v1.placeholder(integer_format,        batch_dims, name="input_label"),
-            'io_time' : tf.compat.v1.placeholder(floating_point_format, (), name="io_fetch_time")
-        }
+        # We have to make placeholders for input objects:
+        #
+        # self._input = {
+        #     'image'   : tf.compat.v1.placeholder(floating_point_format, batch_dims, name="input_image"),
+        #     'label'   : tf.compat.v1.placeholder(integer_format,        batch_dims, name="input_label"),
+        #     'io_time' : tf.compat.v1.placeholder(floating_point_format, (), name="io_fetch_time")
+        # }
 
         # Build the network object, forward pass only:
 
@@ -76,83 +75,74 @@ class tf_trainer(trainercore):
 
         self._net.trainable = True
 
-        self._logits = self._net(self._input['image'], training=self.args.training)
+        # self._logits = self._net(self._input['image'], training=self.args.training)
 
-        # If channels first, need to permute the logits:
-        if self._channels_dim == 1:
-            permutation = tf.keras.layers.Permute((2, 3, 1))
-            self._loss_logits = [ permutation(l) for l in self._logits ]
-        else:
-            self._loss_logits = self._logits
-
-
-        # Used to accumulate gradients over several iterations:
-        with tf.compat.v1.variable_scope("gradient_accumulation"):
-            self._accum_vars = [tf.Variable(tv.initialized_value(),
-                                trainable=False) for tv in tf.compat.v1.trainable_variables()]
+        # # If channels first, need to permute the logits:
+        # if self._channels_dim == 1:
+        #     permutation = tf.keras.layers.Permute((2, 3, 1))
+        #     self._loss_logits = [ permutation(l) for l in self._logits ]
+        # else:
+        #     self._loss_logits = self._logits
 
 
-
-        if self.args.mode == "train" or self.args.mode == "inference":
-
-
-            # Here, if the data format is channels_first, we have to reorder the logits tensors
-            # To put channels last.  Otherwise it does not work with the softmax tensors.
+        # TO PROPERLY INITIALIZE THE NETWORK, NEED TO DO A FORWARD PASS
+        minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=False)
+        self.forward_pass(minibatch_data, training=False)
 
 
-            # Apply a softmax and argmax:
-            self._output = dict()
-
-            # Take the logits (which are one per plane) and create a softmax and prediction (one per plane)
-            with tf.compat.v1.variable_scope("prediction"):
-                self._output['prediction'] = [ tf.argmax(x, axis=self._channels_dim) for x in self._logits]
-
-            with tf.compat.v1.variable_scope("cross_entropy"):
-                self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
-
-                self._input['split_labels'] = [
-                    tf.squeeze(l, axis=self._channels_dim)
-                        for l in tf.split(self._input['label'], 3, self._channels_dim)
-                    ]
-                self._input['split_images'] = [
-                    tf.squeeze(l, axis=self._channels_dim)
-                        for l in tf.split(self._input['image'], 3, self._channels_dim)
-                    ]
-
-                self._loss = self.loss_calculator(
-                        labels = self._input['split_labels'],
-                        logits = self._loss_logits)
-
-
-            if self.args.mode == "inference":
-                self._output['softmax'] = [tf.nn.softmax(x, axis=self._channels_dim) for x in self._logits]
-
-
-            self._accuracy_calc = AccuracyCalculator.AccuracyCalculator()
-
-
-
-            self._accuracy = self._accuracy_calc(prediction=self._output['prediction'], labels=self._input['split_labels'])
-
-            # Add the metrics by hand:
-
-            self._metrics = {}
-            for p in [0,1,2]:
-                self._metrics[f"plane{p}/Total_Accuracy"]   = self._accuracy["total_accuracy"][p]
-                self._metrics[f"plane{p}/Non_Bkg_Accuracy"] = self._accuracy["non_bkg_accuracy"][p]
-                self._metrics[f"plane{p}/Neutrino_IoU"]     = self._accuracy["neut_iou"][p]
-                self._metrics[f"plane{p}/Cosmic_IoU"]       = self._accuracy["cosmic_iou"][p]
-                self._metrics[f"plane{p}/mIoU"]             = self._accuracy["miou"][p]
-
-            with tf.compat.v1.variable_scope("accuracy"):
-                self._metrics["Average/Total_Accuracy"]   = tf.reduce_mean(self._accuracy["total_accuracy"])
-                self._metrics["Average/Non_Bkg_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
-                self._metrics["Average/Neutrino_IoU"]     = tf.reduce_mean(self._accuracy["neut_iou"])
-                self._metrics["Average/Cosmic_IoU"]       = tf.reduce_mean(self._accuracy["cosmic_iou"])
-                self._metrics["Average/mIoU"]             = tf.reduce_mean(self._accuracy["miou"])
+            # # Here, if the data format is channels_first, we have to reorder the logits tensors
+            # # To put channels last.  Otherwise it does not work with the softmax tensors.
+            #
+            #
+            # # Apply a softmax and argmax:
+            # self._output = dict()
+            #
+            # # Take the logits (which are one per plane) and create a softmax and prediction (one per plane)
+            # with tf.compat.v1.variable_scope("prediction"):
+            #     self._output['prediction'] = [ tf.argmax(x, axis=self._channels_dim) for x in self._logits]
+            #
+            # with tf.compat.v1.variable_scope("cross_entropy"):
+            #
+            #     self._input['split_labels'] = [
+            #         tf.squeeze(l, axis=self._channels_dim)
+            #             for l in tf.split(self._input['label'], 3, self._channels_dim)
+            #         ]
+            #     self._input['split_images'] = [
+            #         tf.squeeze(l, axis=self._channels_dim)
+            #             for l in tf.split(self._input['image'], 3, self._channels_dim)
+            #         ]
+            #
+            #     self._loss = self.loss_calculator(
+            #             labels = self._input['split_labels'],
+            #             logits = self._loss_logits)
+            #
+            #
+            # if self.args.mode == "inference":
+            #     self._output['softmax'] = [tf.nn.softmax(x, axis=self._channels_dim) for x in self._logits]
 
 
-            self._metrics['loss'] = self._loss
+        self.acc_calculator  = AccuracyCalculator.AccuracyCalculator()
+        self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
+
+        # # Add the metrics by hand:
+        #
+        # self._metrics = {}
+        # for p in [0,1,2]:
+        #     self._metrics[f"plane{p}/Total_Accuracy"]   = self._accuracy["total_accuracy"][p]
+        #     self._metrics[f"plane{p}/Non_Bkg_Accuracy"] = self._accuracy["non_bkg_accuracy"][p]
+        #     self._metrics[f"plane{p}/Neutrino_IoU"]     = self._accuracy["neut_iou"][p]
+        #     self._metrics[f"plane{p}/Cosmic_IoU"]       = self._accuracy["cosmic_iou"][p]
+        #     self._metrics[f"plane{p}/mIoU"]             = self._accuracy["miou"][p]
+        #
+        # with tf.compat.v1.variable_scope("accuracy"):
+        #     self._metrics["Average/Total_Accuracy"]   = tf.reduce_mean(self._accuracy["total_accuracy"])
+        #     self._metrics["Average/Non_Bkg_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
+        #     self._metrics["Average/Neutrino_IoU"]     = tf.reduce_mean(self._accuracy["neut_iou"])
+        #     self._metrics["Average/Cosmic_IoU"]       = tf.reduce_mean(self._accuracy["cosmic_iou"])
+        #     self._metrics["Average/mIoU"]             = tf.reduce_mean(self._accuracy["miou"])
+
+
+        # self._metrics['loss'] = self._loss
 
         self._log_keys = ["loss", "Average/Non_Bkg_Accuracy", "Average/mIoU"]
 
@@ -160,11 +150,12 @@ class tf_trainer(trainercore):
         return end - start
 
     def print_network_info(self, verbose=False):
-        if verbose:
-            for var in tf.compat.v1.trainable_variables():
-                print(var)
-
-        self.print("Total number of trainable parameters in this network: {}\n".format(self.n_parameters()))
+        n_trainable_parameters = 0
+        for var in self._net.variables:
+            n_trainable_parameters += numpy.prod(var.get_shape())
+            if verbose:
+                print(var.name, var.get_shape())
+        self.print(f"Total number of trainable parameters in this network: {n_trainable_parameters}")
 
 
     def n_parameters(self):
@@ -173,6 +164,10 @@ class tf_trainer(trainercore):
             n_trainable_parameters += numpy.prod(var.get_shape())
 
         return n_trainable_parameters
+
+    def current_step(self):
+        return self._global_step
+
 
     def set_compute_parameters(self):
 
@@ -203,12 +198,47 @@ class tf_trainer(trainercore):
             ####################################################################
 
 
+    def summary_images(self, labels, prediction):
+        ''' Create images of the labels and prediction to show training progress
+        '''
+
+        if self.current_step() % 25 * self.args.summary_iteration == 0 and not self.args.no_summary_images:
+
+            for p in range(len(labels)):
+                tf.summary.image(f"label_plane_{p}", labels[p],     self.current_step())
+                tf.summary.image(f"pred_plane_{p}",  prediction[p], self.current_step())
+
+            # images = []
+
+            # # Labels is an unsplit tensor, prediction is a split tensor
+            # split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
+            # prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
+
+            # if self.args.data_format == "channels_first":
+            #     split_labels = [ tf.transpose(a=l, perm=[0, 2, 3, 1]) for l in split_labels]
+            #     prediction   = [ tf.transpose(a=p, perm=[0, 2, 3, 1]) for p in prediction]
+
+
+            # for p in range(len(split_labels)):
+
+            #     images.append(
+            #         tf.compat.v1.summary.image('label_plane_{}'.format(p),
+            #                      split_labels[p],
+            #                      max_outputs=1)
+            #         )
+            #     images.append(
+            #         tf.compat.v1.summary.image('pred_plane_{}'.format(p),
+            #                      prediction[p],
+            #                      max_outputs=1)
+            #         )
+
+        return
+
     def initialize(self, io_only=False):
 
 
         self._initialize_io(color=0)
 
-        self.init_global_step()
 
         if io_only:
             return
@@ -217,7 +247,7 @@ class tf_trainer(trainercore):
             self.build_lr_schedule()
 
         start = time.time()
-        graph = tf.compat.v1.get_default_graph()
+
         net_time = self.init_network()
 
         self.print("Done constructing network. ({0:.2}s)\n".format(time.time()-start))
@@ -229,47 +259,31 @@ class tf_trainer(trainercore):
             self.init_optimizer()
 
         self.init_saver()
-
-        # Take all of the metrics and turn them into summaries:
-        for key in self._metrics:
-            tf.compat.v1.summary.scalar(key, self._metrics[key])
-
-        if self.args.training:
-            # Add the learning rate as a summary too:
-            tf.compat.v1.summary.scalar('learning_rate', self._learning_rate)
-
-        if self.args.mode != "inference":
-
-            self._summary_basic  = tf.compat.v1.summary.merge_all()
-            self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
-            # self.create_model_summaries()
+        #
+        # # Take all of the metrics and turn them into summaries:
+        # for key in self._metrics:
+        #     tf.compat.v1.summary.scalar(key, self._metrics[key])
+        #
+        # if self.args.training:
+        #     # Add the learning rate as a summary too:
+        #     tf.compat.v1.summary.scalar('learning_rate', self._learning_rate)
+        #
+        # if self.args.mode != "inference":
+        #
+        #     self._summary_basic  = tf.compat.v1.summary.merge_all()
+        #     self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
+        #     # self.create_model_summaries()
 
         self.set_compute_parameters()
 
-        self.write_graph_to_tensorboard(graph)
-
-        self._sess = tf.compat.v1.Session(config = self._config)
 
         # Try to restore a model?
         restored = self.restore_model()
 
-        if not restored:
-            self._sess.run(tf.compat.v1.global_variables_initializer())
-
-        # # Create a session:
-        # self._sess = tf.train.MonitoredTrainingSession(config=self._config, hooks = hooks,
-        #     checkpoint_dir        = checkpoint_dir,
-        #     log_step_count_steps  = self.args.logging_iteration,
-        #     save_checkpoint_steps = self.args.checkpoint_iteration)
-
-    def write_graph_to_tensorboard(self, graph):
-        # Add the graph to the log file:
-        self._main_writer.add_graph(graph)
-
 
     def init_learning_rate(self):
         # Use a place holder for the learning rate :
-        self._learning_rate = tf.compat.v1.placeholder(floating_point_format, (), name="lr")
+        self._learning_rate = tf.Variable(initial_value=0.0, trainable=False, dtype=floating_point_format, name="lr")
 
 
 
@@ -289,13 +303,13 @@ class tf_trainer(trainercore):
         self.print("Restoring checkpoint from ", path)
         self._saver.restore(self._sess, path)
 
-        # self.scheduler.set_current_step(self.get_current_global_step())
+        # self.scheduler.set_current_step(self.current_step())
 
         return True
 
     def checkpoint(self):
 
-        gs = self.get_current_global_step()
+        gs = int(self.current_step().numpy())
 
         if gs % self.args.checkpoint_iteration == 0 and gs != 0:
             # Save a checkpoint, but don't do it on the first pass
@@ -322,7 +336,7 @@ class tf_trainer(trainercore):
         # if not os.path.isdir(os.path.dirname(file_path)):
         #     os.makedirs(os.path.dirname(file_path))
 
-        saved_path = self._saver.save(self._sess, file_path + "model_{}.ckpt".format(global_step))
+        saved_path = self._net.save_weights(file_path + "model_{}.ckpt".format(global_step))
 
 
     def get_model_filepath(self, global_step):
@@ -347,18 +361,15 @@ class tf_trainer(trainercore):
         except:
             self.print("Could not make file path")
 
-        # Create a saver for snapshots of the network:
-        self._saver = tf.compat.v1.train.Saver()
+        # # Create a saver for snapshots of the network:
+        # self._saver = tf.compat.v1.train.Saver()
 
         # Create a file writer for training metrics:
-        self._main_writer = tf.compat.v1.summary.FileWriter(logdir=self.args.log_directory+"/tf/train/")
+        self._main_writer = tf.summary.create_file_writer(self.args.log_directory+"/tf/train/")
 
         # Additionally, in training mode if there is aux data use it for validation:
         if self.args.aux_file is not None:
-            self._val_writer = tf.compat.v1.summary.FileWriter(logdir=self.args.log_directory+"/tf/test/")
-
-    def init_global_step(self):
-        self._global_step = tf.compat.v1.train.get_or_create_global_step()
+            self._val_writer = tf.summary.create_file_writer(self.args.log_directory+"/tf/test/")
 
 
     def init_optimizer(self):
@@ -369,27 +380,38 @@ class tf_trainer(trainercore):
         if 'RMS' in self.args.optimizer.upper():
             # Use RMS prop:
             self.print("Selected optimizer is RMS Prop")
-            self._opt = tf.compat.v1.train.RMSPropOptimizer(self._learning_rate)
+            self._opt = tf.keras.optimizers.RMSprop(self._learning_rate)
         else:
             # default is Adam:
             self.print("Using default Adam optimizer")
-            self._opt = tf.compat.v1.train.AdamOptimizer(self._learning_rate)
+            self._opt = tf.keras.optimizers.Adam(self._learning_rate)
 
         if self.args.precision == "mixed":
             from tensorflow.keras.mixed_precision import experimental as mixed_precision
             self._opt = mixed_precision.LossScaleOptimizer(self._opt, loss_scale='dynamic')
 
+    def _compute_metrics(self, logits, prediction, labels, loss):
 
+        # self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
+        # self._output['prediction'] = [ tf.argmax(input=x, axis=self._channels_dim) for x in self._logits]
+        accuracy = self.acc_calculator(prediction=prediction, labels=labels)
 
-        else:
-            with tf.name_scope('gradient_accumulation'):
+        metrics = {}
+        for p in [0,1,2]:
+            metrics[f"plane{p}/Total_Accuracy"]          = accuracy["total_accuracy"][p]
+            metrics[f"plane{p}/Non_Bkg_Accuracy"]        = accuracy["non_bkg_accuracy"][p]
+            metrics[f"plane{p}/Neutrino_IoU"]            = accuracy["neut_iou"][p]
+            metrics[f"plane{p}/Cosmic_IoU"]              = accuracy["cosmic_iou"][p]
 
-                self._zero_gradients =  [tv.assign(tf.zeros_like(tv)) for tv in self._accum_vars]
-                self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
-                                         i, gv in enumerate(self._opt.compute_gradients(self._loss))]
-                self._apply_gradients = self._opt.apply_gradients(zip(self._accum_vars, tf.compat.v1.trainable_variables()),
-                    global_step = self._global_step)
+        metrics["Average/Total_Accuracy"]          = float(tf.reduce_mean(accuracy["total_accuracy"]).numpy())
+        metrics["Average/Non_Bkg_Accuracy"]        = float(tf.reduce_mean(accuracy["non_bkg_accuracy"]).numpy())
+        metrics["Average/Neutrino_IoU"]            = float(tf.reduce_mean(accuracy["neut_iou"]).numpy())
+        metrics["Average/Cosmic_IoU"]              = float(tf.reduce_mean(accuracy["cosmic_iou"]).numpy())
+        metrics["Average/mIoU"]                    = float(tf.reduce_mean(accuracy["miou"]).numpy())
 
+        metrics['loss'] = loss
+
+        return metrics
 
     def log(self, metrics, kind, step):
 
@@ -412,66 +434,98 @@ class tf_trainer(trainercore):
 
         return
 
+    #
+    # def _create_summary_images(self, labels, prediction):
+    #     ''' Create images of the labels and prediction to show training progress
+    #     '''
+    #
+    #
+    #
+    #     images = []
+    #
+    #     # Labels is an unsplit tensor, prediction is a split tensor
+    #     split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
+    #     prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
+    #
+    #     if self.args.data_format == "channels_first":
+    #         split_labels = [ tf.transpose(l, [0, 2, 3, 1]) for l in split_labels]
+    #         prediction   = [ tf.transpose(p, [0, 2, 3, 1]) for p in prediction]
+    #
+    #
+    #     for p in range(len(split_labels)):
+    #
+    #
+    #             images.append(
+    #                 tf.compat.v1.summary.image('label/plane_{}'.format(p),
+    #                              split_labels[p],
+    #                              max_outputs=1)
+    #                 )
+    #
+    #             images.append(
+    #                 tf.compat.v1.summary.image('prediction/plane_{}'.format(p),
+    #                              prediction[p],
+    #                              max_outputs=1)
+    #                 )
+    #
+    #     return tf.compat.v1.summary.merge(images)
 
-    def _create_summary_images(self, labels, prediction):
-        ''' Create images of the labels and prediction to show training progress
-        '''
+
+    def forward_pass(self, minibatch_data, training):
+
+        # Run a forward pass of the model on the input image:
+        logits = self._net(minibatch_data['image'], training=training)
+        labels = minibatch_data['label'].astype(numpy.int32)
+
+        prediction = tf.argmax(logits, axis=self._channels_dim, output_type = tf.dtypes.int32)
+
+        labels = tf.split(labels, num_or_size_splits=3, axis=self._channels_dim)
+        labels = [tf.squeeze(li, axis=self._channels_dim) for li in labels]
+
+        return labels, logits, prediction
+
+    def summary(self, metrics,saver=""):
+
+        if self.current_step() % self.args.summary_iteration == 0:
+
+            if saver == "":
+                saver = self._main_writer
+
+            with saver.as_default():
+                for metric in metrics:
+                    name = metric
+                    tf.summary.scalar(metric, metrics[metric], self.current_step())
+        return
 
 
+    def get_gradients(self, loss, tape, trainable_weights):
 
-        images = []
+        return tape.gradient(loss, self._net.trainable_weights)
 
-        # Labels is an unsplit tensor, prediction is a split tensor
-        split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
-        prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
-
-        if self.args.data_format == "channels_first":
-            split_labels = [ tf.transpose(l, [0, 2, 3, 1]) for l in split_labels]
-            prediction   = [ tf.transpose(p, [0, 2, 3, 1]) for p in prediction]
+    @tf.function
+    def apply_gradients(self, gradients):
+        self._opt.apply_gradients(zip(gradients, self._net.trainable_variables))
 
 
-        for p in range(len(split_labels)):
+    #
+    # def create_model_summaries(self):
+    #     # # return
+    #     # optimizer = tf.train.AdamOptimizer(..)
+    #     # grads = optimizer.compute_gradients(loss)
+    #     # weights = self._net.trainable_variables
+    #     # weight_sum_op = _accum_gradients
+    #     # with tf.variable_scope)
+    #     hist = []
+    #
+    #     self._accum_vars,
+    #     for var, grad in zip(tf.compat.v1.trainable_variables(), self._accum_gradients):
+    #         name = var.name.replace("/",".")
+    #         hist.append(tf.summary.histogram(name, var))
+    #         hist.append(tf.summary.histogram(name  + "/grad/", grad))
+    #     # grad_summ_op = tf.summary.merge([tf.summary.histogram("%s-grad" % g[1].name, g[0]) for g in grads])
+    #     # grad_vals = sess.run(fetches=grad_summ_op, feed_dict = feed_dict)
+    #     self.model_summary = tf.summary.merge(hist)
+    #     # self.model_summary = tf.compat.v1.summary.merge(hist)
 
-
-                images.append(
-                    tf.compat.v1.summary.image('label/plane_{}'.format(p),
-                                 split_labels[p],
-                                 max_outputs=1)
-                    )
-
-                images.append(
-                    tf.compat.v1.summary.image('prediction/plane_{}'.format(p),
-                                 prediction[p],
-                                 max_outputs=1)
-                    )
-
-        return tf.compat.v1.summary.merge(images)
-
-
-    def create_model_summaries(self):
-        # # return
-        # optimizer = tf.train.AdamOptimizer(..)
-        # grads = optimizer.compute_gradients(loss)
-        # weights = self._net.trainable_variables
-        # weight_sum_op = _accum_gradients
-        # with tf.variable_scope)
-        hist = []
-
-        self._accum_vars,
-        for var, grad in zip(tf.compat.v1.trainable_variables(), self._accum_gradients):
-            name = var.name.replace("/",".")
-            hist.append(tf.summary.histogram(name, var))
-            hist.append(tf.summary.histogram(name  + "/grad/", grad))
-        # grad_summ_op = tf.summary.merge([tf.summary.histogram("%s-grad" % g[1].name, g[0]) for g in grads])
-        # grad_vals = sess.run(fetches=grad_summ_op, feed_dict = feed_dict)
-        self.model_summary = tf.summary.merge(hist)
-        # self.model_summary = tf.compat.v1.summary.merge(hist)
-
-    def on_step_end(self):
-        pass
-
-    def on_epoch_end(self):
-        pass
 
     def write_summaries(self, writer, summary, global_step):
         # This function is isolated here to allow the distributed version
@@ -492,7 +546,7 @@ class tf_trainer(trainercore):
         if self.args.synthetic:
             return
 
-        gs = self.get_current_global_step()
+        gs = self.current_step()
 
         if gs % self.args.aux_iteration == 0:
 
@@ -552,104 +606,66 @@ class tf_trainer(trainercore):
             return gs
         return
 
+
     def train_step(self):
 
         global_start_time = datetime.datetime.now()
 
-        # For tensorflow, we have to build up an ops list to submit to the
-        # session to run.
-
-        metrics = None
-
-        # First, zero out the gradients:
-        self._sess.run(self._zero_gradients)
         io_fetch_time = 0.0
 
-        do_summary_images = self._iteration != 0 and self._iteration % 1*self.args.summary_iteration == 0
-
-        if self.args.no_summary_images:
-            do_summary_images = False
+        gradients = None
+        metrics = {}
 
         for i in range(self.args.gradient_accumulation):
 
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
             minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
-
-
-            # Abort if we get "None"
-            if minibatch_data is None: return
-
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
+            with tf.GradientTape() as tape:
+                labels, logits, prediction = self.forward_pass(minibatch_data, training=True)
 
-            # These are ops that always run:
-            ops = {}
-            ops['_accum_gradients']  = self._accum_gradients
-            ops['global_step']       = self._global_step
-            ops['metrics']           = self._metrics
+                loss = self.loss_calculator(labels, logits)
 
-            # Run the summary only once:
-            if i == 0:
-                ops['summary']           = self._summary_basic
-                # ops['graph_summary']     = self.model_summary
-                # Add the images, but only once:
-                if do_summary_images:
-                    ops['summary_images'] = self._summary_images
-
-
-            ##############################################
-            # This is for NOT profiling.
-            fd = self.feed_dict(inputs = minibatch_data)
-            ops = self._sess.run(ops, feed_dict = fd)
-            ##############################################
-
-            # ##############################################
-            # # THis is all for profiling:
-            # # setup for timeline profile
-            # run_meta = tf.RunMetadata()
-            # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            #
-            #
-            # ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data),
-            #     options=run_options, run_metadata=run_meta)
-            #
-            # NAME = "mb_{}_step_{}".format(minibatch_data['image'].shape[0], self._iteration)
-            # self._main_writer.add_run_metadata(run_meta, NAME , self._iteration)
-            #
-            # # dump profile
-            # tl = timeline.Timeline(run_meta.step_stats)
-            # ctf = tl.generate_chrome_trace_format()
-            # # dump file per iteration
-            # with open('timeline_%s.json' % self._iteration, 'w') as f:
-            #     f.write(ctf)
-            # ##############################################
-
-            if metrics is None:
-                metrics = self.metrics(ops["metrics"])
+            # Do the backwards pass for gradients:
+            if gradients is None:
+                gradients = self.get_gradients(loss, tape, self._net.trainable_weights)
             else:
-                temp_metrics = self.metrics(ops["metrics"])
-                for key in metrics:
-                    metrics[key] += temp_metrics[key]
+                gradients += self.get_gradients(loss, tape, self._net.trainable_weights)
 
-            # Grab the summaries if we need to write them:
-            if i == 0:
-                summaries = ops['summary']
-                # graph_summary = ops['graph_summary']
-                if do_summary_images:
-                    summary_images = ops['summary_images']
 
-        # Lastly, update the weights:
 
-        self._sess.run(self._apply_gradients,
-            feed_dict = {self._learning_rate : fd[self._learning_rate]})
+            # Compute any necessary metrics:
+            interior_metrics = self._compute_metrics(logits, prediction, labels, loss)
+
+            for key in interior_metrics:
+                if key in metrics:
+                    metrics[key] += interior_metrics[key]
+                else:
+                    metrics[key] = interior_metrics[key]
 
         # Normalize the metrics:
         for key in metrics:
             metrics[key] /= self.args.gradient_accumulation
 
-        verbose = False
+        # Add the global step / second to the tensorboard log:
+        try:
+            metrics['global_step_per_sec'] = 1./self._seconds_per_global_step
+            metrics['images_per_second'] = self.args.minibatch_size / self._seconds_per_global_step
+        except:
+            metrics['global_step_per_sec'] = 0.0
+            metrics['images_per_second'] = 0.0
+
+        metrics['io_fetch_time'] = io_fetch_time
+
+        # After the accumulation, weight the gradients as needed and apply them:
+        if self.args.gradient_accumulation != 1:
+            gradients /= self.args.gradient_accumulation
+
+        self.apply_gradients(gradients)
+
 
         # Add the global step / second to the tensorboard log:
         try:
@@ -661,47 +677,27 @@ class tf_trainer(trainercore):
 
 
 
-        metrics['io_fetch_time'] = io_fetch_time
-
-        if verbose: self.print("Calculated metrics")
+        self.summary(metrics)
+        self.summary_images(labels, prediction)
 
         # Report metrics on the terminal:
-        self.log(metrics, kind="Train", step=ops["global_step"])
+        self.log(metrics, kind="Train", step=int(self.current_step().numpy()))
 
-
-        if verbose: self.print("Completed Log")
-
-        # self.write_summaries(self._main_writer, graph_summary, ops["global_step"])
-
-
-        self.write_summaries(self._main_writer, summaries, ops["global_step"])
-        if do_summary_images:
-            self.write_summaries(self._main_writer, summary_images, ops["global_step"])
-
-        # Create some extra summary information:
-        extra_summary = tf.compat.v1.Summary(
-            value=[
-                tf.compat.v1.Summary.Value(tag="io_fetch_time", simple_value=metrics['io_fetch_time']),
-                tf.compat.v1.Summary.Value(tag="global_step_per_sec", simple_value=metrics['global_step_per_sec']),
-                tf.compat.v1.Summary.Value(tag="images_per_second", simple_value=metrics['images_per_second']),
-            ])
-
-        self.write_summaries(self._main_writer, extra_summary, ops["global_step"])
-
-        if verbose: self.print("Summarized")
 
         global_end_time = datetime.datetime.now()
 
         # Compute global step per second:
         self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
 
-        # self._global_step = ops["global_step"]
+        # Update the global step:
+        self._global_step.assign_add(1)
+        # Update the learning rate:
+        self._learning_rate.assign(self.lr_calculator(int(self._global_step.numpy())))
+        return self.current_step()
 
-        return
 
-
-    def get_current_global_step(self):
-        return self._sess.run(self._global_step)
+    def current_step(self):
+        return self._global_step
 
 
     def stop(self):
@@ -740,9 +736,9 @@ class tf_trainer(trainercore):
         ops['prediction'] = self._output['prediction']
         ops['metrics']    = self._metrics
         ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
-        ops['global_step'] = self._global_step
-
+        ops['global_step'] = int(self._global_step.numpy())
         metrics = self.metrics(ops["metrics"])
+
 
 
         verbose = False
@@ -762,7 +758,7 @@ class tf_trainer(trainercore):
         if verbose: self.print("Calculated metrics")
 
         # Report metrics on the terminal:
-        self.log(ops["metrics"], kind="Inference", step=self.get_current_global_step())
+        self.log(ops["metrics"], kind="Inference", step=self.current_step())
 
         # self.print(ops["metrics"])
 
@@ -890,7 +886,7 @@ class tf_trainer(trainercore):
                 fd.update({self._input[key] : inputs[key]})
 
         if self.args.training:
-            fd.update({self._learning_rate : self.lr_calculator(self.get_current_global_step())})
+            fd.update({self._learning_rate : self.lr_calculator(self.current_step())})
         return fd
 
     def close_savers(self):

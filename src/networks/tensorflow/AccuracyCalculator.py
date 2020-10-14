@@ -9,7 +9,7 @@ class AccuracyCalculator(object):
 
         object.__init__(self)
 
-
+    @tf.function
     def __call__(self, labels, prediction):
 
         # Labels is a list of tensors
