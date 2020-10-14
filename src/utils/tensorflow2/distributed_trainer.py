@@ -54,7 +54,8 @@ class distributed_trainer(tf_trainer):
         tf_trainer.init_optimizer(self)
 
         # Wrap the optimizer it in horovod:
-        self._opt = hvd.DistributedOptimizer(self._opt)
+        # self._opt = hvd.DistributedOptimizer(self._opt)
+        self.tape = hvd.DistributedGradientTape(self.tape)
 
     def init_saver(self):
         if hvd.rank() == 0:
@@ -142,11 +143,11 @@ class distributed_trainer(tf_trainer):
         else:
             tf_trainer.save_model(self, gs)
 
-    def write_summaries(self, writer, summary, global_step):
+    def summary(self, metrics):
         if hvd.rank() != 0:
             return
         else:
-            tf_trainer.write_summaries(self, writer, summary, global_step)
+            tf_trainer.summary(self, metrics)
 
     def log(self, metrics, kind, step):
         if hvd.rank() != 0:

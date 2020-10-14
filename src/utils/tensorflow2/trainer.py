@@ -124,26 +124,6 @@ class tf_trainer(trainercore):
         self.acc_calculator  = AccuracyCalculator.AccuracyCalculator()
         self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme, self._channels_dim)
 
-        # # Add the metrics by hand:
-        #
-        # self._metrics = {}
-        # for p in [0,1,2]:
-        #     self._metrics[f"plane{p}/Total_Accuracy"]   = self._accuracy["total_accuracy"][p]
-        #     self._metrics[f"plane{p}/Non_Bkg_Accuracy"] = self._accuracy["non_bkg_accuracy"][p]
-        #     self._metrics[f"plane{p}/Neutrino_IoU"]     = self._accuracy["neut_iou"][p]
-        #     self._metrics[f"plane{p}/Cosmic_IoU"]       = self._accuracy["cosmic_iou"][p]
-        #     self._metrics[f"plane{p}/mIoU"]             = self._accuracy["miou"][p]
-        #
-        # with tf.compat.v1.variable_scope("accuracy"):
-        #     self._metrics["Average/Total_Accuracy"]   = tf.reduce_mean(self._accuracy["total_accuracy"])
-        #     self._metrics["Average/Non_Bkg_Accuracy"] = tf.reduce_mean(self._accuracy["non_bkg_accuracy"])
-        #     self._metrics["Average/Neutrino_IoU"]     = tf.reduce_mean(self._accuracy["neut_iou"])
-        #     self._metrics["Average/Cosmic_IoU"]       = tf.reduce_mean(self._accuracy["cosmic_iou"])
-        #     self._metrics["Average/mIoU"]             = tf.reduce_mean(self._accuracy["miou"])
-
-
-        # self._metrics['loss'] = self._loss
-
         self._log_keys = ["loss", "Average/Non_Bkg_Accuracy", "Average/mIoU"]
 
         end = time.time()
@@ -197,7 +177,7 @@ class tf_trainer(trainercore):
             #     print(e)
             ####################################################################
 
-
+    @tf.function
     def summary_images(self, labels, prediction):
         ''' Create images of the labels and prediction to show training progress
         '''
@@ -301,7 +281,7 @@ class tf_trainer(trainercore):
             return False
         # Parse the checkpoint file and use that to get the latest file path
         self.print("Restoring checkpoint from ", path)
-        self._saver.restore(self._sess, path)
+        self._net.load_weights(path)
 
         # self.scheduler.set_current_step(self.current_step())
 
@@ -389,6 +369,8 @@ class tf_trainer(trainercore):
         if self.args.precision == "mixed":
             from tensorflow.keras.mixed_precision import experimental as mixed_precision
             self._opt = mixed_precision.LossScaleOptimizer(self._opt, loss_scale='dynamic')
+
+        self.tape = tf.GradientTape()
 
     def _compute_metrics(self, logits, prediction, labels, loss):
 
@@ -483,6 +465,7 @@ class tf_trainer(trainercore):
 
         return labels, logits, prediction
 
+    # @tf.function(experimental_relax_shapes=True)
     def summary(self, metrics,saver=""):
 
         if self.current_step() % self.args.summary_iteration == 0:
@@ -546,65 +529,35 @@ class tf_trainer(trainercore):
         if self.args.synthetic:
             return
 
+        if self._val_writer is None:
+            return
+
         gs = self.current_step()
 
         if gs % self.args.aux_iteration == 0:
 
-
-            do_summary_images = self._iteration != 0 and self._iteration % 50*self.args.summary_iteration == 0
-
-            if self.args.no_summary_images:
-                do_summary_images = False
-
             # Fetch the next batch of data with larcv
-            minibatch_data = self.larcv_fetcher.fetch_next_batch('aux',force_pop=True)
-
-            # Return if we get none:
-            if minibatch_data is None: return
-
-            # For tensorflow, we have to build up an ops list to submit to the
-            # session to run.
-
-            # These are ops that always run:
-            ops = {}
-            ops['summary'] = self._summary_basic
-
-            if do_summary_images:
-                ops["summary_images"] = self._summary_images
-
-            ops['metrics'] = self._metrics
+            minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
 
 
-            ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
+            labels, logits, prediction = self.forward_pass(minibatch_data, training=False)
 
-            metrics = self.metrics(ops["metrics"])
-
-            verbose = False
+            loss = self.loss_calculator(labels, logits)
 
 
 
+            metrics = self._compute_metrics(logits, prediction, labels, loss)
 
-            if verbose: self.print("Calculated metrics")
 
             # Report metrics on the terminal:
-            self.log(ops["metrics"], kind="Test", step=gs)
+            self.log(metrics, kind="Test", step=int(self.current_step().numpy()))
 
 
-            if verbose: self.print("Completed Log")
+            self.summary(metrics)
+            self.summary_images(labels, prediction)
 
-            self.write_summaries(self._val_writer, ops["summary"], gs)
-
-
-            if do_summary_images:
-                self.write_summaries(self._val_writer, ops["summary_images"], gs)
-
-
-            if verbose: self.print("Summarized")
-
-
-
-            return gs
         return
+
 
 
     def train_step(self):
@@ -624,16 +577,16 @@ class tf_trainer(trainercore):
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
-            with tf.GradientTape() as tape:
+            with self.tape:
                 labels, logits, prediction = self.forward_pass(minibatch_data, training=True)
 
                 loss = self.loss_calculator(labels, logits)
 
             # Do the backwards pass for gradients:
             if gradients is None:
-                gradients = self.get_gradients(loss, tape, self._net.trainable_weights)
+                gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
             else:
-                gradients += self.get_gradients(loss, tape, self._net.trainable_weights)
+                gradients += self.get_gradients(loss, self.tape, self._net.trainable_weights)
 
 
 
