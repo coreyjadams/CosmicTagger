@@ -45,7 +45,6 @@ class LossCalculator(object):
                 if self.balance_type != "none":
                     if self.balance_type == "focal":
 
-
                         # Compute this as focal loss:
                         softmax = tf.nn.softmax(logits[i], axis = self.channels_dim)
                         one_hot = tf.one_hot(indices=labels[i], depth=3, axis=self.channels_dim)

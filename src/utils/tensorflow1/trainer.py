@@ -599,32 +599,32 @@ class tf_trainer(trainercore):
                     ops['summary_images'] = self._summary_images
 
 
-            ##############################################
-            # This is for NOT profiling.
             fd = self.feed_dict(inputs = minibatch_data)
-            ops = self._sess.run(ops, feed_dict = fd)
-            ##############################################
 
-            # ##############################################
-            # # THis is all for profiling:
-            # # setup for timeline profile
-            # run_meta = tf.RunMetadata()
-            # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            #
-            #
-            # ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data),
-            #     options=run_options, run_metadata=run_meta)
-            #
-            # NAME = "mb_{}_step_{}".format(minibatch_data['image'].shape[0], self._iteration)
-            # self._main_writer.add_run_metadata(run_meta, NAME , self._iteration)
-            #
-            # # dump profile
-            # tl = timeline.Timeline(run_meta.step_stats)
-            # ctf = tl.generate_chrome_trace_format()
-            # # dump file per iteration
-            # with open('timeline_%s.json' % self._iteration, 'w') as f:
-            #     f.write(ctf)
-            # ##############################################
+            if self.args.profile:
+                # Run this if not data-parallel, or rank ==0 when data-parallel
+                if not self.args.distributed or self._rank == 0:
+                    run_meta = tf.RunMetadata()
+                    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+
+
+                    ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data),
+                        options=run_options, run_metadata=run_meta)
+
+                    NAME = "mb_{}_step_{}".format(minibatch_data['image'].shape[0], self._iteration)
+                    self._main_writer.add_run_metadata(run_meta, NAME , self._iteration)
+
+                    # dump profile
+                    tl = timeline.Timeline(run_meta.step_stats)
+                    ctf = tl.generate_chrome_trace_format()
+                    # dump file per iteration
+                    with open('timeline_%s.json' % self._iteration, 'w') as f:
+                        f.write(ctf)
+            else:
+                # ##############################################
+                # # This is for NOT profiling.
+                    ops = self._sess.run(ops, feed_dict = fd)
+                # ##############################################
 
             if metrics is None:
                 metrics = self.metrics(ops["metrics"])

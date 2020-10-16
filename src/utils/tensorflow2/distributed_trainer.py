@@ -143,11 +143,11 @@ class distributed_trainer(tf_trainer):
         else:
             tf_trainer.save_model(self, gs)
 
-    def summary(self, metrics):
+    def summary(self, metrics, saver=""):
         if hvd.rank() != 0:
             return
         else:
-            tf_trainer.summary(self, metrics)
+            tf_trainer.summary(self, metrics, saver)
 
     def log(self, metrics, kind, step):
         if hvd.rank() != 0:

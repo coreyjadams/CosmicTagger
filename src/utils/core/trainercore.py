@@ -66,7 +66,7 @@ class trainercore(object):
                 self.print("WARNING: Aux file does not exist.  Setting to None for training")
                 self.args.aux_file = None
             else:
-                # In inference mode, we are creating the aux file.  So we need to check 
+                # In inference mode, we are creating the aux file.  So we need to check
                 # that the directory exists.  Otherwise, no writing.
                 if not self.args.aux_file.parent.exists():
                     self.print("WARNING: Aux file's directory does not exist.")
@@ -91,7 +91,7 @@ class trainercore(object):
 
     def build_lr_schedule(self, learning_rate_schedule = None):
         # Define the learning rate sequence:
-        
+
         if learning_rate_schedule is None:
             learning_rate_schedule = {
                 'warm_up' : {
@@ -103,11 +103,11 @@ class trainercore(object):
                 'flat' : {
                     'function'      : 'flat',
                     'start'         : 1,
-                    'n_epochs'      : 20,
+                    'n_epochs'      : 5,
                 },
                 'decay' : {
                     'function'      : 'decay',
-                    'start'         : 21,
+                    'start'         : 6,
                     'n_epochs'      : 4,
                     'floor'         : 0.00001,
                     'decay_rate'    : 0.999
@@ -148,7 +148,7 @@ class trainercore(object):
 
             # First, create the condition for this stage
             start    = learning_rate_schedule[key]['start']
-            length   = learning_rate_schedule[key]['n_epochs'] 
+            length   = learning_rate_schedule[key]['n_epochs']
 
             if i +1 == len(learning_rate_schedule):
                 # Make sure the condition is open ended if this is the last stage
@@ -171,7 +171,7 @@ class trainercore(object):
                 else: rate = self.args.learning_rate
 
                 function = lambda x : rate
-                
+
             elif learning_rate_schedule[key]['function'] == 'decay':
                 decay    = learning_rate_schedule[key]['decay_rate']
                 floor    = learning_rate_schedule[key]['floor']
@@ -179,12 +179,12 @@ class trainercore(object):
                 else: rate = self.args.learning_rate
 
                 function = lambda x, s=start, d=decay, f=floor: (rate-f) * numpy.exp( -(d * (x - s))) + f
-            
+
             cond_list.append(condition)
             func_list.append(function)
 
         self.lr_calculator = lambda x: numpy.piecewise(
-            x * (self.args.minibatch_size / self._train_data_size), 
+            x * (self.args.minibatch_size / self._train_data_size),
             [c(x * (self.args.minibatch_size / self._train_data_size)) for c in cond_list], func_list)
 
 
@@ -274,5 +274,5 @@ class trainercore(object):
         self.print("Total time to batch_process: ", end - start)
         if post_one_time is not None:
             self.print("Total time to batch process except first iteration: ", end - post_one_time)
-        if post_two_time is not None: 
+        if post_two_time is not None:
             self.print("Total time to batch process except first two iterations: ", end - post_two_time)

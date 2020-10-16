@@ -144,7 +144,10 @@ The most commonly used commands are:
             choices = ['2D','3D'],
             help    = "Only for non-sparse (dense) mode, use 2d or 3d convolutions.")
 
-
+        parser.add_argument('--profile',
+            type    = str2bool,
+            default = False,
+            help    = "Turn on profiling tools.")
 
     def train(self):
         self.parser = argparse.ArgumentParser(

@@ -6,6 +6,9 @@ from collections import OrderedDict
 
 import numpy
 
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = "true"
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 from src.utils.core.trainercore import trainercore
 from src.networks.tensorflow    import uresnet2D, uresnet3D, LossCalculator, AccuracyCalculator
@@ -13,7 +16,6 @@ from src.networks.tensorflow    import uresnet2D, uresnet3D, LossCalculator, Acc
 
 import datetime
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
 
 
 import tensorflow as tf
@@ -87,7 +89,9 @@ class tf_trainer(trainercore):
 
         # TO PROPERLY INITIALIZE THE NETWORK, NEED TO DO A FORWARD PASS
         minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=False)
-        self.forward_pass(minibatch_data, training=False)
+        image = tf.convert_to_tensor(minibatch_data['image'], dtype=tf.float32)
+        label = tf.convert_to_tensor(minibatch_data['label'], dtype=tf.int32)
+        self.forward_pass(image, label, training=False)
 
 
             # # Here, if the data format is channels_first, we have to reorder the logits tensors
@@ -158,6 +162,7 @@ class tf_trainer(trainercore):
             self._config.intra_op_parallelism_threads = self.args.intra_op_parallelism_threads
         elif self.args.compute_mode == "GPU":
             gpus = tf.config.experimental.list_physical_devices('GPU')
+
 
             # The code below is for MPS mode.  It is a bit of a hard-coded
             # hack.  Use with caution since the memory limit is set by hand.
@@ -452,21 +457,24 @@ class tf_trainer(trainercore):
     #     return tf.compat.v1.summary.merge(images)
 
 
-    def forward_pass(self, minibatch_data, training):
+    @tf.function
+    def forward_pass(self, image, label, training):
 
         # Run a forward pass of the model on the input image:
-        logits = self._net(minibatch_data['image'], training=training)
-        labels = minibatch_data['label'].astype(numpy.int32)
+        logits = self._net(image, training=training)
+
+        if self.args.precision == "mixed":
+            logits = [ tf.cast(l, tf.float32) for l in logits ]
 
         prediction = tf.argmax(logits, axis=self._channels_dim, output_type = tf.dtypes.int32)
 
-        labels = tf.split(labels, num_or_size_splits=3, axis=self._channels_dim)
+        labels = tf.split(label, num_or_size_splits=3, axis=self._channels_dim)
         labels = [tf.squeeze(li, axis=self._channels_dim) for li in labels]
 
         return labels, logits, prediction
 
     # @tf.function(experimental_relax_shapes=True)
-    def summary(self, metrics,saver=""):
+    def summary(self, metrics, saver=""):
 
         if self.current_step() % self.args.summary_iteration == 0:
 
@@ -479,7 +487,7 @@ class tf_trainer(trainercore):
                     tf.summary.scalar(metric, metrics[metric], self.current_step())
         return
 
-
+    # @tf.function
     def get_gradients(self, loss, tape, trainable_weights):
 
         return tape.gradient(loss, self._net.trainable_weights)
@@ -489,32 +497,7 @@ class tf_trainer(trainercore):
         self._opt.apply_gradients(zip(gradients, self._net.trainable_variables))
 
 
-    #
-    # def create_model_summaries(self):
-    #     # # return
-    #     # optimizer = tf.train.AdamOptimizer(..)
-    #     # grads = optimizer.compute_gradients(loss)
-    #     # weights = self._net.trainable_variables
-    #     # weight_sum_op = _accum_gradients
-    #     # with tf.variable_scope)
-    #     hist = []
-    #
-    #     self._accum_vars,
-    #     for var, grad in zip(tf.compat.v1.trainable_variables(), self._accum_gradients):
-    #         name = var.name.replace("/",".")
-    #         hist.append(tf.summary.histogram(name, var))
-    #         hist.append(tf.summary.histogram(name  + "/grad/", grad))
-    #     # grad_summ_op = tf.summary.merge([tf.summary.histogram("%s-grad" % g[1].name, g[0]) for g in grads])
-    #     # grad_vals = sess.run(fetches=grad_summ_op, feed_dict = feed_dict)
-    #     self.model_summary = tf.summary.merge(hist)
-    #     # self.model_summary = tf.compat.v1.summary.merge(hist)
 
-
-    def write_summaries(self, writer, summary, global_step):
-        # This function is isolated here to allow the distributed version
-        # to intercept these calls and only write summaries from one rank
-
-        writer.add_summary(summary, global_step)
 
     def metrics(self, metrics):
         # This function looks useless, but it is not.
@@ -538,9 +521,10 @@ class tf_trainer(trainercore):
 
             # Fetch the next batch of data with larcv
             minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
+            image = tf.convert_to_tensor(minibatch_data['image'], dtype=tf.float32)
+            label = tf.convert_to_tensor(minibatch_data['label'], dtype=tf.int32)
 
-
-            labels, logits, prediction = self.forward_pass(minibatch_data, training=False)
+            labels, logits, prediction = self.forward_pass(image, label, training=False)
 
             loss = self.loss_calculator(labels, logits)
 
@@ -553,12 +537,27 @@ class tf_trainer(trainercore):
             self.log(metrics, kind="Test", step=int(self.current_step().numpy()))
 
 
-            self.summary(metrics)
+            self.summary(metrics=metrics, saver=self._val_writer)
             self.summary_images(labels, prediction)
 
         return
 
 
+    @tf.function
+    def gradient_step(self, image, label):
+
+        with self.tape:
+            labels, logits, prediction = self.forward_pass(image, label, training=True)
+
+
+
+            loss = self.loss_calculator(labels, logits)
+
+
+        # Do the backwards pass for gradients:
+        gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
+
+        return logits, labels, prediction, loss, gradients
 
     def train_step(self):
 
@@ -574,20 +573,25 @@ class tf_trainer(trainercore):
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
             minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
+            image = tf.convert_to_tensor(minibatch_data['image'], dtype=tf.float32)
+            label = tf.convert_to_tensor(minibatch_data['label'], dtype=tf.int32)
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
-            with self.tape:
-                labels, logits, prediction = self.forward_pass(minibatch_data, training=True)
+            if self.args.profile:
+                if not self.args.distributed or self._rank == 0:
+                    tf.profiler.experimental.start(self.args.log_directory + "/tf/train/")
+            logits, labels, prediction, loss, internal_gradients = self.gradient_step(image, label)
 
-                loss = self.loss_calculator(labels, logits)
+            if self.args.profile:
+                if not self.args.distributed or self._rank == 0:
+                    tf.profiler.experimental.stop()
 
-            # Do the backwards pass for gradients:
+            # Accumulate gradients if necessary
             if gradients is None:
-                gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
+                gradients = internal_gradients
             else:
-                gradients += self.get_gradients(loss, self.tape, self._net.trainable_weights)
-
+                gradients += internal_gradients
 
 
             # Compute any necessary metrics:
@@ -612,6 +616,7 @@ class tf_trainer(trainercore):
             metrics['images_per_second'] = 0.0
 
         metrics['io_fetch_time'] = io_fetch_time
+        metrics['learning_rate'] = self._learning_rate
 
         # After the accumulation, weight the gradients as needed and apply them:
         if self.args.gradient_accumulation != 1:
