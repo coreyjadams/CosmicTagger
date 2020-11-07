@@ -183,7 +183,6 @@ class tf_trainer(trainercore):
             self._config.intra_op_parallelism_threads = self.args.intra_op_parallelism_threads
         elif self.args.compute_mode == "GPU":
             gpus = tf.config.experimental.list_physical_devices('GPU')
-
             # The code below is for MPS mode.  It is a bit of a hard-coded
             # hack.  Use with caution since the memory limit is set by hand.
             ####################################################################
