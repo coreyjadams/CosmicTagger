@@ -30,8 +30,9 @@ class distributed_trainer(tf_trainer):
 
     '''
     def __init__(self, args):
-        devices = tf.config.experimental.get_visible_devices()
-        tf.config.experimental.set_visible_devices(devices[hvd.local_rank()])
+        CPU_device = tf.config.experimental.get_visible_devices("CPU")
+        devices = tf.config.experimental.get_visible_devices("GPU")
+        tf.config.experimental.set_visible_devices( devices[hvd.local_rank()], 'GPU' )
 
         # Rely on the base class for most standard parameters, only
         # search for parameters relevant for distributed computing here
