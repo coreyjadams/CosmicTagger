@@ -7,6 +7,11 @@ from collections import OrderedDict
 import numpy
 
 import torch
+try:
+    import torch_ipex
+except:
+    pass
+
 torch.manual_seed(0)
 
 # torch.backends.cudnn.deterministic = True
@@ -91,8 +96,10 @@ class torch_trainer(trainercore):
 
         if self.args.compute_mode == "CPU":
             pass
-        if self.args.compute_mode == "GPU":
+        elif self.args.compute_mode == "GPU":
             self._net.cuda()
+        elif self.args.compute_mode == "DPCPP":
+            self._net.to("dpcpp")
 
         self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
 
@@ -499,6 +506,9 @@ class torch_trainer(trainercore):
         if self.args.compute_mode == "GPU":
             if device is None:
                 device = torch.device('cuda')
+        elif self.args.compute_mode == "DPCPP":
+            if device is None:
+                device = torch.device("dpcpp")
         else:
             if device is None:
                 device = torch.device('cpu')
