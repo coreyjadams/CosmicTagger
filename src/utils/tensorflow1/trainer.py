@@ -36,6 +36,8 @@ class tf_trainer(trainercore):
     def __init__(self, args):
         trainercore.__init__(self, args)
         self._rank = None
+        self._config = tf.compat.v1.ConfigProto()
+        
 
     def local_batch_size(self):
         return self.args.minibatch_size
@@ -176,12 +178,11 @@ class tf_trainer(trainercore):
 
     def set_compute_parameters(self):
 
-        self._config = tf.compat.v1.ConfigProto()
 
         if self.args.compute_mode == "CPU":
             self._config.inter_op_parallelism_threads = self.args.inter_op_parallelism_threads
             self._config.intra_op_parallelism_threads = self.args.intra_op_parallelism_threads
-        elif self.args.compute_mode == "GPU":
+        elif self.args.compute_mode == "GPU" or self.args.compute_mode == "DPCPP":
             gpus = tf.config.experimental.list_physical_devices('GPU')
             # The code below is for MPS mode.  It is a bit of a hard-coded
             # hack.  Use with caution since the memory limit is set by hand.

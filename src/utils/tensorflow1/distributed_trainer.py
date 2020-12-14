@@ -15,7 +15,6 @@ for i, p in enumerate(sys.path):
 
 import horovod.tensorflow as hvd
 hvd.init()
-os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
 # from horovod.tensorflow.keras import DistributedOptimizer
 
@@ -40,6 +39,10 @@ class distributed_trainer(tf_trainer):
 
         if self.args.compute_mode == "GPU":
             os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+
+        if self.args.compute_mode == "DPCPP":
+            self._config.gpu_options.allow_growth = True
+            self._config.gpu_options.visible_device_list = str(hvd.local_rank())
 
         self._rank            = hvd.rank()
         self.local_minibatch_size = int(self.args.minibatch_size / hvd.size())
