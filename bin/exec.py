@@ -50,7 +50,7 @@ The most commonly used commands are:
         ##################################################################
         parser.add_argument('-ci','--checkpoint-iteration',
             type    = int,
-            default = 100,
+            default = 500,
             help    = 'Period (in steps) to store snapshot of weights')
 
         parser.add_argument('-si','--summary-iteration',
@@ -96,7 +96,7 @@ The most commonly used commands are:
         parser.add_argument('--loss-balance-scheme',
             type    = str,
             choices = ['none', 'focal', 'even', 'light'],
-            default = 'none',
+            default = 'focal',
             help    = "Way to compute weights for balancing the loss.")
 
         parser.add_argument('--weight-decay',
@@ -148,6 +148,12 @@ The most commonly used commands are:
             type    = str2bool,
             default = False,
             help    = "Turn on profiling tools.")
+
+        parser.add_argument('--distributed-mode',
+            type    = str,
+            default = 'horovod',
+            choices = ['horovod', 'DDP'],
+            help    = "Toggle between the different methods for distributing the network")
 
     def train(self):
         self.parser = argparse.ArgumentParser(
@@ -371,9 +377,9 @@ The most commonly used commands are:
 
     def add_io_arguments(self, parser):
 
-        # data_directory = "/lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/"
+        data_directory = "/lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/"
         # data_directory = "/Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging/"
-        data_directory = "/gpfs/alpine/lrn008/world-shared/data/cosmic_tagging/"
+        # data_directory = "/gpfs/alpine/lrn008/world-shared/data/cosmic_tagging/"
 
         # IO PARAMETERS FOR INPUT:
         parser.add_argument('-f','--file',
@@ -438,6 +444,11 @@ The most commonly used commands are:
             if self.args.data_format == "channels_last":
                 print("Torch requires channels_first, switching automatically")
                 self.args.data_format = "channels_first"
+
+        if self.args.framework == "tensorflow":
+            if self.args.distributed_mode == "DDP":
+                print("Can not use DDP in tensorflow!  Switching to horovod")
+                self.args.distributed_mode = "horovod"
 
 
 if __name__ == '__main__':
