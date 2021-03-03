@@ -6,9 +6,9 @@ from collections import OrderedDict
 
 import numpy
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = "true"
 # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 from src.utils.core.trainercore import trainercore
 from src.networks.tensorflow    import uresnet2D, uresnet3D, LossCalculator, AccuracyCalculator
@@ -52,6 +52,12 @@ class tf_trainer(trainercore):
             self.policy = mixed_precision.Policy('mixed_float16')
             mixed_precision.set_policy(self.policy)
 
+        if self.args.precision == "bfloat16":
+            from tensorflow.keras.mixed_precision import experimental as mixed_precision
+            self.policy = mixed_precision.Policy('mixed_bfloat16')
+            mixed_precision.set_policy(self.policy)
+
+
         batch_dims = self.larcv_fetcher.batch_dims(1)
 
         # We compute the
@@ -89,8 +95,8 @@ class tf_trainer(trainercore):
 
         # TO PROPERLY INITIALIZE THE NETWORK, NEED TO DO A FORWARD PASS
         minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=False)
-        image = tf.convert_to_tensor(minibatch_data['image'], dtype=tf.float32)
-        label = tf.convert_to_tensor(minibatch_data['label'], dtype=tf.int32)
+        image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
+
         self.forward_pass(image, label, training=False)
 
 
@@ -375,6 +381,7 @@ class tf_trainer(trainercore):
             from tensorflow.keras.mixed_precision import experimental as mixed_precision
             self._opt = mixed_precision.LossScaleOptimizer(self._opt, loss_scale='dynamic')
 
+
         self.tape = tf.GradientTape()
 
     def _compute_metrics(self, logits, prediction, labels, loss):
@@ -457,14 +464,31 @@ class tf_trainer(trainercore):
     #     return tf.compat.v1.summary.merge(images)
 
 
+    # @tf.function
+    def cast_input(self, image, label):
+        if self.args.precision == "float32" or self.args.precision == "mixed":
+            input_dtype = tf.float32
+        elif self.args.precision == "bfloat16":
+            input_dtype = tf.bfloat16
+
+        image = tf.convert_to_tensor(image, dtype=input_dtype)
+        label = tf.convert_to_tensor(label, dtype=tf.int32)
+
+        return image, label
+
     @tf.function
     def forward_pass(self, image, label, training):
+
+        if self.args.precision == "bfloat16":
+            image = tf.cast(image, tf.bfloat16)
 
         # Run a forward pass of the model on the input image:
         logits = self._net(image, training=training)
 
         if self.args.precision == "mixed":
             logits = [ tf.cast(l, tf.float32) for l in logits ]
+        # elif self.args.precision == "bfloat16":
+        #     logits = [ tf.cast(l, tf.bfloat16) for l in logits ]
 
         prediction = tf.argmax(logits, axis=self._channels_dim, output_type = tf.dtypes.int32)
 
@@ -521,13 +545,11 @@ class tf_trainer(trainercore):
 
             # Fetch the next batch of data with larcv
             minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
-            image = tf.convert_to_tensor(minibatch_data['image'], dtype=tf.float32)
-            label = tf.convert_to_tensor(minibatch_data['label'], dtype=tf.int32)
+            image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
             labels, logits, prediction = self.forward_pass(image, label, training=False)
 
             loss = self.loss_calculator(labels, logits)
-
 
 
             metrics = self._compute_metrics(logits, prediction, labels, loss)
@@ -549,13 +571,22 @@ class tf_trainer(trainercore):
         with self.tape:
             labels, logits, prediction = self.forward_pass(image, label, training=True)
 
-
+            # The loss function has to be in full precision or automatic mixed.
+            # bfloat16 is not supported
+            if self.args.precision == "bfloat16":
+                logits = [ tf.cast(l, dtype=tf.float32) for  l in logits ]
 
             loss = self.loss_calculator(labels, logits)
-
+        #
+            if self.args.precision == "mixed":
+                scaled_loss = self._opt.get_scaled_loss(loss)
 
         # Do the backwards pass for gradients:
-        gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
+        if self.args.precision == "mixed":
+            scaled_gradients = self.get_gradients(scaled_loss, self.tape, self._net.trainable_weights)
+            gradients = self._opt.get_unscaled_gradients(scaled_gradients)
+        else:
+            gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
 
         return logits, labels, prediction, loss, gradients
 
@@ -573,8 +604,8 @@ class tf_trainer(trainercore):
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
             minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
-            image = tf.convert_to_tensor(minibatch_data['image'], dtype=tf.float32)
-            label = tf.convert_to_tensor(minibatch_data['label'], dtype=tf.int32)
+            image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
+
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
@@ -582,6 +613,8 @@ class tf_trainer(trainercore):
                 if not self.args.distributed or self._rank == 0:
                     tf.profiler.experimental.start(self.args.log_directory + "/tf/train/")
             logits, labels, prediction, loss, internal_gradients = self.gradient_step(image, label)
+
+
 
             if self.args.profile:
                 if not self.args.distributed or self._rank == 0:
