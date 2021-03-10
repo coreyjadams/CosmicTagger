@@ -217,6 +217,12 @@ The most commonly used commands are:
 
         self.trainer.initialize(io_only=True)
 
+        if self.args.distributed:
+            from mpi4py import MPI
+            rank = MPI.COMM_WORLD.Get_rank()
+        else:
+            rank = 0
+
         # label_stats = numpy.zeros((36,))
         global_start = time.time()
         time.sleep(0.1)
@@ -226,9 +232,11 @@ The most commonly used commands are:
 
             end = time.time()
 
-            self.trainer.print(i, ": Time to fetch a minibatch of data: {}".format(end - start))
+            if rank == 0:
+                self.trainer.print(i, ": Time to fetch a minibatch of data: {}".format(end - start))
 
-        self.trainer.print("Total IO Time: ", time.time() - global_start)
+        if rank == 0:
+            self.trainer.print("Total IO Time: ", time.time() - global_start)
     def make_trainer(self):
 
         self.validate_arguments()
@@ -445,10 +453,11 @@ The most commonly used commands are:
                 print("Torch requires channels_first, switching automatically")
                 self.args.data_format = "channels_first"
 
-        if self.args.framework == "tensorflow":
-            if self.args.distributed_mode == "DDP":
-                print("Can not use DDP in tensorflow!  Switching to horovod")
-                self.args.distributed_mode = "horovod"
+        if self.args.mode != "iotest":
+            if self.args.framework == "tensorflow":
+                if self.args.distributed_mode == "DDP":
+                    print("Can not use DDP in tensorflow!  Switching to horovod")
+                    self.args.distributed_mode = "horovod"
 
 
 if __name__ == '__main__':
