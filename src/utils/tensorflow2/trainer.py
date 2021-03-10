@@ -653,7 +653,7 @@ class tf_trainer(trainercore):
 
         # After the accumulation, weight the gradients as needed and apply them:
         if self.args.gradient_accumulation != 1:
-            gradients /= self.args.gradient_accumulation
+            gradients = [ g / self.args.gradient_accumulation for g in gradients ]
 
         self.apply_gradients(gradients)
 
