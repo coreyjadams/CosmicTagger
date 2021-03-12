@@ -1,0 +1,11 @@
+# @package _group_
+name: train
+checkpoint_iteration: 500
+summary_iteration: 1
+no_summary_images: False
+logging_iteration: 1
+optimizer:
+  learning_rate: 0.0003
+  optimizer: adam
+  loss_balance_scheme: focal
+  gradient_accumulation: 1

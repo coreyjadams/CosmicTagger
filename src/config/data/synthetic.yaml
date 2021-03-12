@@ -1,0 +1,4 @@
+# @package _group_
+synthetic: True
+downsample: 1
+data_format: channels_last

@@ -1,0 +1,25 @@
+
+
+defaults:
+  - network: uresnet
+  - framework: tensorflow
+  - mode: training
+  - data: real
+run:
+  distributed: True
+  compute_mode: GPU
+  iterations: 50
+  minibatch_size: 2
+  aux_minibatch_size: ${run.minibatch_size}
+  aux_iterations: 10
+  id: ???
+  precision: float32
+  profile: False
+
+# # Configure the logging and output directory:
+hydra:
+  job:
+    override_dirname: /
+  run:
+    dir: output/${network.name}/MB${run.minibatch_size}/${hydra:job.override_dirname}
+hydra/job_logging: "disable_hydra_logging"

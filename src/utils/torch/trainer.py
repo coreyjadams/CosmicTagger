@@ -45,7 +45,7 @@ class torch_trainer(trainercore):
 
     def init_network(self):
 
-        if self.args.conv_mode == "2D" and not self.args.sparse:
+        if self.args.network.conv_mode == "2D" and not self.args.sparse:
             from src.networks.torch.uresnet2D import UResNet
             self._net = UResNet(self.args)
 
@@ -183,6 +183,7 @@ class torch_trainer(trainercore):
 
         _, checkpoint_file_path = self.get_model_filepath()
 
+
         if not os.path.isfile(checkpoint_file_path):
             return None
         # Parse the checkpoint file and use that to get the latest file path
@@ -203,6 +204,14 @@ class torch_trainer(trainercore):
 
     def restore_state(self, state):
 
+        # THIS IS A HACK
+
+        new_state_dict = {}
+        for key in state['state_dict']:
+            new_key = key.replace(".block_", ".blocks.")
+            new_state_dict[new_key] = state['state_dict'][key]
+
+        state['state_dict'] = new_state_dict
 
         self._net.load_state_dict(state['state_dict'])
         if self.args.mode == "train":

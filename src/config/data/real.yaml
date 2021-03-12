@@ -1,0 +1,7 @@
+# @package _group_
+synthetic: False
+file: cosmic_tagging_train.h5
+aux_file: cosmic_tagging_test.h5
+data_directory: /lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/
+data_format: channels_last
+downsample: 1

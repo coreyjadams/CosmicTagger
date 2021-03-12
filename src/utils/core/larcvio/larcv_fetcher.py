@@ -7,6 +7,8 @@ import tempfile
 
 import numpy
 
+import logging
+logger = logging.getLogger("cosmictagger")
 
 class larcv_fetcher(object):
 
@@ -105,6 +107,7 @@ class larcv_fetcher(object):
                 'image': name + 'data',
                 'label': name + 'label'
                 }
+            self._larcv_interface.last_entry = 11
 
             self._larcv_interface.prepare_manager(name, io_config, batch_size, data_keys, color=color)
             os.unlink(main_file.name)
@@ -114,6 +117,8 @@ class larcv_fetcher(object):
 
             while self._larcv_interface.is_reading(name):
                 time.sleep(0.1)
+
+            logger.info("Larcv file prepared")
 
             return self._larcv_interface.size(name)
 
