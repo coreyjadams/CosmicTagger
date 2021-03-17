@@ -683,6 +683,7 @@ class tf_trainer(trainercore):
 
     def ana_step(self):
 
+        metrics = {}
 
         global_start_time = datetime.datetime.now()
 
@@ -695,48 +696,47 @@ class tf_trainer(trainercore):
             force_pop = True
         minibatch_data = self.larcv_fetcher.fetch_next_batch("train", force_pop=force_pop)
 
-
         # Escape if we get None:
         if minibatch_data is None: return
 
-        io_end_time = datetime.datetime.now()
+        image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
-        # For tensorflow, we have to build up an ops list to submit to the
-        # session to run.
+        io_end_time   = datetime.datetime.now()
+        io_fetch_time = (io_end_time - io_start_time).total_seconds()
 
-        # These are ops that always run:
-        ops = {}
-        ops['logits']     = self._logits
-        ops['softmax']    = self._output['softmax']
-        ops['prediction'] = self._output['prediction']
-        ops['metrics']    = self._metrics
-        ops = self._sess.run(ops, feed_dict = self.feed_dict(inputs = minibatch_data))
-        ops['global_step'] = int(self._global_step.numpy())
-        metrics = self.metrics(ops["metrics"])
+        if self.args.profile:
+            if not self.args.distributed or self._rank == 0:
+                tf.profiler.experimental.start(self.args.log_directory + "/tf/train/")
+        # Get the logits:
+        labels, logits, prediction = self.forward_pass(image, label, training=False)
 
+        # And the loss:
+        loss = self.loss_calculator(labels, logits)
 
 
-        verbose = False
+        if self.args.profile:
+            if not self.args.distributed or self._rank == 0:
+                tf.profiler.experimental.stop()
+
+
+
+        # Compute any necessary metrics:
+        interior_metrics = self._compute_metrics(logits, prediction, labels, loss)
+
 
         # Add the global step / second to the tensorboard log:
         try:
             metrics['global_step_per_sec'] = 1./self._seconds_per_global_step
             metrics['images_per_second'] = self.args.minibatch_size / self._seconds_per_global_step
-        except AttributeError:
+        except:
             metrics['global_step_per_sec'] = 0.0
             metrics['images_per_second'] = 0.0
 
+        metrics['io_fetch_time'] = io_fetch_time
 
 
-        metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
-
-        if verbose: self.print("Calculated metrics")
-
-        # Report metrics on the terminal:
-        self.log(ops["metrics"], kind="Inference", step=self.current_step())
-
-        # self.print(ops["metrics"])
-
+        self.summary(metrics)
+        self.summary_images(labels, prediction)
 
         # If there is an aux file, for ana that means an output file.
         # Call the larcv interface to write data:
