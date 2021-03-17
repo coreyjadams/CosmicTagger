@@ -188,40 +188,24 @@ class tf_trainer(trainercore):
             #     print(e)
             ####################################################################
 
-    @tf.function
-    def summary_images(self, labels, prediction):
+    # @tf.function
+    def summary_images(self, labels, prediction, saver=""):
         ''' Create images of the labels and prediction to show training progress
         '''
 
         if self.current_step() % 25 * self.args.summary_iteration == 0 and not self.args.no_summary_images:
 
-            for p in range(len(labels)):
-                tf.summary.image(f"label_plane_{p}", labels[p],     self.current_step())
-                tf.summary.image(f"pred_plane_{p}",  prediction[p], self.current_step())
+            if saver == "":
+                saver = self._main_writer
+            with saver.as_default():
+                for p in range(len(labels)):
+                    shape = labels[p][0].shape
+                    label = tf.reshape( labels[p][0] / 2, (1,) + shape + (1,))
+                    # Save only one event per snapshot
+                    tf.summary.image(f"label/plane_{p}", label,     self.current_step())
+                    pred = tf.reshape(prediction[p][0] / 2, (1,) + shape  + (1,))
+                    tf.summary.image(f"pred/plane_{p}",  pred, self.current_step())
 
-            # images = []
-
-            # # Labels is an unsplit tensor, prediction is a split tensor
-            # split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
-            # prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
-
-            # if self.args.data_format == "channels_first":
-            #     split_labels = [ tf.transpose(a=l, perm=[0, 2, 3, 1]) for l in split_labels]
-            #     prediction   = [ tf.transpose(a=p, perm=[0, 2, 3, 1]) for p in prediction]
-
-
-            # for p in range(len(split_labels)):
-
-            #     images.append(
-            #         tf.compat.v1.summary.image('label_plane_{}'.format(p),
-            #                      split_labels[p],
-            #                      max_outputs=1)
-            #         )
-            #     images.append(
-            #         tf.compat.v1.summary.image('pred_plane_{}'.format(p),
-            #                      prediction[p],
-            #                      max_outputs=1)
-            #         )
 
         return
 
@@ -560,7 +544,7 @@ class tf_trainer(trainercore):
 
 
             self.summary(metrics=metrics, saver=self._val_writer)
-            self.summary_images(labels, prediction)
+            self.summary_images(labels, prediction, saver=self._val_writer)
 
         return
 
