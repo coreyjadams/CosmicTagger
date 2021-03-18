@@ -23,6 +23,10 @@ torch.backends.cudnn.benchmark = True
 from src.utils.core.trainercore import trainercore
 from src.networks.torch         import LossCalculator
 
+import contextlib
+@contextlib.contextmanager
+def dummycontext():
+    yield None
 
 
 import datetime
@@ -605,8 +609,8 @@ class torch_trainer(trainercore):
         metrics = {}
         io_fetch_time = 0.0
 
+        use_cuda=torch.cuda.is_available()
         for interior_batch in range(self.args.gradient_accumulation):
-
 
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
@@ -614,43 +618,59 @@ class torch_trainer(trainercore):
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
-            # if mixed precision, and cuda, use autocast:
-            if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
-                with torch.cuda.amp.autocast():
-                    logits_image, labels_image = self.forward_pass(minibatch_data)
-            else:
-                logits_image, labels_image = self.forward_pass(minibatch_data)
 
-
-            verbose = False
-
-            if verbose: self.print("Completed Forward pass")
-            # Compute the loss based on the logits
-
-
-            loss = self.loss_calculator(labels_image, logits_image)
-
-            if verbose: self.print("Completed loss")
-
-            # Compute the gradients for the network parameters:
-            if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
-                self.scaler.scale(loss).backward()
-            else:
-                loss.backward()
-
-
-
-            if verbose: self.print("Completed backward pass")
-
-
-            # Compute any necessary metrics:
-            interior_metrics = self._compute_metrics(logits_image, labels_image, loss)
-
-            for key in interior_metrics:
-                if key in metrics:
-                    metrics[key] += interior_metrics[key]
+            if self.args.profile:
+                if not self.args.distributed or self._rank == 0:
+                    autograd_prof = torch.autograd.profiler.profile(use_cuda = use_cuda)
                 else:
-                    metrics[key] = interior_metrics[key]
+                    autograd_prof = dummycontext()
+            else:
+                autograd_prof = dummycontext()
+
+            with autograd_prof as prof:
+
+                # if mixed precision, and cuda, use autocast:
+                if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
+                    with torch.cuda.amp.autocast():
+                        logits_image, labels_image = self.forward_pass(minibatch_data)
+                else:
+                    logits_image, labels_image = self.forward_pass(minibatch_data)
+
+
+                verbose = False
+
+                if verbose: self.print("Completed Forward pass")
+                # Compute the loss based on the logits
+
+
+                loss = self.loss_calculator(labels_image, logits_image)
+
+                if verbose: self.print("Completed loss")
+
+                # Compute the gradients for the network parameters:
+                if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
+                    self.scaler.scale(loss).backward()
+                else:
+                    loss.backward()
+
+
+
+                if verbose: self.print("Completed backward pass")
+
+
+                # Compute any necessary metrics:
+                interior_metrics = self._compute_metrics(logits_image, labels_image, loss)
+
+                for key in interior_metrics:
+                    if key in metrics:
+                        metrics[key] += interior_metrics[key]
+                    else:
+                        metrics[key] = interior_metrics[key]
+
+            # save profile data per step
+            if self.args.profile:
+                if not self.args.distributed or self._rank == 0:
+                    prof.export_chrome_trace("timeline_" + str(self._global_step) + ".json")
 
         # Here, make sure to normalize the interior metrics:
         for key in metrics:
