@@ -38,7 +38,10 @@ class distributed_trainer(tf_trainer):
         tf_trainer.__init__(self, args)
 
         if self.args.compute_mode == "GPU":
-            os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+            #os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+            self._config = tf.compat.v1.ConfigProto() 
+            self._config.gpu_options.allow_growth = True
+            self._config.gpu_options.visible_device_list = str(hvd.local_rank())
 
         if self.args.compute_mode == "DPCPP":
             self._config.gpu_options.allow_growth = True
@@ -57,10 +60,12 @@ class distributed_trainer(tf_trainer):
 
         #     # In the distributed case, we may want a learning rate behavior:
         #     self._learning_rate = self.generate_learning_rate(self.args.learning_rate, self._global_step)
-        tf_trainer.init_optimizer(self)
+        #tf_trainer.init_optimizer(self)
+        tf_trainer.select_optimizer(self)
 
         # Wrap the optimizer it in horovod:
         self._opt = hvd.DistributedOptimizer(self._opt)
+        tf_trainer.connect_optimizer(self)
 
     def init_saver(self):
         if hvd.rank() == 0:
@@ -106,8 +111,9 @@ class distributed_trainer(tf_trainer):
         # This syncs everythign up.
         # print(bcast)
 
-        hvd.broadcast_variables(self._net.variables, root_rank=0)
-        hvd.broadcast_variables(self._opt.variables(), root_rank=0)
+        net_op = hvd.broadcast_variables(self._net.variables, root_rank=0)
+        opt_op = hvd.broadcast_variables(self._opt.variables(), root_rank=0)
+        self._sess.run([net_op, opt_op])
 
     def restore_model(self):
 

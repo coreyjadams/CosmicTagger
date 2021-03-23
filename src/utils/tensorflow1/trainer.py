@@ -36,7 +36,7 @@ class tf_trainer(trainercore):
     def __init__(self, args):
         trainercore.__init__(self, args)
         self._rank = None
-        self._config = tf.compat.v1.ConfigProto()
+        #self._config = tf.compat.v1.ConfigProto()
         
 
     def local_batch_size(self):
@@ -360,8 +360,50 @@ class tf_trainer(trainercore):
     def init_global_step(self):
         self._global_step = tf.compat.v1.train.get_or_create_global_step()
 
+    def select_optimizer(self):
+        
+        self.init_learning_rate()
+
+
+        if 'RMS' in self.args.optimizer.upper():
+            # Use RMS prop:
+            self.print("Selected optimizer is RMS Prop")
+            self._opt = tf.compat.v1.train.RMSPropOptimizer(self._learning_rate)
+        else:
+            # default is Adam:
+            self.print("Using default Adam optimizer")
+            self._opt = tf.compat.v1.train.AdamOptimizer(self._learning_rate)
+
+    def connect_optimizer (self):
+
+        if self.args.precision == "mixed":
+            from tensorflow.keras.mixed_precision import experimental as mixed_precision
+            self._opt = mixed_precision.LossScaleOptimizer(self._opt, loss_scale='dynamic')
+
+
+
+        else:
+            with tf.name_scope('gradient_accumulation'):
+
+                self._zero_gradients =  [tv.assign(tf.zeros_like(tv)) for tv in self._accum_vars]
+                self._accum_gradients = [self._accum_vars[i].assign_add(gv[0]) for
+                                         i, gv in enumerate(self._opt.compute_gradients(self._loss))]
+                #grads_and_vars = list(zip(tf.compat.v1.trainable_variables(), tf.compat.v1.trainable_variables()))
+                grads_and_vars = list(zip(self._accum_vars, tf.compat.v1.trainable_variables()))
+                #grads_and_vars = list(zip(self._accum_gradients, tf.compat.v1.trainable_variables()))
+                self.print ("self._accum_gradients: ", len(self._accum_gradients), self._accum_gradients[0])
+                self.print ("grads_and_vars: ", len(grads_and_vars), grads_and_vars[0])
+                self.print ("_accum_vars: ", len(self._accum_vars) , self._accum_vars[0])
+                self._apply_gradients = self._opt.apply_gradients(grads_and_vars,
+                    global_step = self._global_step)
+
 
     def init_optimizer(self):
+        self.select_optimizer()
+        self.connect_optimizer()
+
+
+    def init_optimizer0(self):
 
         self.init_learning_rate()
 
