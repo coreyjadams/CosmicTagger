@@ -54,7 +54,7 @@ class tf_trainer(trainercore):
             self.policy = mixed_precision.Policy('mixed_float16')
             mixed_precision.set_policy(self.policy)
 
-        if self.args.precision == "bfloat16":
+        if self.args.run.precision == "bfloat16":
             from tensorflow.keras.mixed_precision import experimental as mixed_precision
             self.policy = mixed_precision.Policy('mixed_bfloat16')
             mixed_precision.set_policy(self.policy)
@@ -111,7 +111,7 @@ class tf_trainer(trainercore):
         for var in self._net.variables:
             n_trainable_parameters += numpy.prod(var.get_shape())
             if verbose:
-                print(var.name, var.get_shape())
+                logger.debug(var.name, var.get_shape())
         logger.info(f"Total number of trainable parameters in this network: {n_trainable_parameters}")
 
 
@@ -229,7 +229,7 @@ class tf_trainer(trainercore):
             logger.info("No checkpoint found, starting from scratch")
             return False
         # Parse the checkpoint file and use that to get the latest file path
-        logger.info("Restoring checkpoint from ", path)
+        logger.info(f"Restoring checkpoint from {path}")
         self._net.load_weights(path)
 
         # self.scheduler.set_current_step(self.current_step())
@@ -357,14 +357,6 @@ class tf_trainer(trainercore):
         else:
             log_string.rstrip(", ")
 
-
-        for k,v in  logging.Logger.manager.loggerDict.items()  :
-            print('+ [%s] {%s} ' % (str.ljust( k, 20)  , str(v.__class__)[8:-2]) )
-            if not isinstance(v, logging.PlaceHolder):
-                for h in v.handlers:
-                    print('     +++',str(h.__class__)[8:-2] )
-
-
         logger.info(log_string)
 
         return
@@ -372,9 +364,9 @@ class tf_trainer(trainercore):
 
     # @tf.function
     def cast_input(self, image, label):
-        if self.args.precision == "float32" or self.args.precision == "mixed":
+        if self.args.run.precision == "float32" or self.args.run.precision == "mixed":
             input_dtype = tf.float32
-        elif self.args.precision == "bfloat16":
+        elif self.args.run.precision == "bfloat16":
             input_dtype = tf.bfloat16
 
         image = tf.convert_to_tensor(image, dtype=input_dtype)
@@ -385,7 +377,7 @@ class tf_trainer(trainercore):
     @tf.function
     def forward_pass(self, image, label, training):
 
-        if self.args.precision == "bfloat16":
+        if self.args.run.precision == "bfloat16":
             image = tf.cast(image, tf.bfloat16)
 
         # Run a forward pass of the model on the input image:
@@ -393,7 +385,7 @@ class tf_trainer(trainercore):
 
         if self.args.run.precision == "mixed":
             logits = [ tf.cast(l, tf.float32) for l in logits ]
-        # elif self.args.precision == "bfloat16":
+        # elif self.args.run.precision == "bfloat16":
         #     logits = [ tf.cast(l, tf.bfloat16) for l in logits ]
 
         prediction = tf.argmax(logits, axis=self._channels_dim, output_type = tf.dtypes.int32)
@@ -479,16 +471,16 @@ class tf_trainer(trainercore):
 
             # The loss function has to be in full precision or automatic mixed.
             # bfloat16 is not supported
-            if self.args.precision == "bfloat16":
+            if self.args.run.precision == "bfloat16":
                 logits = [ tf.cast(l, dtype=tf.float32) for  l in logits ]
 
             loss = self.loss_calculator(labels, logits)
         #
-            if self.args.precision == "mixed":
+            if self.args.run.precision == "mixed":
                 scaled_loss = self._opt.get_scaled_loss(loss)
 
         # Do the backwards pass for gradients:
-        if self.args.precision == "mixed":
+        if self.args.run.precision == "mixed":
             scaled_gradients = self.get_gradients(scaled_loss, self.tape, self._net.trainable_weights)
             gradients = self._opt.get_unscaled_gradients(scaled_gradients)
         else:
@@ -557,7 +549,7 @@ class tf_trainer(trainercore):
         metrics['learning_rate'] = self._learning_rate
 
         # After the accumulation, weight the gradients as needed and apply them:
-        if self.args.gradient_accumulation != 1:
+        if gradient_accumulation != 1:
             gradients = [ g / gradient_accumulation for g in gradients ]
 
         self.apply_gradients(gradients)

@@ -1,0 +1,17 @@
+defaults:
+  - network: uresnet
+  - framework: tensorflow
+  - mode: training
+  - data: real
+  # - override hydra/job_logging: custom
+run:
+  distributed: False
+  compute_mode: GPU
+  iterations: 50
+  minibatch_size: 8
+  aux_minibatch_size: ${run.minibatch_size}
+  aux_iterations: 10
+  id: ???
+  precision: mixed
+  profile: False
+  output_dir: output/${framework.name}/${network.name}/${run.id}/

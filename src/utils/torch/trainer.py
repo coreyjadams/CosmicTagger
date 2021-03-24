@@ -52,7 +52,6 @@ class torch_trainer(trainercore):
         trainercore.__init__(self, args)
         self._rank = None
 
-        logger.info("Testing in init!")
 
     def init_network(self):
 
@@ -118,7 +117,7 @@ class torch_trainer(trainercore):
         # For half precision, we disable gradient accumulation.  This is to allow
         # dynamic loss scaling
         if self.args.run.precision == "mixed":
-            if self.args.mode.name == "train" and  self.self.args.mode.optimizer.gradient_accumulation > 1:
+            if self.args.mode.name == "train" and  self.args.mode.optimizer.gradient_accumulation > 1:
                 raise Exception("Can not accumulate gradients in half precision.")
 
 
@@ -295,9 +294,9 @@ class torch_trainer(trainercore):
 
         '''
 
-        # Find the base path of the log directory    
+        # Find the base path of the log directory
         file_path= self.args.run.output_dir  + "/checkpoints/"
-        
+
 
         name = file_path + 'model-{}.ckpt'.format(self._global_step)
         checkpoint_file_path = file_path + "checkpoint"

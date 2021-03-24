@@ -29,19 +29,12 @@ class exec(object):
     def __init__(self, config):
 
         self.args = config
-        
+
         rank = self.init_mpi()
 
         self.configure_logger(rank)
 
         self.validate_arguments()
-
-        for k,v in  logging.Logger.manager.loggerDict.items()  :
-            print('+ [%s] {%s} ' % (str.ljust( k, 20)  , str(v.__class__)[8:-2]) ) 
-            if not isinstance(v, logging.PlaceHolder):
-                for h in v.handlers:
-                    print('     +++',str(h.__class__)[8:-2] )
-
 
         if config.mode.name == "train":
             self.train()
@@ -276,8 +269,6 @@ class exec(object):
 
 @hydra.main(config_path="../src/config", config_name="config")
 def main(cfg : OmegaConf) -> None:
-
-
 
     s = exec(cfg)
 

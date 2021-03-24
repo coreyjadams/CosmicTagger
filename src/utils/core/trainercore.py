@@ -255,9 +255,10 @@ class trainercore(object):
 
         # Run iterations
         for self._iteration in range(self.args.run.iterations):
+            iteration_start = time.time()
             if self.args.mode.name == "train" and self._iteration >= self.args.run.iterations:
 
-                self.print('Finished training (iteration %d)' % self._iteration)
+                logger.info('Finished training (iteration %d)' % self._iteration)
                 self.checkpoint()
                 break
 
@@ -273,7 +274,7 @@ class trainercore(object):
                 post_one_time = time.time()
             elif post_two_time is None:
                 post_two_time = time.time()
-            times.append(time.time() - start)
+            times.append(time.time() - iteration_start)
         self.close_savers()
 
         end = time.time()
@@ -284,4 +285,4 @@ class trainercore(object):
         if post_two_time is not None:
             logger.info(f"Total time to batch process except first two iterations: {end - post_two_time}")
         if len(times) > 40:
-            logger.info("Total time to batch process last 40 iterations: ", numpy.sum(times[-40:]))
+            logger.info(f"Total time to batch process last 40 iterations: {numpy.sum(times[-40:])}" )
