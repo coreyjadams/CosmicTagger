@@ -6,6 +6,6 @@ no_summary_images: False
 logging_iteration: 1
 optimizer:
   learning_rate: 0.0003
-  optimizer: adam
+  name: adam
   loss_balance_scheme: focal
   gradient_accumulation: 1

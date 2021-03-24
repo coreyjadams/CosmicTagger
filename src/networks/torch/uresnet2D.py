@@ -31,7 +31,7 @@ class Block(nn.Module):
             kernel_size  = kernel,
             stride       = [1, 1],
             padding      = padding,
-            bias         = params.use_bias)
+            bias         = params.bias)
 
         self.do_batch_norm = params.batch_norm
 
@@ -60,7 +60,7 @@ class ResidualBlock(nn.Module):
             kernel_size  = tuple(kernel),
             stride       = (1, 1),
             padding      = tuple(padding),
-            bias         = params.use_bias)
+            bias         = params.bias)
 
 
         self.do_batch_norm = params.batch_norm
@@ -76,7 +76,7 @@ class ResidualBlock(nn.Module):
             kernel_size  = tuple(kernel),
             stride       = [1, 1],
             padding      = tuple(padding),
-            bias         = params.use_bias)
+            bias         = params.bias)
 
         if self.do_batch_norm:
             self.bn2 = nn.BatchNorm2d(outplanes)
@@ -114,7 +114,7 @@ class ConvolutionDownsample(nn.Module):
             kernel_size  = [2, 2],
             stride       = [2, 2],
             padding      = [0, 0],
-            bias         = params.use_bias)
+            bias         = params.bias)
 
         self.do_batch_norm = params.batch_norm
         if self.do_batch_norm:
@@ -142,7 +142,7 @@ class ConvolutionUpsample(nn.Module):
             kernel_size  = [2, 2],
             stride       = [2, 2],
             padding      = [0, 0],
-            bias         = params.use_bias)
+            bias         = params.bias)
 
         self.do_batch_norm = params.batch_norm
         if self.do_batch_norm:
@@ -321,7 +321,7 @@ class ConcatConnection(nn.Module):
         #     kernel_size   = 1,
         #     stride        = 1,
         #     padding       = 0,
-        #     bias          = params.use_bias)
+        #     bias          = params.bias)
 
     def forward(self, x, residual):
         x = torch.cat((x, residual), dim=1)
@@ -529,7 +529,7 @@ class UResNet(torch.nn.Module):
             kernel_size  = 1,
             stride       = 1,
             padding      = 0,
-            bias         = params.use_bias)
+            bias         = params.bias)
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
 
@@ -541,7 +541,7 @@ class UResNet(torch.nn.Module):
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight.data)
                 # nn.init.xavier_uniform_(m.bias.data)
-                if params.use_bias:
+                if params.bias:
                     nn.init.constant_(m.bias.data,0)
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)

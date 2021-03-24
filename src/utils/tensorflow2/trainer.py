@@ -23,6 +23,8 @@ import tensorflow as tf
 floating_point_format = tf.float32
 integer_format = tf.int64
 
+import logging
+logger = logging.getLogger()
 
 
 class tf_trainer(trainercore):
@@ -60,18 +62,9 @@ class tf_trainer(trainercore):
         #
         self._global_step = tf.Variable(0, dtype=tf.int64)
 
-        # We have to make placeholders for input objects:
-        #
-        # self._input = {
-        #     'image'   : tf.compat.v1.placeholder(floating_point_format, batch_dims, name="input_image"),
-        #     'label'   : tf.compat.v1.placeholder(integer_format,        batch_dims, name="input_label"),
-        #     'io_time' : tf.compat.v1.placeholder(floating_point_format, (), name="io_fetch_time")
-        # }
-
 
         # Add the dataformat for the network construction:
 
-        print(self.args.network)
         
         # Build the network object, forward pass only:
         if self.args.network.conv_mode == '2D':
@@ -98,37 +91,6 @@ class tf_trainer(trainercore):
         self.forward_pass(image, label, training=False)
 
 
-            # # Here, if the data format is channels_first, we have to reorder the logits tensors
-            # # To put channels last.  Otherwise it does not work with the softmax tensors.
-            #
-            #
-            # # Apply a softmax and argmax:
-            # self._output = dict()
-            #
-            # # Take the logits (which are one per plane) and create a softmax and prediction (one per plane)
-            # with tf.compat.v1.variable_scope("prediction"):
-            #     self._output['prediction'] = [ tf.argmax(x, axis=self._channels_dim) for x in self._logits]
-            #
-            # with tf.compat.v1.variable_scope("cross_entropy"):
-            #
-            #     self._input['split_labels'] = [
-            #         tf.squeeze(l, axis=self._channels_dim)
-            #             for l in tf.split(self._input['label'], 3, self._channels_dim)
-            #         ]
-            #     self._input['split_images'] = [
-            #         tf.squeeze(l, axis=self._channels_dim)
-            #             for l in tf.split(self._input['image'], 3, self._channels_dim)
-            #         ]
-            #
-            #     self._loss = self.loss_calculator(
-            #             labels = self._input['split_labels'],
-            #             logits = self._loss_logits)
-            #
-            #
-            # if self.args.mode == "inference":
-            #     self._output['softmax'] = [tf.nn.softmax(x, axis=self._channels_dim) for x in self._logits]
-
-
         self.acc_calculator  = AccuracyCalculator.AccuracyCalculator()
         self.loss_calculator = LossCalculator.LossCalculator(
             self.args.mode.optimizer.loss_balance_scheme, self._channels_dim)
@@ -144,7 +106,7 @@ class tf_trainer(trainercore):
             n_trainable_parameters += numpy.prod(var.get_shape())
             if verbose:
                 print(var.name, var.get_shape())
-        self.print(f"Total number of trainable parameters in this network: {n_trainable_parameters}")
+        logger.info(f"Total number of trainable parameters in this network: {n_trainable_parameters}")
 
 
     def n_parameters(self):
@@ -198,29 +160,6 @@ class tf_trainer(trainercore):
                 tf.summary.image(f"label_plane_{p}", labels[p],     self.current_step())
                 tf.summary.image(f"pred_plane_{p}",  prediction[p], self.current_step())
 
-            # images = []
-
-            # # Labels is an unsplit tensor, prediction is a split tensor
-            # split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
-            # prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
-
-            # if self.args.data_format == "channels_first":
-            #     split_labels = [ tf.transpose(a=l, perm=[0, 2, 3, 1]) for l in split_labels]
-            #     prediction   = [ tf.transpose(a=p, perm=[0, 2, 3, 1]) for p in prediction]
-
-
-            # for p in range(len(split_labels)):
-
-            #     images.append(
-            #         tf.compat.v1.summary.image('label_plane_{}'.format(p),
-            #                      split_labels[p],
-            #                      max_outputs=1)
-            #         )
-            #     images.append(
-            #         tf.compat.v1.summary.image('pred_plane_{}'.format(p),
-            #                      prediction[p],
-            #                      max_outputs=1)
-            #         )
 
         return
 
@@ -240,7 +179,7 @@ class tf_trainer(trainercore):
 
         net_time = self.init_network()
 
-        self.print("Done constructing network. ({0:.2}s)\n".format(time.time()-start))
+        logger.info("Done constructing network. ({0:.2}s)\n".format(time.time()-start))
 
 
         self.print_network_info()
@@ -249,20 +188,6 @@ class tf_trainer(trainercore):
             self.init_optimizer()
 
         self.init_saver()
-        #
-        # # Take all of the metrics and turn them into summaries:
-        # for key in self._metrics:
-        #     tf.compat.v1.summary.scalar(key, self._metrics[key])
-        #
-        # if self.args.mode.name == "train":
-        #     # Add the learning rate as a summary too:
-        #     tf.compat.v1.summary.scalar('learning_rate', self._learning_rate)
-        #
-        # if self.args.mode != "inference":
-        #
-        #     self._summary_basic  = tf.compat.v1.summary.merge_all()
-        #     self._summary_images = self._create_summary_images(self._input['label'], self._output['prediction'])
-        #     # self.create_model_summaries()
 
         self.set_compute_parameters()
 
@@ -287,10 +212,10 @@ class tf_trainer(trainercore):
 
 
         if path is None:
-            self.print("No checkpoint found, starting from scratch")
+            logger.info("No checkpoint found, starting from scratch")
             return False
         # Parse the checkpoint file and use that to get the latest file path
-        self.print("Restoring checkpoint from ", path)
+        logger.info("Restoring checkpoint from ", path)
         self._net.load_weights(path)
 
         # self.scheduler.set_current_step(self.current_step())
@@ -308,7 +233,7 @@ class tf_trainer(trainercore):
     def get_checkpoint_dir(self):
 
         # Find the base path of the log directory
-        file_path= "checkpoints/"
+        file_path= self.args.run.output_dir + "/checkpoints/"
 
         return file_path
 
@@ -346,17 +271,17 @@ class tf_trainer(trainercore):
         try:
             os.makedirs(file_path)
         except:
-            self.print("Could not make file path")
+            logger.warning("Could not make file path")
 
         # # Create a saver for snapshots of the network:
         # self._saver = tf.compat.v1.train.Saver()
 
         # Create a file writer for training metrics:
-        self._main_writer = tf.summary.create_file_writer("tf/train/")
+        self._main_writer = tf.summary.create_file_writer(self.args.run.output_dir +  "/train/")
 
         # Additionally, in training mode if there is aux data use it for validation:
         if hasattr(self, "_aux_data_size"):
-            self._val_writer = tf.summary.create_file_writer("tf/test/")
+            self._val_writer = tf.summary.create_file_writer(self.args.run.output_dir + "/test/")
 
 
     def init_optimizer(self):
@@ -364,13 +289,11 @@ class tf_trainer(trainercore):
         self.init_learning_rate()
 
 
-        if 'RMS' in self.args.mode.optimizer.optimizer.upper():
+        if self.args.mode.optimizer.name == "rmsprop":
             # Use RMS prop:
-            self.print("Selected optimizer is RMS Prop")
             self._opt = tf.keras.optimizers.RMSprop(self._learning_rate)
         else:
             # default is Adam:
-            self.print("Using default Adam optimizer")
             self._opt = tf.keras.optimizers.Adam(self._learning_rate)
 
         if self.args.run.precision == "mixed":
@@ -419,44 +342,18 @@ class tf_trainer(trainercore):
         else:
             log_string.rstrip(", ")
 
-        self.print(log_string)
+
+        for k,v in  logging.Logger.manager.loggerDict.items()  :
+            print('+ [%s] {%s} ' % (str.ljust( k, 20)  , str(v.__class__)[8:-2]) ) 
+            if not isinstance(v, logging.PlaceHolder):
+                for h in v.handlers:
+                    print('     +++',str(h.__class__)[8:-2] )
+
+        print(logger.handlers)
+
+        logger.info(log_string)
 
         return
-
-    #
-    # def _create_summary_images(self, labels, prediction):
-    #     ''' Create images of the labels and prediction to show training progress
-    #     '''
-    #
-    #
-    #
-    #     images = []
-    #
-    #     # Labels is an unsplit tensor, prediction is a split tensor
-    #     split_labels = [ tf.cast(l, floating_point_format) for l in tf.split(labels,len(prediction) , self._channels_dim)]
-    #     prediction = [ tf.expand_dims(tf.cast(p, floating_point_format), self._channels_dim) for p in prediction ]
-    #
-    #     if self.args.data_format == "channels_first":
-    #         split_labels = [ tf.transpose(l, [0, 2, 3, 1]) for l in split_labels]
-    #         prediction   = [ tf.transpose(p, [0, 2, 3, 1]) for p in prediction]
-    #
-    #
-    #     for p in range(len(split_labels)):
-    #
-    #
-    #             images.append(
-    #                 tf.compat.v1.summary.image('label/plane_{}'.format(p),
-    #                              split_labels[p],
-    #                              max_outputs=1)
-    #                 )
-    #
-    #             images.append(
-    #                 tf.compat.v1.summary.image('prediction/plane_{}'.format(p),
-    #                              prediction[p],
-    #                              max_outputs=1)
-    #                 )
-    #
-    #     return tf.compat.v1.summary.merge(images)
 
 
     @tf.function
@@ -583,7 +480,7 @@ class tf_trainer(trainercore):
 
             if self.args.run.profile:
                 if not self.args.distributed or self._rank == 0:
-                    tf.profiler.experimental.start(self.args.log_directory + "/tf/train/")
+                    tf.profiler.experimental.start(self.args.run.output_dir + "/tf/train/")
             logits, labels, prediction, loss, internal_gradients = self.gradient_step(image, label)
 
             if self.args.run.profile:
@@ -716,12 +613,11 @@ class tf_trainer(trainercore):
 
         metrics['io_fetch_time'] = (io_end_time - io_start_time).total_seconds()
 
-        if verbose: self.print("Calculated metrics")
+        if verbose: logger.debug("Calculated metrics")
 
         # Report metrics on the terminal:
         self.log(ops["metrics"], kind="Inference", step=self.current_step())
 
-        # self.print(ops["metrics"])
 
 
         # If there is an aux file, for ana that means an output file.
@@ -808,7 +704,7 @@ class tf_trainer(trainercore):
                     event_id = minibatch_data['event_ids'][b_index])
 
 
-        if verbose: self.print("Completed Log")
+        if verbose: logger.debug("Completed Log")
 
         global_end_time = datetime.datetime.now()
 

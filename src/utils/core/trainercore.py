@@ -15,6 +15,9 @@ import datetime
 import pathlib
 
 
+import logging
+logger = logging.getLogger("cosmictagger")
+
 class trainercore(object):
     '''
     This class is the core interface for training.  Each function to
@@ -48,13 +51,6 @@ class trainercore(object):
         if args.data.data_format == "channels_last" : self._channels_dim = -1
 
 
-    def print(self, *argv):
-        ''' Function for logging as needed.  Works correctly in distributed mode'''
-
-        message = " ".join([ str(s) for s in argv] )
-
-        sys.stdout.write(message + "\n")
-        sys.stdout.flush()
 
     def initialize(self, io_only=True):
         self._initialize_io(color=0)
@@ -66,22 +62,21 @@ class trainercore(object):
         f = pathlib.Path(self.args.data.data_directory + self.args.data.file)
         aux_f = pathlib.Path(self.args.data.data_directory + self.args.data.aux_file)
 
-
         # Check that the training file exists:
         if not self.args.data.synthetic and not f.exists():
             raise Exception(f"Can not continue with file {f} - does not exist.")
         if not self.args.data.synthetic and not aux_f.exists():
             if self.args.mode.name == "training":
-                self.print("WARNING: Aux file does not exist.  Setting to None for training")
+                logger.warning("WARNING: Aux file does not exist.  Setting to None for training")
                 self.args.aux_file = None
             else:
                 # In inference mode, we are creating the aux file.  So we need to check
                 # that the directory exists.  Otherwise, no writing.
                 if not aux_f.parent.exists():
-                    self.print("WARNING: Aux file's directory does not exist.")
+                    logger.warning("WARNING: Aux file's directory does not exist.")
                     self.args.aux_file = None
                 elif self.args.data.aux_file is None or str(self.args.data.aux_file).lower() == "none":
-                    self.print("WARNING: no aux file set, so not writing inference results.")
+                    logger.warning("WARNING: no aux file set, so not writing inference results.")
                     self.args.aux_file = None
 
 
@@ -224,7 +219,7 @@ class trainercore(object):
         else:
             log_string.rstrip(", ")
 
-        self.log(log_string)
+        logger.info(log_string)
 
         return
 
@@ -280,8 +275,8 @@ class trainercore(object):
 
         end = time.time()
 
-        self.print("Total time to batch_process: ", end - start)
+        logger.info(f"Total time to batch_process: {end - start}")
         if post_one_time is not None:
-            self.print("Total time to batch process except first iteration: ", end - post_one_time)
+            logger.info(f"Total time to batch process except first iteration: {end - post_one_time}")
         if post_two_time is not None:
-            self.print("Total time to batch process except first two iterations: ", end - post_two_time)
+            logger.info(f"Total time to batch process except first two iterations: {end - post_two_time}")

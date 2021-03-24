@@ -41,10 +41,6 @@ class distributed_trainer(tf_trainer):
         self._rank            = hvd.rank()
         self.local_minibatch_size = int(self.args.minibatch_size / hvd.size())
 
-    def print(self, *argv):
-
-        if self._rank == 0:
-            tf_trainer.print(self, *argv)
 
     def init_optimizer(self):
                 # with tf.variable_scope("hvd"):

@@ -103,11 +103,6 @@ class distributed_trainer(torch_trainer):
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
 
-    def print(self, *argv):
-        if self._rank == 0:
-            torch_trainer.print(self, *argv)
-
-
     def init_saver(self):
         if self._rank == 0:
             torch_trainer.init_saver(self)

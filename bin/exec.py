@@ -4,15 +4,16 @@ import time
 import pathlib
 import logging
 from logging import handlers
-logger = logging.getLogger("cosmictagger")
-
-logger.handlers=[]
 
 import numpy
 
 # For configuration:
 from omegaconf import DictConfig, OmegaConf
 import hydra
+from hydra.experimental import compose, initialize
+from hydra.core.hydra_config import HydraConfig
+from hydra.core.utils import configure_log
+
 hydra.output_subdir = None
 
 #############################
@@ -35,6 +36,12 @@ class exec(object):
 
         self.validate_arguments()
 
+        for k,v in  logging.Logger.manager.loggerDict.items()  :
+            print('+ [%s] {%s} ' % (str.ljust( k, 20)  , str(v.__class__)[8:-2]) ) 
+            if not isinstance(v, logging.PlaceHolder):
+                for h in v.handlers:
+                    print('     +++',str(h.__class__)[8:-2] )
+
 
         if config.mode.name == "train":
             self.train()
@@ -52,8 +59,7 @@ class exec(object):
 
     def configure_logger(self, rank):
 
-        logger = logging.getLogger("cosmictagger")
-
+        logger = logging.getLogger()
 
         # Create a handler for STDOUT, but only on the root rank.
         # If not distributed, we still get 0 passed in here.
@@ -74,6 +80,7 @@ class exec(object):
 
     def train(self):
 
+        logger = logging.getLogger("cosmictagger")
 
         logger.info("Running Training")
         logger.info(self.__str__())
@@ -103,6 +110,7 @@ class exec(object):
     def iotest(self):
 
         self.make_trainer()
+        logger = logging.getLogger("cosmictagger")
 
         logger.info("Running IO Test")
         logger.info(self.__str__())
@@ -177,6 +185,7 @@ class exec(object):
 
 
         self.make_trainer()
+        logger = logging.getLogger("cosmictagger")
 
         logger.info("Running Inference")
         logger.info(self.__str__())
@@ -203,8 +212,8 @@ class exec(object):
 
         self.make_trainer()
 
+        logger = logging.getLogger("cosmictagger")
         logger.info("Running Inference")
-        self.trainer.print(self.__str__())
 
         # self.trainer.initialize()
         # self.trainer.print()
@@ -260,8 +269,15 @@ class exec(object):
 
 @hydra.main(config_path="../src/config", config_name="config")
 def main(cfg : OmegaConf) -> None:
+
+
+
     s = exec(cfg)
 
 
+
 if __name__ == '__main__':
+    #  Is this good practice?  No.  But hydra doesn't give a great alternative
+    import sys
+    sys.argv += ['hydra.run.dir=.', 'hydra/job_logging=disabled']
     main()

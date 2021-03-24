@@ -22,7 +22,7 @@ class OptimizerKind(Enum):
 class Optimizer:
     learning_rate:         float             =  0.0003
     loss_balance_scheme:   LossBalanceScheme = LossBalanceScheme.focal
-    optimizer:             OptimizerKind     = OptimizerKind.adam
+    name:                  OptimizerKind     = OptimizerKind.adam
     gradient_accumulation: int               = 1
     
 

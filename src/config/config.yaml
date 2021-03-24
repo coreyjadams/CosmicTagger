@@ -5,8 +5,9 @@ defaults:
   - framework: tensorflow
   - mode: training
   - data: real
+  # - override hydra/job_logging: custom
 run:
-  distributed: True
+  distributed: False
   compute_mode: GPU
   iterations: 50
   minibatch_size: 2
@@ -15,11 +16,4 @@ run:
   id: ???
   precision: float32
   profile: False
-
-# # Configure the logging and output directory:
-hydra:
-  job:
-    override_dirname: /
-  run:
-    dir: output/${network.name}/MB${run.minibatch_size}/${hydra:job.override_dirname}
-hydra/job_logging: "disable_hydra_logging"
+  output_dir: output/${framework.name}/${network.name}/${run.id}/
