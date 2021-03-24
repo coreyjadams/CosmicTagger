@@ -148,6 +148,12 @@ class distributed_trainer(tf_trainer):
         else:
             tf_trainer.summary(self, metrics, saver)
 
+    def summary_images(self, labels, prediction, saver=""):
+        if hvd.rank() != 0:
+            return
+        else:
+            tf_trainer.summary_images(self, labels, prediction, saver)
+
     def log(self, metrics, kind, step):
         if hvd.rank() != 0:
             return

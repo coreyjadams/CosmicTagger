@@ -71,7 +71,7 @@ class tf_trainer(trainercore):
 
         # Add the dataformat for the network construction:
 
-        
+
         # Build the network object, forward pass only:
         if self.args.network.conv_mode == '2D':
             self._net = uresnet2D.UResNet(self.args.network)
@@ -155,16 +155,24 @@ class tf_trainer(trainercore):
             #     print(e)
             ####################################################################
 
-    @tf.function
-    def summary_images(self, labels, prediction):
+    # @tf.function
+    def summary_images(self, labels, prediction, saver=""):
         ''' Create images of the labels and prediction to show training progress
         '''
 
         if self.current_step() % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:
 
-            for p in range(len(labels)):
-                tf.summary.image(f"label_plane_{p}", labels[p],     self.current_step())
-                tf.summary.image(f"pred_plane_{p}",  prediction[p], self.current_step())
+
+            if saver == "":
+                saver = self._main_writer
+            with saver.as_default():
+                for p in range(len(labels)):
+                    shape = labels[p][0].shape
+                    label = tf.reshape( labels[p][0] / 2, (1,) + shape + (1,))
+                    # Save only one event per snapshot
+                    tf.summary.image(f"label/plane_{p}", label,     self.current_step())
+                    pred = tf.reshape(prediction[p][0] / 2, (1,) + shape  + (1,))
+                    tf.summary.image(f"pred/plane_{p}",  pred, self.current_step())
 
 
         return
@@ -351,7 +359,7 @@ class tf_trainer(trainercore):
 
 
         for k,v in  logging.Logger.manager.loggerDict.items()  :
-            print('+ [%s] {%s} ' % (str.ljust( k, 20)  , str(v.__class__)[8:-2]) ) 
+            print('+ [%s] {%s} ' % (str.ljust( k, 20)  , str(v.__class__)[8:-2]) )
             if not isinstance(v, logging.PlaceHolder):
                 for h in v.handlers:
                     print('     +++',str(h.__class__)[8:-2] )
@@ -458,7 +466,7 @@ class tf_trainer(trainercore):
 
 
             self.summary(metrics=metrics, saver=self._val_writer)
-            self.summary_images(labels, prediction)
+            self.summary_images(labels, prediction, saver=self._val_writer)
 
         return
 
