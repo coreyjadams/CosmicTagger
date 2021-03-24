@@ -118,6 +118,12 @@ class exec(object):
 
         self.trainer.initialize(io_only=True)
 
+        if self.args.distributed:
+            from mpi4py import MPI
+            rank = MPI.COMM_WORLD.Get_rank()
+        else:
+            rank = 0
+
         # label_stats = numpy.zeros((36,))
         global_start = time.time()
         time.sleep(0.1)
@@ -130,6 +136,7 @@ class exec(object):
             logger.info(f"{i}: Time to fetch a minibatch of data: {end - start:.2f}s")
 
         logger.info(f"Total IO Time: {time.time() - global_start:.2f}s")
+
 
     def make_trainer(self):
 
@@ -273,7 +280,6 @@ def main(cfg : OmegaConf) -> None:
 
 
     s = exec(cfg)
-
 
 
 if __name__ == '__main__':

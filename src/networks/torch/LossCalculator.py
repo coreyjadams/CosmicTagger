@@ -83,7 +83,7 @@ class LossCalculator(torch.nn.Module):
                     elif self.balance_type == "light":
 
                         total_pixels = numpy.prod(labels[i].shape)
-                        per_pixel_weight = 1./(total_pixels)
+                        per_pixel_weight = 1.
                         weights = torch.full(labels[i].shape, per_pixel_weight, device=labels[i].device)
                         weights[labels[i] == 1 ] = 1.5 * per_pixel_weight
                         weights[labels[i] == 2 ] = 10  * per_pixel_weight
