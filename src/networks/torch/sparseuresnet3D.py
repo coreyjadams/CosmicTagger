@@ -253,7 +253,7 @@ class ConcatConnection(nn.Module):
     def __init__(self, *, inplanes, params):
         nn.Module.__init__(self)
 
-        self.concat = scn.ConcatTable()
+        self.concat = scn.JoinTable()
         self.bottleneck = scn.SubmanifoldConvolution(3,
                             nIn         = 2*inplanes,
                             nOut        = inplanes,
@@ -442,12 +442,14 @@ class UResNet3D(torch.nn.Module):
 
     def forward(self, _input):
 
+
         batch_size = _input[-1]
 
         x = self.input_tensor(_input)
 
         # Apply the initial convolutions:
         x = self.initial_convolution(x)
+
 
         # Apply the main unet architecture:
         x = self.net_core(x)

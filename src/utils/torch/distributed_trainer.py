@@ -155,7 +155,7 @@ class distributed_trainer(torch_trainer):
             if self.args.run.compute_mode == "GPU":
                 self._net.cuda()
 
-            self._net = torch.nn.parallel.DistributedDataParallel(self._net)
+            self._net = torch.nn.parallel.DistributedDataParallel(self._net, find_unused_parameters=True)
 
 
 
