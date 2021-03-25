@@ -3,7 +3,7 @@
 defaults:
   - network: uresnet
   - framework: tensorflow
-  - mode: training
+  - mode: train
   - data: real
   # - override hydra/job_logging: custom
 run:
