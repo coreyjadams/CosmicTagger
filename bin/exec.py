@@ -276,6 +276,6 @@ def main(cfg : OmegaConf) -> None:
 if __name__ == '__main__':
     #  Is this good practice?  No.  But hydra doesn't give a great alternative
     import sys
-    if "--help" not in sys.argv:
+    if "--help" not in sys.argv and "--hydra-help" not in sys.argv:
         sys.argv += ['hydra.run.dir=.', 'hydra/job_logging=disabled']
     main()
