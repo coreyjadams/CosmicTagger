@@ -1,4 +1,3 @@
-# @package _group_
 synthetic: False
 file: cosmic_tagging_train.h5
 aux_file: cosmic_tagging_test.h5

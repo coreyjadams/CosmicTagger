@@ -1,4 +1,3 @@
-# @package _group_
 name: torch
 sparse: False
 distributed_mode: DDP

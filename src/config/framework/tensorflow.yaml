@@ -1,4 +1,3 @@
-# @package _group_
 name: tensorflow
 inter_op_parallelism_threads: 2
 intra_op_parallelism_threads: 24

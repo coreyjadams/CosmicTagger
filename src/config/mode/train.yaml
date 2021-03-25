@@ -1,4 +1,3 @@
-# @package _group_
 name: train
 checkpoint_iteration: 500
 summary_iteration: 1

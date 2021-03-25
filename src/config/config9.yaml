@@ -1,34 +1,32 @@
 defaults:
 - network: uresnet
 - framework: tensorflow
-- mode: training
+- mode: train
 - data: real
 run:
   distributed: false
   compute_mode: GPU
   iterations: 8413
-  minibatch_size: 2
   aux_minibatch_size: ${run.minibatch_size}
   aux_iterations: 10
   id: ???
   precision: float32
   profile: false
   output_dir: output/${framework.name}/${network.name}/${run.id}/
-compute_mode:
   minibatch_size: 128
 network:
-  bias: true
+  bias: false
   batch_norm: true
-  n_initial_filters: 16
-  blocks_per_layer: 2
-  blocks_deepest_layer: 3
-  blocks_final: 1
-  bottleneck_deepest: 32
+  n_initial_filters: 8
+  blocks_per_layer: 3
+  blocks_deepest_layer: 2
+  blocks_final: 0
+  bottleneck_deepest: 72
   residual: false
   downsampling: max_pooling
   upsampling: interpolation
-  connections: sum
+  connections: concat
 mode:
   optimizer:
-    learning_rate: 0.0028596703793041895
-    loss_balance_scheme: focal
+    learning_rate: 0.0003202584599627212
+    loss_balance_scheme: light

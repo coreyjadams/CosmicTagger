@@ -14,11 +14,3 @@ cosmictagger:
   aux_minibatch_size: ${minibatch_size}
   aux_iterations: 10
   run_id: ???
-
-# # Configure the logging and output directory:
-# hydra:
-#   job:
-#     override_dirname: ./
-#   run:
-#     dir: output/${cosmictagger.network.name}/MB${cosmictagger.minibatch_size}_LR${cosmictagger.learning_rate}/${cosmictagger.run_id}
-# hydra/hydra_logging: disabled

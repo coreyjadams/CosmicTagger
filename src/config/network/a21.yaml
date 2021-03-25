@@ -1,4 +1,3 @@
-# @package _group_
 name: a21
 bias: True
 batch_norm: True
