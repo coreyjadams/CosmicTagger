@@ -6,7 +6,7 @@ defaults:
 run:
   distributed: false
   compute_mode: GPU
-  iterations: 50
+  iterations: 5608
   minibatch_size: 2
   aux_minibatch_size: ${run.minibatch_size}
   aux_iterations: 10
@@ -15,20 +15,20 @@ run:
   profile: false
   output_dir: output/${framework.name}/${network.name}/${run.id}/
 compute_mode:
-  minibatch_size: 128
+  minibatch_size: 192
 network:
-  bias: false
+  bias: true
   batch_norm: true
   n_initial_filters: 8
-  blocks_per_layer: 2
-  blocks_deepest_layer: 5
-  blocks_final: 3
-  bottleneck_deepest: 80
-  residual: false
-  downsampling: max_pooling
+  blocks_per_layer: 3
+  blocks_deepest_layer: 2
+  blocks_final: 4
+  bottleneck_deepest: 88
+  residual: true
+  downsampling: convolutional
   upsampling: interpolation
-  connections: concat
+  connections: sum
 mode:
   optimizer:
-    learning_rate: 0.001784968104335804
-    loss_balance_scheme: light
+    learning_rate: 0.00032480560676946345
+    loss_balance_scheme: focal
