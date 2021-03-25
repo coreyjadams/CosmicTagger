@@ -62,13 +62,13 @@ class exec(object):
             stream_handler.setFormatter(formatter)
             handler = handlers.MemoryHandler(capacity = 0, target=stream_handler)
             logger.addHandler(handler)
-            logger.setLevel(logging.DEBUG)
+            logger.setLevel(logging.INFO)
         else:
             # in this case, MPI is available but it's not rank 0
             # create a null handler
             handler = logging.NullHandler()
             logger.addHandler(handler)
-            logger.setLevel(logging.DEBUG)
+            logger.setLevel(logging.INFO)
 
 
     def train(self):
