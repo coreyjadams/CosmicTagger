@@ -439,7 +439,7 @@ class tf_trainer(trainercore):
 
         gs = self.current_step()
 
-        if gs % self.args.run.aux_iteration == 0:
+        if gs % self.args.run.aux_iterations == 0:
 
             # Fetch the next batch of data with larcv
             minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
@@ -510,7 +510,7 @@ class tf_trainer(trainercore):
 
             if self.args.run.profile:
                 if not self.args.distributed or self._rank == 0:
-                    tf.profiler.experimental.start(self.args.run.output_dir + "/tf/train/")
+                    tf.profiler.experimental.start(self.args.run.output_dir + "/train/")
             logits, labels, prediction, loss, internal_gradients = self.gradient_step(image, label)
 
             if self.args.run.profile:
@@ -619,7 +619,7 @@ class tf_trainer(trainercore):
 
         if self.args.profile:
             if not self.args.distributed or self._rank == 0:
-                tf.profiler.experimental.start(self.args.log_directory + "/tf/train/")
+                tf.profiler.experimental.start(self.args.run.output_dir + "/train/")
         # Get the logits:
         labels, logits, prediction = self.forward_pass(image, label, training=False)
 

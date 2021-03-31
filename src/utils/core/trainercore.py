@@ -66,7 +66,7 @@ class trainercore(object):
         if not self.args.data.synthetic and not f.exists():
             raise Exception(f"Can not continue with file {f} - does not exist.")
         if not self.args.data.synthetic and not aux_f.exists():
-            if self.args.mode.name == "training":
+            if self.args.mode.name == "train":
                 logger.warning("WARNING: Aux file does not exist.  Setting to None for training")
                 self.args.aux_file = None
             else:
@@ -84,7 +84,7 @@ class trainercore(object):
             "train", f, self.args.run.minibatch_size, color)
 
         if self.args.data.aux_file is not None:
-            if self.args.mode.name == "training":
+            if self.args.mode.name == "train":
                 # Fetching data for on the fly testing:
                 self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
                     "aux", aux_f, self.args.run.minibatch_size, color)

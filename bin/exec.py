@@ -32,6 +32,11 @@ class exec(object):
 
         rank = self.init_mpi()
 
+        # Create the output directory if needed:
+        if rank == 0:
+            outpath = pathlib.Path(self.args.run.output_dir)
+            outpath.mkdir(exist_ok=True, parents=True)
+
         self.configure_logger(rank)
 
         self.validate_arguments()
@@ -40,6 +45,8 @@ class exec(object):
             self.train()
         if config.mode.name == "iotest":
             self.iotest()
+
+
 
     def init_mpi(self):
         if not self.args.run.distributed:
@@ -62,6 +69,14 @@ class exec(object):
             stream_handler.setFormatter(formatter)
             handler = handlers.MemoryHandler(capacity = 0, target=stream_handler)
             logger.addHandler(handler)
+
+            # Add a file handler too:
+            log_file = self.args.run.output_dir + "/process.log"
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
+            logger.addHandler(file_handler)
+
             logger.setLevel(logging.INFO)
         else:
             # in this case, MPI is available but it's not rank 0
