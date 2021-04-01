@@ -96,7 +96,7 @@ The data for this network is in larcv3 format (https://github.com/DeepLearnPhysi
 
 The UNet design is symmetric and does downsampling/upsampling by factors of 2.  So, in order to preserve the proper sizes during the upsampling sets, it's important that the smallest resolution image reached by the network does not contain a dimension with an odd number of pixels.  Concretely, this means that the sum of `network_depth` and `downsample_images` must be less than 8, since 1280 pixels / 2^8 = 5. 
 
-The training dataset `cosmic_tagging_train.h5` is 43075 images.  The testing set `cosmic_tagging_test.h5`, specified by `--aux-file` and used to monitor overfitting during training, is 7362 images.  The validation set `cosmic_tagging_val.h5` contains 7449 images.
+The training dataset `cosmic_tagging_train.h5` contains 43075 images.  The validation set `cosmic_tagging_val.h5`, specified by `--aux-file` and used to monitor overfitting during training, is 7362 images.  The final hold-out test set `cosmic_tagging_test.h5` contains 7449 images. To evaluate the accuracy of a trained model on the hold-out test set (after all training and tuning is complete), rerun the application in inference mode with `--file <path-to-cosmic_tagging_test.h5`.
 
 ### Data format
 
