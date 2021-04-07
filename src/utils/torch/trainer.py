@@ -78,6 +78,18 @@ class torch_trainer(trainercore):
             self.build_lr_schedule()
 
         self.init_network()
+        
+        # If using half precision on the model, convert it now:
+        if self.args.precision == "bfloat16":
+            self._net = self._net.bfloat16()
+
+        if self.args.compute_mode == "CPU":
+            pass
+        elif self.args.compute_mode == "GPU":
+            self._net.cuda()
+        elif self.args.compute_mode == "DPCPP":
+            self.print("Converting to model to xpu")
+            self._net = self._net.to("xpu")
 
         self.print_network_info()
 
@@ -115,7 +127,7 @@ class torch_trainer(trainercore):
     def print_network_info(self, verbose=False):
         if verbose:
             for name, var in self._net.named_parameters():
-                print(name, var.shape)
+                print(name, var.shape,var.device)
 
         self.print("Total number of trainable parameters in this network: {}".format(self.n_parameters()))
 
@@ -513,7 +525,7 @@ class torch_trainer(trainercore):
                 device = torch.device("xpu")
         elif self.args.compute_mode == "DPCPP":
             if device is None:
-                device = torch.device("dpcpp")
+                device = torch.device("xpu")
         else:
             if device is None:
                 device = torch.device('cpu')
@@ -667,6 +679,7 @@ class torch_trainer(trainercore):
         self.lr_scheduler.step()
 
         if verbose: self.print("Updated Weights")
+
         global_end_time = datetime.datetime.now()
 
         metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
