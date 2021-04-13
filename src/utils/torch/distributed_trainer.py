@@ -46,7 +46,7 @@ class distributed_trainer(torch_trainer):
         if self.args.distributed_mode == "horovod":
             if self.args.compute_mode == "GPU":
                 os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
-            if self.args.compute_mode == "DPCPP":
+            if self.args.compute_mode == "XPU":
                 os.environ["IPEX_DEV_INDEX"] = str(hvd.local_rank())
             self._rank            = hvd.rank()
         else:

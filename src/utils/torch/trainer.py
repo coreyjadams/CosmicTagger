@@ -91,8 +91,7 @@ class torch_trainer(trainercore):
             pass
         elif self.args.compute_mode == "GPU":
             self._net.cuda()
-        elif self.args.compute_mode == "DPCPP":
-            self.print("Converting to model to xpu")
+        elif self.args.compute_mode == "XPU":
             self._net = self._net.to("xpu")
 
         self.print_network_info()
@@ -699,7 +698,6 @@ class torch_trainer(trainercore):
         self.lr_scheduler.step()
 
         if verbose: self.print("Updated Weights")
-
         global_end_time = datetime.datetime.now()
 
         metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
