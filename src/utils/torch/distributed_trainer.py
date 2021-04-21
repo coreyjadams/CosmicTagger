@@ -16,7 +16,11 @@ comm = MPI.COMM_WORLD
 try:
     import horovod.torch as hvd
     hvd.init()
-    os.environ["IPEX_DEV_INDEX"] = str(hvd.local_rank())
+    IPEX_TILE_AS_DEVICE = os.environ.get("IPEX_TILE_AS_DEVICE", "0")
+    if IPEX_TILE_AS_DEVICE == "1":
+        os.environ["IPEX_DEV_INDEX"] = str(hvd.local_rank())
+    else:
+        os.environ["ZE_AFFINITY_MASK"] = str(hvd.local_rank())
 except:
     pass
 
@@ -46,8 +50,6 @@ class distributed_trainer(torch_trainer):
         if self.args.distributed_mode == "horovod":
             if self.args.compute_mode == "GPU":
                 os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
-            if self.args.compute_mode == "XPU":
-                os.environ["IPEX_DEV_INDEX"] = str(hvd.local_rank())
             self._rank            = hvd.rank()
         else:
 
