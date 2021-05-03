@@ -362,7 +362,7 @@ The most commonly used commands are:
 
         parser.add_argument('-m','--compute-mode',
             type    = str,
-            choices = ['CPU','GPU', 'DPCPP'],
+            choices = ['CPU','GPU', 'XPU'],
             default = 'GPU',
             help    = "Selection of compute device, CPU or GPU ")
 
