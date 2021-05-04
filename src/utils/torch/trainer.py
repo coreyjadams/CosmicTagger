@@ -100,6 +100,8 @@ class torch_trainer(trainercore):
             self._net.cuda()
         elif self.args.compute_mode == "XPU":
             self._net.to("xpu")
+        elif self.args.compute_mode == "DPCPP":
+            self._net.to("dpcpp")
 
         self.loss_calculator = LossCalculator.LossCalculator(self.args.loss_balance_scheme)
 
@@ -509,6 +511,9 @@ class torch_trainer(trainercore):
         elif self.args.compute_mode == "XPU":
             if device is None:
                 device = torch.device("xpu")
+        elif self.args.compute_mode == "DPCPP":
+            if device is None:
+                device = torch.device("dpcpp")
         else:
             if device is None:
                 device = torch.device('cpu')
