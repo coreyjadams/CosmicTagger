@@ -12,7 +12,17 @@ import torch
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
-
+# set IPEX XPU device before importing IPEX
+try:
+    import horovod.torch as hvd
+    hvd.init()
+    IPEX_TILE_AS_DEVICE = os.environ.get("IPEX_TILE_AS_DEVICE", "0")
+    if IPEX_TILE_AS_DEVICE == "1":
+        os.environ["IPEX_DEV_INDEX"] = str(hvd.local_rank())
+    else:
+        os.environ["ZE_AFFINITY_MASK"] = str(hvd.local_rank())
+except:
+    pass
 
 from .trainer import torch_trainer
 
@@ -38,13 +48,9 @@ class distributed_trainer(torch_trainer):
 
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
         if self.args.distributed_mode == "horovod":
-            global hvd
-            import horovod.torch as hvd
-            hvd.init()
-            self._rank            = hvd.rank()
             if self.args.compute_mode == "GPU":
                 os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
-
+            self._rank            = hvd.rank()
         else:
 
             import socket
@@ -116,9 +122,9 @@ class distributed_trainer(torch_trainer):
             self._aux_saver = None
 
 
-    def print_network_info(self):
+    def print_network_info(self, verbose=False):
         if self._rank == 0:
-            torch_trainer.print_network_info(self)
+            torch_trainer.print_network_info(self, verbose)
         return
 
     def restore_model(self):
