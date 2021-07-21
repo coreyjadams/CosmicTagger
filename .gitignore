@@ -9,6 +9,11 @@ __pycache__/
 *.cobaltlog
 *.qsub
 
+# Hydra files
+.hydra/
+src/.hydra
+tests/.hydra
+
 # C extensions
 *.so
 

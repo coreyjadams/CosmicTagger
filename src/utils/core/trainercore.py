@@ -68,16 +68,16 @@ class trainercore(object):
         if not self.args.data.synthetic and not aux_f.exists():
             if self.args.mode.name == "train":
                 logger.warning("WARNING: Aux file does not exist.  Setting to None for training")
-                self.args.aux_file = None
+                self.args.data.aux_file = None
             else:
                 # In inference mode, we are creating the aux file.  So we need to check
                 # that the directory exists.  Otherwise, no writing.
                 if not aux_f.parent.exists():
                     logger.warning("WARNING: Aux file's directory does not exist.")
-                    self.args.aux_file = None
+                    self.args.data.aux_file = None
                 elif self.args.data.aux_file is None or str(self.args.data.aux_file).lower() == "none":
                     logger.warning("WARNING: no aux file set, so not writing inference results.")
-                    self.args.aux_file = None
+                    self.args.data.aux_file = None
 
 
         self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
