@@ -4,77 +4,101 @@
 
 # Neutrino and Cosmic Tagging with UNet
 
-This repository contains models and training utilities to train convolutional networks to separate cosmic pixels, background pixels, and neutrino pixels in a neutrinos dataset.  There are several variations.
+This repository contains models and training utilities to train convolutional networks to separate cosmic pixels, background pixels, and neutrino pixels in a neutrinos dataset.  There are several variations. A detailed description of the code can be found in:
+* [*Cosmic Background Removal with Deep Neural Networks in SBND*](https://arxiv.org/abs/2012.01301) 
 
-This network is implemented in both torch and tensorflow.  To select between the networks, you can use the `--framework` parameter.  It accepts either `tensorflow` or `torch`.  The model is available in a development version with sparse convolutions in the `torch` framework.
+
+This network is implemented in both PyTorch and TensorFlow.  To select between the networks, you can use the `--framework` parameter.  It accepts either `tensorflow` or `torch`.  The model is available in a development version with sparse convolutions in the `torch` framework.
+
+## Installation
+
+CosmicTagger's dependencies can be installed via Conda and/or Pip. For example, Conda can be used to acquire many of the build dependencies for both CosmicTagger and `larcv3`
+
+```
+conda create -n cosmic_tagger python==3.7
+conda install cmake h5py scikit-build numpy
+```
+
+As of April 2021, the version of `larcv3` on PyPI (v3.3.3) does not work with CosmicTagger. A version corresponding to commit `c73936e` or later is currently necessary. To build `larcv3` from source, 
+```
+git clone https://github.com/DeepLearnPhysics/larcv3.git
+cd larcv3
+git submodule update --init
+pip install -e .
+```
+
+Then, in the CosmicTagger directory, 
+```
+pip install -r requirements.txt
+```
 
 ## Configuration
 
-In general, this network has a suite of parameters available.  For example, running the torch version will print the following configuration:
+In general, this network has a suite of parameters available.  For example, running the `--framework torch` version will print the following configuration:
 
 ```
 -- CONFIG --
- AUX_FILE......................: None
- AUX_IO_VERBOSITY..............: 3
- AUX_ITERATION.................: 10
- AUX_MINIBATCH_SIZE............: 2
- BALANCE_LOSS..................: True
- BATCH_NORM....................: True
- BLOCKS_DEEPEST_LAYER..........: 2
- BLOCKS_FINAL..................: 2
- BLOCKS_PER_LAYER..............: 2
- BLOCK_CONCAT..................: False
- CHECKPOINT_DIRECTORY..........: None
- CHECKPOINT_ITERATION..........: 100
- COMPUTE_MODE..................: CPU
- CONNECTIONS...................: concat
- CONV_MODE.....................: 2D
- DATA_FORMAT...................: channels_first
- DISTRIBUTED...................: False
- DOWNSAMPLE_IMAGES.............: 1
- DOWNSAMPLING..................: convolutional
- FILE..........................: /Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging_downsample_train_sparse.h5
- FRAMEWORK.....................: torch
- GRADIENT_ACCUMULATION.........: 1
- GROWTH_RATE...................: multiplicative
- IMAGE_PRODUCER................: sbndwire
- INPUT_HALF_PRECISION..........: False
- INTER_OP_PARALLELISM_THREADS..: 4
- INTRA_OP_PARALLELISM_THREADS..: 64
- IO_VERBOSITY..................: 3
- ITERATIONS....................: 4
- LABEL_PRODUCER................: sbnd_cosmicseg
- LEARNING_RATE.................: 0.0003
- LOGGING_ITERATION.............: 1
- LOG_DIRECTORY.................: ./log
- LOSS_SCALE....................: 1.0
- MINIBATCH_SIZE................: 1
- MODE..........................: train
- MODEL_HALF_PRECISION..........: False
- NETWORK_DEPTH.................: 2
- N_INITIAL_FILTERS.............: 1
- OPTIMIZER.....................: Adam
- REGULARIZE_WEIGHTS............: 0.0001
- RESIDUAL......................: False
- SPARSE........................: False
- SUMMARY_ITERATION.............: 1
- SYNTHETIC.....................: False
- TRAINING......................: True
- UPSAMPLING....................: convolutional
- USE_BIAS......................: True
- VERBOSITY.....................: 0
+ aux_file......................: /lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/cosmic_tagging_test.h5
+ aux_iteration.................: 10
+ aux_minibatch_size............: 2
+ batch_norm....................: True
+ block_concat..................: False
+ blocks_deepest_layer..........: 5
+ blocks_final..................: 0
+ blocks_per_layer..............: 2
+ bottleneck_deepest............: 256
+ checkpoint_directory..........: None
+ checkpoint_iteration..........: 500
+ compute_mode..................: GPU
+ connections...................: sum
+ conv_mode.....................: 2D
+ data_format...................: channels_first
+ distributed...................: False
+ distributed_mode..............: horovod
+ downsample_images.............: 1
+ downsampling..................: max_pooling
+ file..........................: /lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/cosmic_tagging_train.h5
+ filter_size_deepest...........: 5
+ framework.....................: torch
+ gradient_accumulation.........: 1
+ growth_rate...................: additive
+ inter_op_parallelism_threads..: 4
+ intra_op_parallelism_threads..: 24
+ iterations....................: 25000
+ learning_rate.................: 0.0003
+ log_directory.................: log/
+ logging_iteration.............: 1
+ loss_balance_scheme...........: focal
+ minibatch_size................: 2
+ mode..........................: train
+ n_initial_filters.............: 16
+ network_depth.................: 6
+ no_summary_images.............: False
+ optimizer.....................: rmsprop
+ precision.....................: float32
+ profile.......................: False
+ regularize_weights............: 1e-05
+ residual......................: True
+ sparse........................: False
+ start_index...................: 0
+ summary_iteration.............: 1
+ synthetic.....................: False
+ training......................: True
+ upsampling....................: interpolation
+ use_bias......................: True
+ weight_decay..................: 0.0
 
 ```
 
-The parameters are all controlled via argparse, and so are easy to inspect.  They can be viewed in src/utils/flags.py, or via command line via the -help flag.
+The parameters are all controlled via argparse, and so are easy to inspect.  They can be viewed in `src/utils/flags.py`, or on the command line via the `-help` flag.
 
 ## Datasets
 
 The data for this network is in larcv3 format (https://github.com/DeepLearnPhysics/larcv3).  Currently, data is available in full resolution (HxW == 1280x2048) of 3 images per training sample.  This image size is large, and the network is large, so to accomodate older hardware or smaller GPUs this can be run with a reduced image size.  The datasets are kept at full resolution but a downsampling operation is applied prior to feeding images and labels to the network.
 
-The UNet design is symmetric and does downsampling/upsampling by factors of 2.  So, in order to preserve the proper sizes during the upsampling sets, it's important that the smallest resolution image reached by the network is not odd dimensions.  Concretely, this means that the sum of `NETWORK_DEPTH` and `DOWNSAMPLE_IMAGES` must be less than 8.
+The UNet design is symmetric and does downsampling/upsampling by factors of 2.  So, in order to preserve the proper sizes during the upsampling sets, it's important that the smallest resolution image reached by the network does not contain a dimension with an odd number of pixels.  Concretely, this means that the sum of `network_depth` and `downsample_images` must be less than 8, since 1280 pixels / 2^8 = 5. 
 
-The training dataset is 43075 images.  The testing set, used to monitor overfitting during training, is 7362 images.  The validation set is O(15k) images.
+The training dataset `cosmic_tagging_train.h5` contains 43075 images.  The validation set `cosmic_tagging_val.h5`, specified by `--aux-file` and used to monitor overfitting during training, is 7362 images.  The final hold-out test set `cosmic_tagging_test.h5` contains 7449 images. To evaluate the accuracy of a trained model on the hold-out test set (after all training and tuning is complete), rerun the application in inference mode with `--file <path-to-cosmic_tagging_test.h5`.
 
 ### Data format
 
@@ -86,21 +110,21 @@ In distributed mode, each worker will read it's own data from the central file, 
 
 ## Frameworks
 
-### Tensorflow
+### TensorFlow
 
-With tensorflow, the model is available and implemented with 2D convolutions and 3D convolutions.  The 3D convolution implementation differs slightly from the 2D implementation: at the deepest layer, the 2D implementation concatenates across planes, and then performs shared convolutions.  The 3D implementation uses convolutions of [1,3,3] to emulate 2D convolutions throughout the network, but at the deepest layer uses [3,3,3] convolutions instead.
+With TensorFlow, the model is available and implemented with 2D convolutions and 3D convolutions.  The 3D convolution implementation differs slightly from the 2D implementation: at the deepest layer, the 2D implementation concatenates across planes, and then performs shared convolutions.  The 3D implementation uses convolutions of [1,3,3] to emulate 2D convolutions throughout the network, but at the deepest layer uses [3,3,3] convolutions instead.
 
-### Pytorch
+### PyTorch
 
-This model is available in pytorch on the branch `torch`.  As much as possible, the structure of the model is identical to the tensorflow model.  Like the tensorflow models, the 3D model in pytorch is slightly different from the 2D model.
+As much as possible, the structure of the model is identical to the TensorFlow model.  Like the TensorFlow models, the 3D model in PyTorch is slightly different from the 2D model.
 
-### Sparse Pytorch
+### Sparse PyTorch
 
-The sparse implementation of this network requires sparsehash, and SparseConvNet.  The sparse pytorch model is equivalent to the 3D pytorch model, and the core of the network is done with sparse convolutions.  The final step, the bottleneck operation, is done by converting the sparse activations to dense, and applying a single bottleneck layer to the dense activations.  This allows the network to quickly and accurately predict background pixels, without carrying they through the network.
+The sparse implementation of this network requires sparsehash, and SparseConvNet.  The sparse PyTorch model is equivalent to the 3D PyTorch model, and the core of the network is done with sparse convolutions.  The final step, the bottleneck operation, is done by converting the sparse activations to dense, and applying a single bottleneck layer to the dense activations.  This allows the network to quickly and accurately predict background pixels, without carrying they through the network.
 
 # Running the software
 
-In all cases, there is a general python executable in `bin/exec.py`.  This takes several important arguments and many minor arguments.  Important arguments are:
+In all cases, there is a general Python executable in `bin/exec.py`.  This takes several important arguments and many minor arguments.  Important arguments are:
 
 `python bin/exec.py mode [-d] --file /path/to/file.h5 -i 100 -mb 8 `
 
@@ -115,3 +139,18 @@ There are several analysis metrics that are used to judge the quality of the tra
  2) Non-background Accuracy: of all pixels with a label != bkg, what is the accuracy? This should acheive > 95%
  3) Cosmic IoU: what is the IoU of all pixels predicted cosmic and all pixels labeled cosmic?  This should acheive > 90%
  4) Neutrino IoU: Same definition as 4 but for neutrinos.  This should acheive > 70%.
+
+
+# Citations
+
+```
+@misc{sbndcollaboration2021cosmic,
+      title={Cosmic Background Removal with Deep Neural Networks in SBND}, 
+      author={SBND Collaboration and R. Acciarri and C. Adams and C. Andreopoulos and J. Asaadi and M. Babicz and C. Backhouse and W. Badgett and L. Bagby and D. Barker and V. Basque and M. and C. and Q. Bazetto and M. Betancourt and A. Bhanderi and A. Bhat and C. Bonifazi and D. Brailsford and A. and G. Brandt and T. Brooks and M. and F. Carneiro and Y. Chen and H. Chen and G. Chisnall and J. and I. Crespo-Anadón and E. Cristaldo and C. Cuesta and I. and L. de Icaza Astiz and A. De Roeck and G. de Sá Pereira and M. Del Tutto and V. Di Benedetto and A. Ereditato and J. and J. Evans and A. and C. Ezeribe and R. and S. Fitzpatrick and B. and T. Fleming and W. Foreman and D. Franco and I. Furic and A. and P. Furmanski and S. Gao and D. Garcia-Gamez and H. Frandini and G. Ge and I. Gil-Botella and S. Gollapinni and O. Goodwin and P. Green and W. and C. Griffith and R. Guenette and P. Guzowski and T. Ham and J. Henzerling and A. Holin and B. Howard and R. and S. Jones and D. Kalra and G. Karagiorgi and L. Kashur and W. Ketchum and M. and J. Kim and V. and A. Kudryavtsev and J. Larkin and H. Lay and I. Lepetic and B. and R. Littlejohn and W. and C. Louis and A. and A. Machado and M. Malek and D. Mardsen and C. Mariani and F. Marinho and A. Mastbaum and K. Mavrokoridis and N. McConkey and V. Meddage and D. and P. Méndez and T. Mettler and K. Mistry and A. Mogan and J. Molina and M. Mooney and L. Mora and C. and A. Moura and J. Mousseau and A. Navrer-Agasson and F. and J. Nicolas-Arnaldos and J. and A. Nowak and O. Palamara and V. Pandey and J. Pater and L. Paulucci and V. and L. Pimentel and F. Psihas and G. Putnam and X. Qian and E. Raguzin and H. Ray and M. Reggiani-Guzzo and D. Rivera and M. Roda and M. Ross-Lonergan and G. Scanavini and A. Scarff and D. and W. Schmitz and A. Schukraft and E. Segreto and M. Soares Nunes and M. Soderberg and S. Söldner-Rembold and J. Spitz and N. and J. and C. Spooner and M. Stancari and G. and V. Stenico and A. Szelc and W. Tang and J. Tena Vidal and D. Torretta and M. Toups and C. Touramanis and M. Tripathi and S. Tufanli and E. Tyley and G. and A. Valdiviesso and E. Worcester and M. Worcester and G. Yarbrough and J. Yu and B. Zamorano and J. Zennamo and A. Zglam},
+      year={2021},
+      eprint={2012.01301},
+      archivePrefix={arXiv},
+      primaryClass={physics.data-an}
+}
+```
+

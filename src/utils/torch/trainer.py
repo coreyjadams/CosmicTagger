@@ -31,6 +31,10 @@ torch.backends.cudnn.benchmark = True
 from src.utils.core.trainercore import trainercore
 from src.networks.torch         import LossCalculator
 
+import contextlib
+@contextlib.contextmanager
+def dummycontext():
+    yield None
 
 
 import datetime
@@ -88,6 +92,17 @@ class torch_trainer(trainercore):
             self.build_lr_schedule()
 
         self.init_network()
+        
+        # If using half precision on the model, convert it now:
+        if self.args.precision == "bfloat16":
+            self._net = self._net.bfloat16()
+
+        if self.args.compute_mode == "CPU":
+            pass
+        elif self.args.compute_mode == "GPU":
+            self._net.cuda()
+        elif self.args.compute_mode == "XPU":
+            self._net = self._net.to("xpu")
 
         self.print_network_info()
 
@@ -108,6 +123,8 @@ class torch_trainer(trainercore):
             pass
         elif self.args.run.compute_mode == "GPU":
             self._net.cuda()
+        elif self.args.run.compute_mode == "XPU":
+            self._net.to("xpu")
         elif self.args.run.compute_mode == "DPCPP":
             self._net.to("dpcpp")
 
@@ -125,7 +142,7 @@ class torch_trainer(trainercore):
     def print_network_info(self, verbose=False):
         if verbose:
             for name, var in self._net.named_parameters():
-                print(name, var.shape)
+                print(name, var.shape,var.device)
 
         logger.info("Total number of trainable parameters in this network: {}".format(self.n_parameters()))
 
@@ -515,6 +532,9 @@ class torch_trainer(trainercore):
         if self.args.run.compute_mode == "GPU":
             if device is None:
                 device = torch.device('cuda')
+        elif self.args.run.compute_mode == "XPU":
+            if device is None:
+                device = torch.device("xpu")
         elif self.args.run.compute_mode == "DPCPP":
             if device is None:
                 device = torch.device("dpcpp")
@@ -594,8 +614,8 @@ class torch_trainer(trainercore):
 
         grad_accum = self.args.mode.optimizer.gradient_accumulation
 
+        use_cuda=torch.cuda.is_available()
         for interior_batch in range(grad_accum):
-
 
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
@@ -603,43 +623,59 @@ class torch_trainer(trainercore):
             io_end_time = datetime.datetime.now()
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
-            # if mixed precision, and cuda, use autocast:
-            if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
-                with torch.cuda.amp.autocast():
-                    logits_image, labels_image = self.forward_pass(minibatch_data)
-            else:
-                logits_image, labels_image = self.forward_pass(minibatch_data)
 
 
-            verbose = False
-
-            if verbose: logger.debug("Completed Forward pass")
-            # Compute the loss based on the logits
-
-
-            loss = self.loss_calculator(labels_image, logits_image)
-
-            if verbose: logger.debug("Completed loss")
-
-            # Compute the gradients for the network parameters:
-            if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
-                self.scaler.scale(loss).backward()
-            else:
-                loss.backward()
-
-
-
-            if verbose: logger.debug("Completed backward pass")
-
-
-            # Compute any necessary metrics:
-            interior_metrics = self._compute_metrics(logits_image, labels_image, loss)
-
-            for key in interior_metrics:
-                if key in metrics:
-                    metrics[key] += interior_metrics[key]
+            if self.args.profile:
+                if not self.args.distributed or self._rank == 0:
+                    autograd_prof = torch.autograd.profiler.profile(use_cuda = use_cuda)
                 else:
-                    metrics[key] = interior_metrics[key]
+                    autograd_prof = dummycontext()
+            else:
+                autograd_prof = dummycontext()
+
+            with autograd_prof as prof:
+
+                # if mixed precision, and cuda, use autocast:
+                if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
+                    with torch.cuda.amp.autocast():
+                        logits_image, labels_image = self.forward_pass(minibatch_data)
+                else:
+                    logits_image, labels_image = self.forward_pass(minibatch_data)
+
+                verbose = False
+
+                if verbose: self.print("Completed Forward pass")
+                # Compute the loss based on the logits
+
+
+
+                loss = self.loss_calculator(labels_image, logits_image)
+
+                if verbose: self.print("Completed loss")
+
+                # Compute the gradients for the network parameters:
+                if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
+                    self.scaler.scale(loss).backward()
+                else:
+                    loss.backward()
+
+
+                if verbose: self.print("Completed backward pass")
+
+
+                # Compute any necessary metrics:
+                interior_metrics = self._compute_metrics(logits_image, labels_image, loss)
+
+                for key in interior_metrics:
+                    if key in metrics:
+                        metrics[key] += interior_metrics[key]
+                    else:
+                        metrics[key] = interior_metrics[key]
+
+            # save profile data per step
+            if self.args.profile:
+                if not self.args.distributed or self._rank == 0:
+                    prof.export_chrome_trace("timeline_" + str(self._global_step) + ".json")
 
         # Here, make sure to normalize the interior metrics:
         for key in metrics:
