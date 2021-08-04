@@ -1,0 +1,24 @@
+{
+    "IOManager": {"IOMode" : 2},
+    "ProcessName": ["ParentParticleSeg"], 
+    "ProcessType": ["ParentParticleSeg"],
+    "ProcessList": {
+        "ParentParticleSeg": {
+            "Cluster2dProducer" : "sbndseg",
+            "Cluster3dProducer" : "sbndseg",
+            "OutputProducer"    : "sbndseg",
+            "ParticleProducer"  : "sbndseg"
+        },
+        "DenseToSparse": {
+            "Producer"       : "sbndwire",
+            "Product"        : "image2d",
+            "OutputProducer" : "sbndwire"
+        },
+        "Embed": {
+            "Producer"       : "sbndwire",
+            "Product"        : "sparse2d",
+            "OutputProducer" : "sbndwire_wide",
+            "TargetSize"     : [2048,1280]
+        }
+    }
+}
