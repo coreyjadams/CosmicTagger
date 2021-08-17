@@ -126,7 +126,7 @@ class exec(object):
 
         self.trainer.initialize(io_only=True)
 
-        if self.args.distributed:
+        if self.args.run.distributed:
             from mpi4py import MPI
             rank = MPI.COMM_WORLD.Get_rank()
         else:
@@ -148,6 +148,10 @@ class exec(object):
 
     def make_trainer(self):
 
+
+        if 'environment_variables' in self.args.framework:
+            for env in self.args.framework.environment_variables.keys():
+                os.environ[env] = self.args.framework.environment_variables[env]
 
         if self.args.mode.name == "iotest":
             from src.utils.core import trainercore

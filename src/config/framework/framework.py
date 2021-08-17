@@ -18,6 +18,7 @@ class Tensorflow(Framework):
     checkpoint_iteration: int =  500
     inter_op_parallelism_threads: int = 2
     intra_op_parallelism_threads: int = 24
+    environment_variables: {"TF_XLA_FLAGS" : "--tf_xla_auto_jit=2"} 
 
 @dataclass
 class Torch(Framework):
