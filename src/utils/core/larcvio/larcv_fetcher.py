@@ -116,7 +116,7 @@ class larcv_fetcher(object):
             # self._larcv_interface.prepare_next(name)
 
             while self._larcv_interface.is_reading(name):
-                time.sleep(0.1)
+                time.sleep(0.01)
 
             logger.info("Larcv file prepared")
 
@@ -200,8 +200,3 @@ class larcv_fetcher(object):
 
     def write(self, data, producer, entry, event_id):
         self.writer.write(data, datatype='sparse2d', producer=producer, entry=entry, event_id=event_id)
-
-
-
-
-

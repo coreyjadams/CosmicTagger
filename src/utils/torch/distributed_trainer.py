@@ -26,7 +26,6 @@ except:
 
 from .trainer import torch_trainer
 
-import tensorboardX
 
 
 
@@ -48,8 +47,8 @@ class distributed_trainer(torch_trainer):
 
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
 
-        if self.args.distributed_mode == "horovod":
-            if self.args.compute_mode == "GPU":
+        if self.args.framework.distributed_mode == "horovod":
+            if self.args.run.compute_mode == "GPU":
                 os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
             self._rank            = hvd.rank()
         else:
@@ -162,7 +161,7 @@ class distributed_trainer(torch_trainer):
             if self.args.run.compute_mode == "GPU":
                 self._net.cuda()
 
-            self._net = torch.nn.parallel.DistributedDataParallel(self._net, find_unused_parameters=True)
+            self._net = torch.nn.parallel.DistributedDataParallel(self._net, find_unused_parameters=False)
 
 
 

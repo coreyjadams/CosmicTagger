@@ -39,9 +39,8 @@ def dummycontext():
 
 import datetime
 
-# This uses tensorboardX to save summaries and metrics to tensorboard compatible files.
 
-import tensorboardX
+from torch.utils.tensorboard import SummaryWriter
 
 
 
@@ -92,17 +91,6 @@ class torch_trainer(trainercore):
             self.build_lr_schedule()
 
         self.init_network()
-        
-        # If using half precision on the model, convert it now:
-        if self.args.precision == "bfloat16":
-            self._net = self._net.bfloat16()
-
-        if self.args.compute_mode == "CPU":
-            pass
-        elif self.args.compute_mode == "GPU":
-            self._net.cuda()
-        elif self.args.compute_mode == "XPU":
-            self._net = self._net.to("xpu")
 
         self.print_network_info()
 
@@ -188,12 +176,12 @@ class torch_trainer(trainercore):
         dir = self.args.run.output_dir
 
 
-        self._saver = tensorboardX.SummaryWriter(dir + "/train/")
+        self._saver = SummaryWriter(dir + "/train/")
 
         if hasattr(self, "_aux_data_size") and self.args.mode.name == "train":
-            self._aux_saver = tensorboardX.SummaryWriter(dir + "/test/")
+            self._aux_saver = SummaryWriter(dir + "/test/")
         elif hasattr(self, "_aux_data_size") and not self.args.mode.name == "train":
-            self._aux_saver = tensorboardX.SummaryWriter(dir + "/val/")
+            self._aux_saver = SummaryWriter(dir + "/val/")
         else:
             self._aux_saver = None
 
@@ -625,7 +613,7 @@ class torch_trainer(trainercore):
 
 
 
-            if self.args.profile:
+            if self.args.run.profile:
                 if not self.args.distributed or self._rank == 0:
                     autograd_prof = torch.autograd.profiler.profile(use_cuda = use_cuda)
                 else:
@@ -636,7 +624,7 @@ class torch_trainer(trainercore):
             with autograd_prof as prof:
 
                 # if mixed precision, and cuda, use autocast:
-                if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
+                if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
                     with torch.cuda.amp.autocast():
                         logits_image, labels_image = self.forward_pass(minibatch_data)
                 else:
@@ -654,7 +642,7 @@ class torch_trainer(trainercore):
                 if verbose: self.print("Completed loss")
 
                 # Compute the gradients for the network parameters:
-                if self.args.precision == "mixed" and self.args.compute_mode == "GPU":
+                if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
                     self.scaler.scale(loss).backward()
                 else:
                     loss.backward()
@@ -673,7 +661,7 @@ class torch_trainer(trainercore):
                         metrics[key] = interior_metrics[key]
 
             # save profile data per step
-            if self.args.profile:
+            if self.args.run.profile:
                 if not self.args.distributed or self._rank == 0:
                     prof.export_chrome_trace("timeline_" + str(self._global_step) + ".json")
 
