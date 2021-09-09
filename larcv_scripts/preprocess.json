@@ -1,24 +1,85 @@
 {
-    "IOManager": {"IOMode" : 2},
-    "ProcessName": ["ParentParticleSeg"], 
-    "ProcessType": ["ParentParticleSeg"],
+    "__comment": "This config file converts raw larcv files, converted from larsoft, to cosmic tagger input images.",
+    "IOManager": {
+        "IOMode" : 2,
+        "Output" : {
+            "StoreOnlyName": [
+                "sbndseg",
+                "sbndwire",
+                "sbnd_cosmicseg"
+            ],
+            "StoreOnlyType": [
+                "cluster2d",
+                "sparse2d",
+                "sparse2d"
+            ]
+        }
+    },
+    "ProcessName": [
+        "ParentParticleSeg",
+        "CosmicNeutrinoSegLabel",
+        "DenseToSparseData",
+        "DenseToSparseLabel",
+        "EmbedData",
+        "EmbedLabel"
+    ], 
+    "ProcessType": [
+        "ParentParticleSeg",
+        "CosmicNeutrinoSegLabel",
+        "DenseToSparse",
+        "DenseToSparse",
+        "Embed",
+        "Embed"        
+    ],
     "ProcessList": {
         "ParentParticleSeg": {
+            "__comment"         : "Merge top level clusters and particles with all their children. 2D and 3D",
+            "Profile"           : true,
             "Cluster2dProducer" : "sbndseg",
             "Cluster3dProducer" : "sbndseg",
             "OutputProducer"    : "sbndseg",
             "ParticleProducer"  : "sbndseg"
         },
-        "DenseToSparse": {
+        "CosmicNeutrinoSegLabel" : {
+            "__comment"         : "Look at particles and assign cosmic or neutrino labels into a new image",
+            "Profile"           : true,
+            "Cluster2dProducer" : "sbndseg",
+            "OutputProducer"    : "sbnd_cosmicseg",
+            "ParticleProducer"  : "sbndseg"
+        },
+        "DenseToSparseData": {
+            "Profile"        : true,
             "Producer"       : "sbndwire",
             "Product"        : "image2d",
             "OutputProducer" : "sbndwire"
         },
-        "Embed": {
+        "DenseToSparseLabel": {
+            "Profile"           : true,
+            "Producer"          : "sbnd_cosmicseg",
+            "Product"           : "image2d",
+            "OutputProducer"    : "sbnd_cosmicseg",
+            "ReferenceProducer" : "sbndwire"
+        },
+        "EmbedData": {
+            "Profile"        : true,
             "Producer"       : "sbndwire",
-            "Product"        : "sparse2d",
-            "OutputProducer" : "sbndwire_wide",
+            "Product"        : "tensor2d",
+            "OutputProducer" : "sbndwire",
             "TargetSize"     : [2048,1280]
+        },
+        "EmbedLabel": {
+            "Profile"        : true,
+            "Producer"       : "sbnd_cosmicseg",
+            "Product"        : "tensor2d",
+            "OutputProducer" : "sbnd_cosmicseg",
+            "TargetSize"     : [2048,1280]
+        },
+        "Threshold": {
+            "__comment"      : "Drop very small cluster pixels",
+            "Profile"        : true,
+            "Producer"       : "sbndseg",
+            "Product"        : "cluster2d",
+            "OutputProducer" : "sbndseg"
         }
     }
 }
