@@ -7,6 +7,7 @@ import numpy
 
 from .trainer import tf_trainer
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 for i, p in enumerate(sys.path):
@@ -15,7 +16,6 @@ for i, p in enumerate(sys.path):
 
 import horovod.tensorflow as hvd
 hvd.init()
-os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
 # from horovod.tensorflow.keras import DistributedOptimizer
 
@@ -36,7 +36,10 @@ class distributed_trainer(tf_trainer):
         tf_trainer.__init__(self, args)
 
         if self.args.compute_mode == "GPU":
-            os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+            gpus = tf.config.list_physical_devices('GPU')
+            tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
+
+            # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
         self._rank            = hvd.rank()
         self.local_minibatch_size = int(self.args.minibatch_size / hvd.size())

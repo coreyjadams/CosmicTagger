@@ -103,11 +103,11 @@ class trainercore(object):
                 'flat' : {
                     'function'      : 'flat',
                     'start'         : 1,
-                    'n_epochs'      : 5,
+                    'n_epochs'      : 20,
                 },
                 'decay' : {
                     'function'      : 'decay',
-                    'start'         : 6,
+                    'start'         : 21,
                     'n_epochs'      : 4,
                     'floor'         : 0.00001,
                     'decay_rate'    : 0.999
@@ -245,10 +245,13 @@ class trainercore(object):
         post_one_time = None
         post_two_time = None
 
+        times = []
+
         # This is the 'master' function, so it controls a lot
 
         # Run iterations
         for self._iteration in range(self.args.iterations):
+            start = time.time()
             if self.args.training and self._iteration >= self.args.iterations:
                 self.print('Finished training (iteration %d)' % self._iteration)
                 self.checkpoint()
@@ -266,7 +269,7 @@ class trainercore(object):
                 post_one_time = time.time()
             elif post_two_time is None:
                 post_two_time = time.time()
-
+            times.append(time.time() - start)
         self.close_savers()
 
         end = time.time()
@@ -276,3 +279,5 @@ class trainercore(object):
             self.print("Total time to batch process except first iteration: ", end - post_one_time)
         if post_two_time is not None:
             self.print("Total time to batch process except first two iterations: ", end - post_two_time)
+        if len(times) > 40:
+            self.print("Total time to batch process last 40 iterations: ", numpy.sum(times[-40:]))
