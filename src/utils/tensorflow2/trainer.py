@@ -52,6 +52,11 @@ class tf_trainer(trainercore):
             self.policy = mixed_precision.Policy('mixed_float16')
             mixed_precision.set_policy(self.policy)
 
+        if self.args.precision == "bfloat16":
+            from tensorflow.keras.mixed_precision import experimental as mixed_precision
+            self.policy = mixed_precision.Policy('mixed_bfloat16')
+            mixed_precision.set_policy(self.policy)
+
         batch_dims = self.larcv_fetcher.batch_dims(1)
 
         # We compute the
