@@ -2,17 +2,20 @@
 defaults:
   - network: a21
   - framework: tensorflow
-  - mode: training
+  - mode: train
   - data: synthetic
 run:
   distributed: False
   compute_mode: GPU
   iterations: 50
   minibatch_size: 2
-  aux_minibatch_size: ${minibatch_size}
+  aux_minibatch_size: ${run.minibatch_size}
   aux_iterations: 10
+  output_dir: output/${framework.name}/${network.name}/${run.id}/
   id: ???
-
+  precision: float32
+  profile: False
+  
 mode.no_summary_images: True
 
 # # Configure the logging and output directory:

@@ -59,8 +59,12 @@ class trainercore(object):
 
         if self.args.mode == "build_net": return
 
-        f = pathlib.Path(self.args.data.data_directory + self.args.data.file)
-        aux_f = pathlib.Path(self.args.data.data_directory + self.args.data.aux_file)
+
+        if not self.args.data.synthetic:        
+            f = pathlib.Path(self.args.data.data_directory + self.args.data.file)
+            aux_f = pathlib.Path(self.args.data.data_directory + self.args.data.aux_file)
+        else:
+            f = None; aux_f = None
 
         # Check that the training file exists:
         if not self.args.data.synthetic and not f.exists():
@@ -83,7 +87,7 @@ class trainercore(object):
         self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
             "train", f, self.args.run.minibatch_size, color)
 
-        if self.args.data.aux_file is not None:
+        if aux_f is not None:
             if self.args.mode.name == "train":
                 # Fetching data for on the fly testing:
                 self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(

@@ -1,6 +1,6 @@
 defaults:
-- network: uresnet
-- framework: pytorch
+- network: polaris
+- framework: torch
 - mode: train
 - data: real
 data:
@@ -16,20 +16,7 @@ run:
   precision: float32
   profile: false
   output_dir: output/${framework.name}/${network.name}/${run.id}/
-  minibatch_size: 4
-network:
-  bias: false
-  batch_norm: true
-  n_initial_filters: 16
-  blocks_per_layer: 2
-  blocks_deepest_layer: 2
-  blocks_final: 2
-  bottleneck_deepest: 96
-  residual: false
-  network_depth: 7
-  downsampling: max_pooling
-  upsampling: interpolation
-  connections: sum
+  minibatch_size: 2
 mode:
   optimizer:
     loss_balance_scheme: focal
