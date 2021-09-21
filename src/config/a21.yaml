@@ -15,8 +15,9 @@ run:
   id: ???
   precision: float32
   profile: False
-  
-mode.no_summary_images: True
+
+mode:
+    no_summary_images: True
 
 # # Configure the logging and output directory:
 hydra:

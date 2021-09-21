@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 import numpy
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = "true"
 # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
 
@@ -19,6 +19,8 @@ import datetime
 
 
 import tensorflow as tf
+tf.get_logger().setLevel('INFO')
+
 
 floating_point_format = tf.float32
 integer_format = tf.int64
