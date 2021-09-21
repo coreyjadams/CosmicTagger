@@ -20,7 +20,7 @@ class Precision(Enum):
     bfloat16 = 2
     float16  = 3
 
-# @dataclass 
+# @dataclass
 # class CosmicTagger:
 #     network:            Network     = Network()
 #     mode:               Mode        = MISSING
@@ -34,11 +34,12 @@ class Run:
     iterations:         int         = MISSING
     aux_iterations:     int         = MISSING
     minibatch_size:     int         = MISSING
-    aux_minibatch_size: int         = MISSING    
+    aux_minibatch_size: int         = MISSING
     id:                 int         = MISSING
     precision:          Precision   = Precision.float32
     profile:            bool        = False
 
+cs = ConfigStore.instance()
 
 
 cs.store(
@@ -58,6 +59,4 @@ class Config:
 
 cs.store(name="config", node=Config)
 
-cs = ConfigStore.instance()
-# cs.store(name="config", node=CosmicTagger)
-# cs.store(name="run", node=Run)
+cs.store(name="run", node=Run)

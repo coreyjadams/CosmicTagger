@@ -4,7 +4,7 @@ defaults:
 - mode: train
 - data: real
 run:
-  distributed: false
+  distributed: true
   compute_mode: GPU
   iterations: 5608
   aux_minibatch_size: ${run.minibatch_size}

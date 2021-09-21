@@ -722,12 +722,12 @@ class torch_trainer(trainercore):
 
         if self.args.data.synthetic: return
         # Second, validation can not occur without a validation dataloader.
-        if self._aux_saver is None: return
+        if self.args.data.aux_file is None: return
 
         # perform a validation step
         # Validation steps can optionally accumulate over several minibatches, to
         # fit onto a gpu or other accelerator
-        if self._global_step != 0 and self._global_step % self.args.aux_iteration == 0:
+        if self._global_step != 0 and self._global_step % self.args.run.aux_iterations == 0:
 
             self._net.eval()
             # Fetch the next batch of data with larcv

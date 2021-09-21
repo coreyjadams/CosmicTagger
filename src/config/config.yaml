@@ -7,10 +7,10 @@ defaults:
   - data: real
   # - override hydra/job_logging: custom
 run:
-  distributed: False
+  distributed: True
   compute_mode: GPU
-  iterations: 50
-  minibatch_size: 2
+  iterations: 8413
+  minibatch_size: 128
   aux_minibatch_size: ${run.minibatch_size}
   aux_iterations: 10
   id: ???

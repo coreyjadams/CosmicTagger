@@ -1,10 +1,10 @@
 defaults:
-- network: uresnet
+- network: network7
 - framework: tensorflow
 - mode: train
 - data: real
 run:
-  distributed: false
+  distributed: true
   compute_mode: GPU
   iterations: 8413
   aux_minibatch_size: ${run.minibatch_size}
@@ -14,18 +14,6 @@ run:
   profile: false
   output_dir: output/${framework.name}/${network.name}/${run.id}/
   minibatch_size: 128
-network:
-  bias: false
-  batch_norm: false
-  n_initial_filters: 32
-  blocks_per_layer: 1
-  blocks_deepest_layer: 3
-  blocks_final: 2
-  bottleneck_deepest: 184
-  residual: true
-  downsampling: max_pooling
-  upsampling: convolutional
-  connections: concat
 mode:
   optimizer:
     learning_rate: 0.002377334852612144
