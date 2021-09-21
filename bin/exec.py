@@ -160,6 +160,12 @@ class exec(object):
 
         if self.args.framework.name == "tensorflow":
 
+            import logging
+            logging.getLogger('tensorflow').setLevel(logging.FATAL)
+
+
+            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
             # Import tensorflow and see what the version is.
             import tensorflow as tf
 
