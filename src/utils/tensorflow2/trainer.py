@@ -57,10 +57,6 @@ class tf_trainer(trainercore):
             self.policy = mixed_precision.Policy('mixed_bfloat16')
             mixed_precision.set_policy(self.policy)
 
-<<<<<<< HEAD
-=======
-
->>>>>>> a9f393a1aad248abafcb146b9db37436b90ffc5f
         batch_dims = self.larcv_fetcher.batch_dims(1)
 
         # We compute the
