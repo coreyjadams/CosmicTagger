@@ -17,15 +17,17 @@ class Mode:
 
 @dataclass
 class Train(Mode):
-    checkpoint_iteration: int =  500
-    summary_iteration:  int = 1
-    no_summary_images: bool = False
-    logging_iteration: int = 1
-    optimizer: Optimizer = Optimizer()
+    checkpoint_iteration:   int         =  500
+    summary_iteration:      int         = 1
+    no_summary_images:      bool        = False
+    logging_iteration:      int         = 1
+    optimizer:              Optimizer   = Optimizer()
 
 @dataclass
 class Inference(Mode):
-    start_index: int = 0
+    start_index:        int  = 0
+    summary_iteration:  int  = 1
+    no_summary_images:  bool = False
 
 cs = ConfigStore.instance()
 cs.store(group="mode", name="train", node=Train)

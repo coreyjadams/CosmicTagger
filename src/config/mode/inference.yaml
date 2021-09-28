@@ -1,2 +1,4 @@
 name: inference
+summary_iteration: 1
+no_summary_images: false
 start_index: 0

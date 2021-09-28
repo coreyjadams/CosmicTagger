@@ -25,14 +25,17 @@ class larcv_fetcher(object):
             if distributed:
                 from larcv import distributed_queue_interface
                 self._larcv_interface = distributed_queue_interface.queue_interface()
+                self._larcv_interface.no_warnings()
             else:
                 from larcv import queueloader
                 if mode == "inference":
                     self._larcv_interface = queueloader.queue_interface(
                         random_access_mode="serial_access", seed=seed)
+                    self._larcv_interface.no_warnings()
                 elif mode == "train" or mode == "iotest":
                     self._larcv_interface = queueloader.queue_interface(
                         random_access_mode="random_blocks", seed=seed)
+                    self._larcv_interface.no_warnings()
                 else:
                     # Must be synthetic
                     self._larcv_interface = None
@@ -74,7 +77,7 @@ class larcv_fetcher(object):
         if self.synthetic:
             self.synthetic_index = 0
             self.batch_size = batch_size
-            shape = self.batch_dims(256)
+            shape = self.batch_dims(1024)
 
             self.synthetic_images = numpy.random.random_sample(shape).astype(numpy.float32)
             self.synthetic_labels = numpy.random.randint(low=0, high=3, size=shape)

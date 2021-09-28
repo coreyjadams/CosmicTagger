@@ -41,10 +41,13 @@ class exec(object):
 
         self.validate_arguments()
 
+
         if config.mode.name == "train":
             self.train()
         if config.mode.name == "iotest":
             self.iotest()
+        if config.mode.name == "inference":
+            self.inference()
 
 
 
@@ -143,8 +146,10 @@ class exec(object):
 
             logger.info(f"{i}: Time to fetch a minibatch of data: {end - start:.2f}s")
 
-        logger.info(f"Total IO Time: {time.time() - global_start:.2f}s")
-
+        total_time = time.time() - global_start
+        logger.info(f"Total IO Time: {total_time:.2f}s")
+        logger.info(f"Total images read per batch: {self.args.run.minibatch_size}")
+        logger.info(f"Average Image IO Throughput: {self.args.run.minibatch_size / total_time:.3f}")
 
     def make_trainer(self):
 
@@ -194,59 +199,17 @@ class exec(object):
 
 
     def inference(self):
-        self.parser = argparse.ArgumentParser(
-            description     = 'Run Network Inference',
-            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
-
-        self.add_io_arguments(self.parser)
-        self.add_core_configuration(self.parser)
-        self.add_shared_training_arguments(self.parser)
-
-        self.add_network_parser(self.parser)
-
-        self.args = self.parser.parse_args(sys.argv[2:])
-        self.args.training = False
-        self.args.mode = "inference"
 
 
-        self.make_trainer()
         logger = logging.getLogger("cosmictagger")
 
         logger.info("Running Inference")
         logger.info(self.__str__())
 
-        self.trainer.initialize()
-        self.trainer.batch_process()
-
-
-    def build_net(self):
-        self.parser = argparse.ArgumentParser(
-            description     = 'Build network and return parameters',
-            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
-
-        self.add_io_arguments(self.parser)
-        self.add_core_configuration(self.parser)
-        self.add_shared_training_arguments(self.parser)
-
-        self.add_network_parser(self.parser)
-
-        self.args = self.parser.parse_args(sys.argv[2:])
-        self.args.training = False
-        self.args.mode = "inference"
-
-
         self.make_trainer()
 
-        logger = logging.getLogger("cosmictagger")
-        logger.info("Running Inference")
-
-        # self.trainer.initialize()
-        # self.trainer.print()
-        self.trainer.init_network()
-        self.trainer.print_network_info(verbose=True)
-        self.trainer.print(F"NUMBER_OF_PARAMETERS: {self.trainer.n_parameters()}")
-        # self.trainer.batch_process()
-
+        self.trainer.initialize()
+        self.trainer.batch_process()
 
     def dictionary_to_str(self, in_dict, indentation = 0):
         substr = ""

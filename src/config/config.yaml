@@ -1,6 +1,5 @@
-
-
 defaults:
+  - _self_
   - network: uresnet
   - framework: tensorflow
   - mode: train
@@ -9,8 +8,8 @@ defaults:
 run:
   distributed: True
   compute_mode: GPU
-  iterations: 8413
-  minibatch_size: 128
+  iterations: 50
+  minibatch_size: 16
   aux_minibatch_size: ${run.minibatch_size}
   aux_iterations: 10
   id: ???
