@@ -21,27 +21,29 @@ def test_torch_default_network(tmpdir, synthetic, downsample_images):
     # first, where is the exec.py?
     exec_script = network_dir + "/bin/exec.py"
 
-    file_path = network_dir + "/example_data/"
-    file_path += "cosmic_tagging_light.h5"
+    args = [exec_script, "mode=train"]
+    args += ["framework=torch"]
+    args += [f"data.synthetic={synthetic}"]
 
-    args = [exec_script, "train"]
-    args += ["--framework", "torch"]
-    args += ["--synthetic", f"{synthetic}"]
+    file_path = network_dir + "/example_data/"
 
     if not synthetic:
-        args += ["--file", f"{file_path}"]
+        args += [f"data.data_directory={file_path}"]
+        args += [f"data.file=cosmic_tagging_light.h5"]
 
 
-    args += ["--iterations",  "5"]
-    args += ["--n-initial-filters",  "1"]
-    args += ["--network-depth",  "{}".format(6 - downsample_images)]
-    args += ["--downsample-images",  f"{downsample_images}"]
-    args += ["-m", "CPU"]
+    
+    args += ["run.id=0"]
+    args += ["run.iterations=5"]
+    args += ["network.n_initial_filters=1"]
+    args += [f"network.network_depth={6 - downsample_images}"]
+    args += [f"data.downsample={downsample_images}"]
+    args += ["run.compute_mode=CPU"]
     
 
 
     random_file_name = str(tmpdir + "/torch_log_dir/")
-    args += ["--log-directory", random_file_name]
+    args += [f"run.output_dir={random_file_name}"]
     print(args)
 
     completed_proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -59,81 +61,10 @@ def test_torch_default_network(tmpdir, synthetic, downsample_images):
         assert False
 
 
-# def test_torch_model_inference(tmpdir):
-    
-
-#     # Instead of calling the python objects, use subprocesses 
-
-#     # first, where is the exec.py?
-#     exec_script = network_dir + "/bin/exec.py"
-
-#     file_path = network_dir + "/example_data/"
-#     file_path += "cosmic_tagging_light.h5"
-
-#     args = [exec_script, "train"]
-#     args += ["--framework", "torch"]
-
-#     args += ["--file", f"{file_path}"]
-
-#     args += ["--iterations",  "5"]
-#     args += ["--n-initial-filters",  "1"]
-#     args += ["--network-depth",  "4"]
-#     args += ["--downsample-images",  "2"]
-#     args += ["-m", "CPU"]
-    
 
 
-#     random_file_name = str(tmpdir + "/torch_log_dir/")
-#     args += ["--log-directory", random_file_name]
-
-#     completed_proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
-#     if completed_proc.returncode != 0:
-#         print(completed_proc.stdout)
-#         try:
-#             print(completed_proc.stderr)
-#         except:
-#             pass
-
-#         assert False
-
-#     # Now, reload the model and run inference:
-
-
-#     args = [exec_script, "inference"]
-#     args += ["--framework", "torch"]
-
-
-#     args += ["--iterations",  "5"]
-#     args += ["--n-initial-filters",  "1"]
-#     args += ["--network-depth",  "4"]
-#     args += ["--downsample-images",  "2"]
-#     args += ["--file", f"{file_path}"]
-#     args += ["-m", "CPU"]
-
-
-#     random_file_name = str(tmpdir + "/torch_log_dir/")
-#     args += ["--log-directory", random_file_name]
-
-#     completed_proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    
-
-
-#     if completed_proc.returncode == 0:
-#         assert True
-#     else:
-#         print()
-#         print("Executed command: ")
-#         print(" ".join(args))
-#         print()
-#         print(completed_proc.stdout)
-#         try:
-#             print(completed_proc.stderr)
-#         except:
-#             pass
-
-#         assert False
 
 # if __name__ == '__main__':
 #     test_torch_default_network("./", synthetic=True, downsample_images=2)

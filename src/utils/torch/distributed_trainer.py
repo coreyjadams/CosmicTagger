@@ -26,7 +26,6 @@ except:
 
 from .trainer import torch_trainer
 
-import tensorboardX
 
 
 
@@ -47,8 +46,9 @@ class distributed_trainer(torch_trainer):
 
 
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
-        if self.args.distributed_mode == "horovod":
-            if self.args.compute_mode == "GPU":
+
+        if self.args.framework.distributed_mode == "horovod":
+            if self.args.run.compute_mode == "GPU":
                 os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
             self._rank            = hvd.rank()
         else:
@@ -83,8 +83,8 @@ class distributed_trainer(torch_trainer):
             os.environ["MASTER_PORT"] = str(2345)
 
             # What backend?  nccl on GPU, gloo on CPU
-            if self.args.compute_mode == "GPU": backend = 'nccl'
-            elif self.args.compute_mode == "CPU": backend = 'gloo'
+            if self.args.run.compute_mode == "GPU": backend = 'nccl'
+            elif self.args.run.compute_mode == "CPU": backend = 'gloo'
 
             torch.distributed.init_process_group(
                 backend=backend, init_method='env://')
@@ -103,15 +103,10 @@ class distributed_trainer(torch_trainer):
 
         torch_trainer.init_optimizer(self)
 
-        if self.args.distributed_mode == "horovod":
+        if self.args.framework.distributed_mode == "horovod":
             self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
 
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
-
-
-    def print(self, *argv):
-        if self._rank == 0:
-            torch_trainer.print(self, *argv)
 
 
     def init_saver(self):
@@ -138,7 +133,7 @@ class distributed_trainer(torch_trainer):
             self.restore_state(state)
 
 
-        if self.args.distributed_mode == "horovod":
+        if self.args.framework.distributed_mode == "horovod":
 
             # Broadcast the global step:
             self._global_step = hvd.broadcast_object(self._global_step, root_rank = 0)
@@ -150,7 +145,7 @@ class distributed_trainer(torch_trainer):
             hvd.broadcast_optimizer_state(self._opt, root_rank = 0)
 
             # Horovod doesn't actually move the optimizer onto a GPU:
-            if self.args.compute_mode == "GPU":
+            if self.args.run.compute_mode == "GPU":
                 for state in self._opt.state.values():
                     for k, v in state.items():
                         if torch.is_tensor(v):
@@ -161,12 +156,12 @@ class distributed_trainer(torch_trainer):
             # Broadcast the LR Schedule state:
             state_dict = hvd.broadcast_object(self.lr_scheduler.state_dict(), root_rank = 0)
 
-        elif self.args.distributed_mode == "DDP":
+        elif self.args.framework.distributed_mode == "DDP":
 
-            if self.args.compute_mode == "GPU":
+            if self.args.run.compute_mode == "GPU":
                 self._net.cuda()
 
-            self._net = torch.nn.parallel.DistributedDataParallel(self._net)
+            self._net = torch.nn.parallel.DistributedDataParallel(self._net, find_unused_parameters=False)
 
 
 
@@ -193,10 +188,10 @@ class distributed_trainer(torch_trainer):
         # Then, it performs an all reduce on all metrics:
         metrics = torch_trainer._compute_metrics(self, logits, minibatch_data, loss)
 
-        if self.args.distributed_mode == "horovod":
+        if self.args.framework.distributed_mode == "horovod":
             for key in metrics:
                 metrics[key] = hvd.allreduce(metrics[key], name = key)
-        elif self.args.distributed_mode == "DDP":
+        elif self.args.framework.distributed_mode == "DDP":
             for key in metrics:
                 torch.distributed.all_reduce(metrics[key])
                 metrics[key] /= self._size

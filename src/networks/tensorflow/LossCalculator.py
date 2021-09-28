@@ -68,11 +68,8 @@ class LossCalculator(object):
 
                     elif self.balance_type == "light":
                         total_pixels = numpy.prod(labels[i].get_shape().as_list())
-                        per_pixel_weight = 1.
-                        per_pixel_weight = per_pixel_weight.astype(numpy.float32)
 
-
-                        weights = tf.fill(labels[i].shape, per_pixel_weight)
+                        weights = tf.fill(labels[i].shape, 1.)
                         for i in [1,2]:
                             if i == 1:
                                 local_weights = tf.fill(labels[i].shape, 1.5)

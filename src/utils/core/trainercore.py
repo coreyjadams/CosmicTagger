@@ -12,8 +12,11 @@ import numpy
 from . larcvio   import larcv_fetcher
 
 import datetime
+import pathlib
 
 
+import logging
+logger = logging.getLogger("cosmictagger")
 
 class trainercore(object):
     '''
@@ -31,25 +34,23 @@ class trainercore(object):
         self._iteration    = 0
         self._global_step  = 0
         self.args          = args
+        if args.framework.name == "torch":
+            sparse = args.framework.sparse
+        else:
+            sparse = False
+
         self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
-            mode        = args.mode,
-            distributed = args.distributed,
-            downsample  = args.downsample_images,
-            dataformat  = args.data_format,
-            synthetic   = args.synthetic,
-            sparse      = args.sparse )
+            mode        = args.mode.name,
+            distributed = args.run.distributed,
+            downsample  = args.data.downsample,
+            dataformat  = args.data.data_format,
+            synthetic   = args.data.synthetic,
+            sparse      = sparse )
 
-        if args.data_format == "channels_first": self._channels_dim = 1
-        if args.data_format == "channels_last" : self._channels_dim = -1
+        if args.data.data_format == "channels_first": self._channels_dim = 1
+        if args.data.data_format == "channels_last" : self._channels_dim = -1
 
 
-    def print(self, *argv):
-        ''' Function for logging as needed.  Works correctly in distributed mode'''
-
-        message = " ".join([ str(s) for s in argv] )
-
-        sys.stdout.write(message + "\n")
-        sys.stdout.flush()
 
     def initialize(self, io_only=True):
         self._initialize_io(color=0)
@@ -58,35 +59,42 @@ class trainercore(object):
 
         if self.args.mode == "build_net": return
 
+
+        if not self.args.data.synthetic:        
+            f = pathlib.Path(self.args.data.data_directory + self.args.data.file)
+            aux_f = pathlib.Path(self.args.data.data_directory + self.args.data.aux_file)
+        else:
+            f = None; aux_f = None
+
         # Check that the training file exists:
-        if not self.args.synthetic and not self.args.file.exists():
-            raise Exception(f"Can not continue with file {self.args.file} - does not exist.")
-        if not self.args.synthetic and not self.args.aux_file.exists():
-            if self.args.mode == "train":
-                self.print("WARNING: Aux file does not exist.  Setting to None for training")
-                self.args.aux_file = None
+        if not self.args.data.synthetic and not f.exists():
+            raise Exception(f"Can not continue with file {f} - does not exist.")
+        if not self.args.data.synthetic and not aux_f.exists():
+            if self.args.mode.name == "train":
+                logger.warning("WARNING: Aux file does not exist.  Setting to None for training")
+                self.args.data.aux_file = None
             else:
                 # In inference mode, we are creating the aux file.  So we need to check
                 # that the directory exists.  Otherwise, no writing.
-                if not self.args.aux_file.parent.exists():
-                    self.print("WARNING: Aux file's directory does not exist.")
-                    self.args.aux_file = None
-                elif self.args.aux_file is None or str(self.args.aux_file).lower() == "none":
-                    self.print("WARNING: no aux file set, so not writing inference results.")
-                    self.args.aux_file = None
+                if not aux_f.parent.exists():
+                    logger.warning("WARNING: Aux file's directory does not exist.")
+                    self.args.data.aux_file = None
+                elif self.args.data.aux_file is None or str(self.args.data.aux_file).lower() == "none":
+                    logger.warning("WARNING: no aux file set, so not writing inference results.")
+                    self.args.data.aux_file = None
 
 
         self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
-            "train", self.args.file, self.args.minibatch_size, color)
+            "train", f, self.args.run.minibatch_size, color)
 
-        if self.args.aux_file is not None:
-            if self.args.mode == "train":
+        if aux_f is not None:
+            if self.args.mode.name == "train":
                 # Fetching data for on the fly testing:
                 self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
-                    "aux", self.args.aux_file, self.args.minibatch_size, color)
+                    "aux", aux_f, self.args.run.minibatch_size, color)
             elif self.args.mode == "inference":
                 self._aux_data_size = self.larcv_fetcher.prepare_writer(
-                    input_file = self.args.file, output_file = str(self.args.aux_file))
+                    input_file = f, output_file = str(aux_f))
 
 
     def build_lr_schedule(self, learning_rate_schedule = None):
@@ -109,7 +117,7 @@ class trainercore(object):
                     'function'      : 'decay',
                     'start'         : 21,
                     'n_epochs'      : 4,
-                    'floor'         : 0.00001,
+                        'floor'         : 0.00001,
                     'decay_rate'    : 0.999
                 },
             }
@@ -162,13 +170,13 @@ class trainercore(object):
 
                 initial_rate = learning_rate_schedule[key]['initial_rate']
                 if 'final_rate' in learning_rate_schedule[key]: final_rate = learning_rate_schedule[key]['final_rate']
-                else: final_rate = self.args.learning_rate
+                else: final_rate = self.args.mode.optimizer.learning_rate
 
                 function = lambda x, s=start, l=length, i=initial_rate, f=final_rate : numpy.interp(x, [s, s + l] ,[i, f] )
 
             elif learning_rate_schedule[key]['function'] == 'flat':
                 if 'rate' in learning_rate_schedule[key]: rate = learning_rate_schedule[key]['rate']
-                else: rate = self.args.learning_rate
+                else: rate = self.args.mode.optimizer.learning_rate
 
                 function = lambda x : rate
 
@@ -176,7 +184,7 @@ class trainercore(object):
                 decay    = learning_rate_schedule[key]['decay_rate']
                 floor    = learning_rate_schedule[key]['floor']
                 if 'rate' in learning_rate_schedule[key]: rate = learning_rate_schedule[key]['rate']
-                else: rate = self.args.learning_rate
+                else: rate = self.args.mode.optimizer.learning_rate
 
                 function = lambda x, s=start, d=decay, f=floor: (rate-f) * numpy.exp( -(d * (x - s))) + f
 
@@ -184,8 +192,8 @@ class trainercore(object):
             func_list.append(function)
 
         self.lr_calculator = lambda x: numpy.piecewise(
-            x * (self.args.minibatch_size / self._train_data_size),
-            [c(x * (self.args.minibatch_size / self._train_data_size)) for c in cond_list], func_list)
+            x * (self.args.run.minibatch_size / self._train_data_size),
+            [c(x * (self.args.run.minibatch_size / self._train_data_size)) for c in cond_list], func_list)
 
 
     def init_network(self):
@@ -215,7 +223,7 @@ class trainercore(object):
         else:
             log_string.rstrip(", ")
 
-        self.log(log_string)
+        logger.info(log_string)
 
         return
 
@@ -250,15 +258,16 @@ class trainercore(object):
         # This is the 'master' function, so it controls a lot
 
         # Run iterations
-        for self._iteration in range(self.args.iterations):
-            start = time.time()
-            if self.args.training and self._iteration >= self.args.iterations:
-                self.print('Finished training (iteration %d)' % self._iteration)
+        for self._iteration in range(self.args.run.iterations):
+            iteration_start = time.time()
+            if self.args.mode.name == "train" and self._iteration >= self.args.run.iterations:
+
+                logger.info('Finished training (iteration %d)' % self._iteration)
                 self.checkpoint()
                 break
 
 
-            if self.args.training:
+            if self.args.mode.name == "train":
                 self.val_step()
                 self.train_step()
                 self.checkpoint()
@@ -269,15 +278,15 @@ class trainercore(object):
                 post_one_time = time.time()
             elif post_two_time is None:
                 post_two_time = time.time()
-            times.append(time.time() - start)
+            times.append(time.time() - iteration_start)
         self.close_savers()
 
         end = time.time()
 
-        self.print("Total time to batch_process: ", end - start)
+        logger.info(f"Total time to batch_process: {end - start}")
         if post_one_time is not None:
-            self.print("Total time to batch process except first iteration: ", end - post_one_time)
+            logger.info(f"Total time to batch process except first iteration: {end - post_one_time}")
         if post_two_time is not None:
-            self.print("Total time to batch process except first two iterations: ", end - post_two_time)
+            logger.info(f"Total time to batch process except first two iterations: {end - post_two_time}")
         if len(times) > 40:
-            self.print("Total time to batch process last 40 iterations: ", numpy.sum(times[-40:]))
+            logger.info(f"Total time to batch process last 40 iterations: {numpy.sum(times[-40:])}" )

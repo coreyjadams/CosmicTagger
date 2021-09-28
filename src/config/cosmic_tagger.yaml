@@ -1,0 +1,16 @@
+
+
+cosmictagger:
+  iterations: 50
+  compute_mode: GPU
+  distributed: True
+  defaults:
+    - network: uresnet
+    - framework: tensorflow
+    - mode: training
+    - data: real
+
+  minibatch_size: 2
+  aux_minibatch_size: ${minibatch_size}
+  aux_iterations: 10
+  run_id: ???

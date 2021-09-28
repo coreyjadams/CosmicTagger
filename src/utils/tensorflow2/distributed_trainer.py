@@ -35,19 +35,15 @@ class distributed_trainer(tf_trainer):
         # search for parameters relevant for distributed computing here
         tf_trainer.__init__(self, args)
 
-        if self.args.compute_mode == "GPU":
+        if self.args.run.compute_mode == "GPU":
             gpus = tf.config.list_physical_devices('GPU')
             tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
 
             # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
         self._rank            = hvd.rank()
-        self.local_minibatch_size = int(self.args.minibatch_size / hvd.size())
+        self.local_minibatch_size = int(self.args.run.minibatch_size / hvd.size())
 
-    def print(self, *argv):
-
-        if self._rank == 0:
-            tf_trainer.print(self, *argv)
 
     def init_optimizer(self):
                 # with tf.variable_scope("hvd"):
@@ -124,10 +120,10 @@ class distributed_trainer(tf_trainer):
 
         # Otherwise, it's minibatch size / n_ranks:
 
-        if self.args.synthetic:
-            return self.args.minibatch_size
+        if self.args.data.synthetic:
+            return self.args.run.minibatch_size
         else:
-            lbs = int(self.args.minibatch_size / hvd.size())
+            lbs = int(self.args.run.minibatch_size / hvd.size())
             return lbs
 
 
@@ -151,6 +147,12 @@ class distributed_trainer(tf_trainer):
             return
         else:
             tf_trainer.summary(self, metrics, saver)
+
+    def summary_images(self, labels, prediction, saver=""):
+        if hvd.rank() != 0:
+            return
+        else:
+            tf_trainer.summary_images(self, labels, prediction, saver)
 
     def log(self, metrics, kind, step):
         if hvd.rank() != 0:

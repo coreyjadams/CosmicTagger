@@ -2,9 +2,19 @@
 import os,sys,signal
 import time
 import pathlib
+import logging
+from logging import handlers
 
 import numpy
 
+# For configuration:
+from omegaconf import DictConfig, OmegaConf
+import hydra
+from hydra.experimental import compose, initialize
+from hydra.core.hydra_config import HydraConfig
+from hydra.core.utils import configure_log
+
+hydra.output_subdir = None
 
 #############################
 
@@ -13,168 +23,77 @@ network_dir = os.path.dirname(os.path.abspath(__file__))
 network_dir = os.path.dirname(network_dir)
 sys.path.insert(0,network_dir)
 
-import argparse
-
-from src.networks.config import str2bool
 
 class exec(object):
 
-    def __init__(self):
+    def __init__(self, config):
 
-        # This technique is taken from: https://chase-seibert.github.io/blog/2014/03/21/python-multilevel-argparse.html
-        parser = argparse.ArgumentParser(
-            description='Run Cosmic Tagger application',
-            usage='''exec.py <command> [<args>]
+        self.args = config
 
-The most commonly used commands are:
-   train         Train a network, either from scratch or restart
-   inference     Run inference with a trained network
-   iotest        Run IO testing without training a network
-   build_net     Build and dump network parameters, no training or IO
-''')
-        parser.add_argument('command', help='Subcommand to run')
-        # parse_args defaults to [1:] for args, but you need to
-        # exclude the rest of the args too, or validation will fail
-        args = parser.parse_args(sys.argv[1:2])
-        if not hasattr(self, args.command):
-            print(f'Unrecognized command {args.command}')
-            parser.print_help()
-            exit(1)
-        # use dispatch pattern to invoke method with same name
-        getattr(self, args.command)()
+        rank = self.init_mpi()
 
-    def add_shared_training_arguments(self, parser):
+        # Create the output directory if needed:
+        if rank == 0:
+            outpath = pathlib.Path(self.args.run.output_dir)
+            outpath.mkdir(exist_ok=True, parents=True)
 
-        ##################################################################
-        # Parameters to control logging and snapshotting
-        ##################################################################
-        parser.add_argument('-ci','--checkpoint-iteration',
-            type    = int,
-            default = 500,
-            help    = 'Period (in steps) to store snapshot of weights')
+        self.configure_logger(rank)
 
-        parser.add_argument('-si','--summary-iteration',
-            type    = int,
-            default = 1,
-            help    = 'Period (in steps) to store summary in tensorboard log')
+        self.validate_arguments()
 
-        parser.add_argument('--no-summary-images',
-            type    = str2bool,
-            default = False,
-            help    = 'Skip summary images to save on memory')
-
-        parser.add_argument('-li','--logging-iteration',
-            type    = int,
-            default = 1,
-            help    = 'Period (in steps) to print values to log')
-
-        parser.add_argument('-cd','--checkpoint-directory',
-            type    = str,
-            default = None,
-            help    = 'Directory to store model snapshots')
-
-        parser.add_argument('--gradient-accumulation',
-            type    = int,
-            default = 1,
-            help    = "Accumulate this many minibatches before updating weigths.")
-
-        ##################################################################
-        # Parameters to control the network training
-        ##################################################################
-
-        parser.add_argument('-lr','--learning-rate',
-            type    = float,
-            default = 0.0003,
-            help    = 'Initial learning rate')
-
-        parser.add_argument('--optimizer',
-            type    = str,
-            choices = ['adam', 'rmsprop',],
-            default = 'rmsprop',
-            help    = 'Optimizer to use')
-
-        parser.add_argument('--loss-balance-scheme',
-            type    = str,
-            choices = ['none', 'focal', 'even', 'light'],
-            default = 'focal',
-            help    = "Way to compute weights for balancing the loss.")
-
-        parser.add_argument('--weight-decay',
-            type    = float,
-            default = 0.0,
-            help    = "Weight decay strength")
-
-        parser.add_argument('-rw','--regularize-weights',
-            type    = float,
-            default = 0.00001,
-            help    = "Regularization strength for all learned weights")
+        if config.mode.name == "train":
+            self.train()
+        if config.mode.name == "iotest":
+            self.iotest()
 
 
-        ##################################################################
-        ### Torch Specific
-        ##################################################################
 
-        parser.add_argument('--precision',
-            type    = str,
-            default = 'float32',
-            choices = ['float32', 'bfloat16', 'mixed'])
+    def init_mpi(self):
+        if not self.args.run.distributed:
+            return 0
+        else:
+            from mpi4py import MPI
+            comm = MPI.COMM_WORLD
+            return comm.Get_rank()
 
 
-        ##################################################################
-        ### Tensorflow Specific
-        ##################################################################
+    def configure_logger(self, rank):
 
-        parser.add_argument('--inter-op-parallelism-threads',
-            type    = int,
-            default = 4,
-            help    = "Passed to tf configproto.")
+        logger = logging.getLogger()
 
-        parser.add_argument('--intra-op-parallelism-threads',
-            type    = int,
-            default = 24,
-            help    = "Passed to tf configproto.")
+        # Create a handler for STDOUT, but only on the root rank.
+        # If not distributed, we still get 0 passed in here.
+        if rank == 0:
+            stream_handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            stream_handler.setFormatter(formatter)
+            handler = handlers.MemoryHandler(capacity = 0, target=stream_handler)
+            logger.addHandler(handler)
 
-        ##################################################################
-        # High level network decisions: 2D/3D, Sparse/Dense
-        ##################################################################
+            # Add a file handler too:
+            log_file = self.args.run.output_dir + "/process.log"
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
+            logger.addHandler(file_handler)
 
-        parser.add_argument('--conv-mode',
-            type    = str,
-            default = '2D',
-            choices = ['2D','3D'],
-            help    = "Only for non-sparse (dense) mode, use 2d or 3d convolutions.")
+            logger.setLevel(logging.INFO)
+        else:
+            # in this case, MPI is available but it's not rank 0
+            # create a null handler
+            handler = logging.NullHandler()
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
 
-        parser.add_argument('--profile',
-            type    = str2bool,
-            default = False,
-            help    = "Turn on profiling tools.")
-
-        parser.add_argument('--distributed-mode',
-            type    = str,
-            default = 'horovod',
-            choices = ['horovod', 'DDP'],
-            help    = "Toggle between the different methods for distributing the network")
 
     def train(self):
-        self.parser = argparse.ArgumentParser(
-            description     = 'Run Network Training',
-            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
 
-        self.add_io_arguments(self.parser)
-        self.add_core_configuration(self.parser)
-        self.add_shared_training_arguments(self.parser)
+        logger = logging.getLogger("cosmictagger")
 
-        self.add_network_parser(self.parser)
-
-        self.args = self.parser.parse_args(sys.argv[2:])
-        self.args.training = True
-        self.args.mode = "train"
-
+        logger.info("Running Training")
+        logger.info(self.__str__())
 
         self.make_trainer()
-
-        self.trainer.print("Running Training")
-        self.trainer.print(self.__str__())
 
         self.trainer.initialize()
         self.trainer.batch_process()
@@ -197,27 +116,17 @@ The most commonly used commands are:
 
 
     def iotest(self):
-        self.parser = argparse.ArgumentParser(
-            description     = 'Run IO Testing',
-            formatter_class = argparse.ArgumentDefaultsHelpFormatter)
-        self.add_io_arguments(self.parser)
-        self.add_core_configuration(self.parser)
-
-        # now that we're inside a subcommand, ignore the first
-        # TWO argvs, ie the command (exec.py) and the subcommand (iotest)
-        self.args = self.parser.parse_args(sys.argv[2:])
-        self.args.training = False
-        self.args.mode = "iotest"
 
         self.make_trainer()
+        logger = logging.getLogger("cosmictagger")
 
-        self.trainer.print("Running IO Test")
-        self.trainer.print(self.__str__())
+        logger.info("Running IO Test")
+        logger.info(self.__str__())
 
 
         self.trainer.initialize(io_only=True)
 
-        if self.args.distributed:
+        if self.args.run.distributed:
             from mpi4py import MPI
             rank = MPI.COMM_WORLD.Get_rank()
         else:
@@ -226,48 +135,57 @@ The most commonly used commands are:
         # label_stats = numpy.zeros((36,))
         global_start = time.time()
         time.sleep(0.1)
-        for i in range(self.args.iterations):
+        for i in range(self.args.run.iterations):
             start = time.time()
             mb = self.trainer.larcv_fetcher.fetch_next_batch("train", force_pop=True)
 
             end = time.time()
 
-            if rank == 0:
-                self.trainer.print(i, ": Time to fetch a minibatch of data: {}".format(end - start))
+            logger.info(f"{i}: Time to fetch a minibatch of data: {end - start:.2f}s")
 
-        if rank == 0:
-            self.trainer.print("Total IO Time: ", time.time() - global_start)
+        logger.info(f"Total IO Time: {time.time() - global_start:.2f}s")
+
+
     def make_trainer(self):
 
-        self.validate_arguments()
 
-        if self.args.mode == "iotest":
+        if 'environment_variables' in self.args.framework:
+            for env in self.args.framework.environment_variables.keys():
+                os.environ[env] = self.args.framework.environment_variables[env]
+
+        if self.args.mode.name == "iotest":
             from src.utils.core import trainercore
             self.trainer = trainercore.trainercore(self.args)
             return
 
-        if self.args.framework == "tensorflow" or self.args.framework == "tf":
+        if self.args.framework.name == "tensorflow":
+
+            import logging
+            logging.getLogger('tensorflow').setLevel(logging.FATAL)
+
+
+            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
             # Import tensorflow and see what the version is.
             import tensorflow as tf
 
             if tf.__version__.startswith("2"):
-                if self.args.distributed:
+                if self.args.run.distributed:
                     from src.utils.tensorflow2 import distributed_trainer
                     self.trainer = distributed_trainer.distributed_trainer(self.args)
                 else:
                     from src.utils.tensorflow2 import trainer
                     self.trainer = trainer.tf_trainer(self.args)
             else:
-                if self.args.distributed:
+                if self.args.run.distributed:
                     from src.utils.tensorflow1 import distributed_trainer
                     self.trainer = distributed_trainer.distributed_trainer(self.args)
                 else:
                     from src.utils.tensorflow1 import trainer
                     self.trainer = trainer.tf_trainer(self.args)
 
-        elif self.args.framework == "torch":
-            if self.args.distributed:
+        elif self.args.framework.name == "torch":
+            if self.args.run.distributed:
                 from src.utils.torch import distributed_trainer
                 self.trainer = distributed_trainer.distributed_trainer(self.args)
             else:
@@ -292,9 +210,10 @@ The most commonly used commands are:
 
 
         self.make_trainer()
+        logger = logging.getLogger("cosmictagger")
 
-        self.trainer.print("Running Inference")
-        self.trainer.print(self.__str__())
+        logger.info("Running Inference")
+        logger.info(self.__str__())
 
         self.trainer.initialize()
         self.trainer.batch_process()
@@ -318,8 +237,8 @@ The most commonly used commands are:
 
         self.make_trainer()
 
-        self.trainer.print("Running Inference")
-        self.trainer.print(self.__str__())
+        logger = logging.getLogger("cosmictagger")
+        logger.info("Running Inference")
 
         # self.trainer.initialize()
         # self.trainer.print()
@@ -328,137 +247,60 @@ The most commonly used commands are:
         self.trainer.print(F"NUMBER_OF_PARAMETERS: {self.trainer.n_parameters()}")
         # self.trainer.batch_process()
 
-    def __str__(self):
-        s = "\n\n-- CONFIG --\n"
-        for name in iter(sorted(vars(self.args))):
-            # if name != name.upper(): continue
-            attribute = getattr(self.args,name)
-            # if type(attribute) == type(self.parser): continue
-            # s += " %s = %r\n" % (name, getattr(self, name))
-            substring = ' {message:{fill}{align}{width}}: {attr}\n'.format(
-                   message=name,
-                   attr = getattr(self.args, name),
-                   fill='.',
-                   align='<',
-                   width=30,
+
+    def dictionary_to_str(self, in_dict, indentation = 0):
+        substr = ""
+        for key in sorted(in_dict.keys()):
+            if type(in_dict[key]) == DictConfig or type(in_dict[key]) == dict:
+                s = "{none:{fill1}{align1}{width1}}{key}: \n".format(
+                        none="", fill1=" ", align1="<", width1=indentation, key=key
+                    )
+                substr += s + self.dictionary_to_str(in_dict[key], indentation=indentation+2)
+            else:
+                s = '{none:{fill1}{align1}{width1}}{message:{fill2}{align2}{width2}}: {attr}\n'.format(
+                   none= "",
+                   fill1=" ",
+                   align1="<",
+                   width1=indentation,
+                   message=key,
+                   fill2='.',
+                   align2='<',
+                   width2=30-indentation,
+                   attr = in_dict[key],
                 )
-            s += substring
-        return s
+                substr += s
+        return substr
+
+    def __str__(self):
+
+        s = "\n\n-- CONFIG --\n"
+        substring = s +  self.dictionary_to_str(self.args)
+
+        return substring
 
 
 
-
-    def add_core_configuration(self, parser):
-        # These are core parameters that are important for all modes:
-        parser.add_argument('-i', '--iterations',
-            type    = int,
-            default = 25000,
-            help    = "Number of iterations to process")
-
-        parser.add_argument('-d','--distributed',
-            action  = 'store_true',
-            default = False,
-            help    = "Run with the MPI compatible mode")
-
-        parser.add_argument('-m','--compute-mode',
-            type    = str,
-            choices = ['CPU','GPU', 'XPU', 'DPCPP'],
-            default = 'GPU',
-            help    = "Selection of compute device, CPU or GPU ")
-
-        parser.add_argument('-ld','--log-directory',
-            default ="log/",
-            help    ="Prefix (directory) for logging information")
-
-
-        ##################################################################
-        # Parameters to control framework options
-        ##################################################################
-
-        parser.add_argument('--framework',
-            type    = str, choices=['torch','tensorflow', 'tf'],
-            default = "tensorflow",
-            help    = "Pick to use either torch or tensorflow/tf.")
-
-        return parser
-
-
-    def add_io_arguments(self, parser):
-
-        data_directory = "/lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/"
-        # data_directory = "/Users/corey.adams/data/dlp_larcv3/sbnd_cosmic_samples/cosmic_tagging/"
-        # data_directory = "/gpfs/alpine/lrn008/world-shared/data/cosmic_tagging/"
-
-        # IO PARAMETERS FOR INPUT:
-        parser.add_argument('-f','--file',
-            type    = pathlib.Path,
-            default = data_directory + "cosmic_tagging_train.h5",
-            help    = "IO Input File")
-
-        parser.add_argument('--aux-file',
-            type    = pathlib.Path,
-            default = data_directory + "cosmic_tagging_test.h5",
-            help    = "IO Aux Input File, or output file in inference mode")
-
-
-        parser.add_argument('--start-index',
-            type    = int,
-            default = 0,
-            help    = "Start index, only used in inference mode")
-
-        parser.add_argument('-mb','--minibatch-size',
-            type    = int,
-            default = 2,
-            help    = "Number of images in the minibatch size")
-
-        parser.add_argument('--aux-iteration',
-            type    = int,
-            default = 10,
-            help    = "Iteration to run the aux operations")
-
-        parser.add_argument('--aux-minibatch-size',
-            type    = int,
-            default = 2,
-            help    = "Number of images in the minibatch size")
-
-        parser.add_argument('--synthetic',
-            type    = str2bool,
-            default = False ,
-            help    = "Use synthetic data instead of real data.")
-
-        parser.add_argument('-df','--data-format',
-            type    = str,
-            choices = ["channels_last", "channels_first"],
-            default = "channels_last",
-            help    = "Channels format in the tensor shape.")
-
-        parser.add_argument('-ds', '--downsample-images',
-            default = 1,
-            type    = int,
-            help    = 'Dense downsampling of the images.  This is the number of downsamples applied (0 == none, 1 == once ...) ')
-
-
-        parser.add_argument('--sparse',
-            type    = str2bool,
-            default = False,
-            help    = "Use sparse convolutions instead of dense convolutions.")
-
-        return
 
     def validate_arguments(self):
 
-        if self.args.framework == "torch":
-            # In torch, only option is channels first:
-            if self.args.data_format == "channels_last":
-                print("Torch requires channels_first, switching automatically")
-                self.args.data_format = "channels_first"
 
-        if self.args.mode != "iotest":
-            if self.args.framework == "tensorflow":
-                if self.args.distributed_mode == "DDP":
-                    print("Can not use DDP in tensorflow!  Switching to horovod")
-                    self.args.distributed_mode = "horovod"
+        if self.args.framework.name == "torch":
+            # In torch, only option is channels first:
+            if self.args.data.data_format == "channels_last":
+                print("Torch requires channels_first, switching automatically")
+                self.args.data.data_format = "channels_first"
+
+
+
+@hydra.main(config_path="../src/config", config_name="config")
+def main(cfg : OmegaConf) -> None:
+
+    s = exec(cfg)
 
 
 if __name__ == '__main__':
-    s = exec()
+    #  Is this good practice?  No.  But hydra doesn't give a great alternative
+    import sys
+    if "--help" not in sys.argv and "--hydra-help" not in sys.argv:
+        sys.argv += ['hydra.run.dir=.', 'hydra/job_logging=disabled']
+    main()

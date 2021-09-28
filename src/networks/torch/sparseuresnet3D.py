@@ -31,7 +31,7 @@ class SparseBlock(nn.Module):
             nIn=inplanes,
             nOut=outplanes,
             filter_size=[nplanes,3,3],
-            bias=params.use_bias)
+            bias=params.bias)
 
         self.do_batch_norm = False
         if params.batch_norm:
@@ -61,7 +61,7 @@ class SparseResidualBlock(nn.Module):
             nIn         = inplanes,
             nOut        = outplanes,
             filter_size = [nplanes,3,3],
-            bias        = params.use_bias)
+            bias        = params.bias)
 
         self.do_batch_norm = False
         if params.batch_norm:
@@ -117,7 +117,7 @@ class SparseConvolutionDownsample(nn.Module):
             nOut            = outplanes,
             filter_size     = [nplanes,2,2],
             filter_stride   = [1,2,2],
-            bias            = params.use_bias
+            bias            = params.bias
         )
         self.do_batch_norm = False
         if params.batch_norm:
@@ -145,7 +145,7 @@ class SparseConvolutionUpsample(nn.Module):
             nOut            = outplanes,
             filter_size     = [nplanes,2,2],
             filter_stride   = [1,2,2],
-            bias            = params.use_bias
+            bias            = params.bias
         )
         self.do_batch_norm = False
         if params.batch_norm:
@@ -205,7 +205,7 @@ class SparseDeepestBlock(nn.Module):
             nOut            = params.bottleneck_deepest,
             filter_size     = [3,1,1],
             filter_stride   = [1,1,1],
-            bias            = params.use_bias)
+            bias            = params.bias)
 
 
         self.blocks = SparseBlockSeries(inplanes = params.bottleneck_deepest,
@@ -218,7 +218,7 @@ class SparseDeepestBlock(nn.Module):
             nOut            = inplanes,
             filter_size     = [3,1,1],
             filter_stride   = [1,1,1],
-            bias            = params.use_bias)
+            bias            = params.bias)
 
 
     def forward(self, x):
@@ -253,12 +253,12 @@ class ConcatConnection(nn.Module):
     def __init__(self, *, inplanes, params):
         nn.Module.__init__(self)
 
-        self.concat = scn.ConcatTable()
+        self.concat = scn.JoinTable()
         self.bottleneck = scn.SubmanifoldConvolution(3,
                             nIn         = 2*inplanes,
                             nOut        = inplanes,
                             filter_size = 1,
-                            bias        = params.use_bias)
+                            bias        = params.bias)
 
     def forward(self, x, residual):
         x = self.concat([x, residual])
@@ -315,7 +315,7 @@ class SparseUNetCore(nn.Module):
             if params.connections == "sum":
                 self.connection = SumConnection()
             elif params.connections == "concat":
-                self.connection = ConcatConnection(inplanes)
+                self.connection = ConcatConnection(inplanes=inplanes, params=params)
             else:
                 self.connection = NoConnection()
 
@@ -375,7 +375,7 @@ class UResNet3D(torch.nn.Module):
             nIn         = 1,
             nOut        = params.n_initial_filters,
             filter_size = [1,5,5],
-            bias        = params.use_bias)
+            bias        = params.bias)
 
 
         if params.growth_rate == "multiplicative":
@@ -402,13 +402,13 @@ class UResNet3D(torch.nn.Module):
         #                                               nIn         = params.n_initial_filters,
         #                                               nOut        = 3,
         #                                               filter_size = [1,1,1],
-        #                                               bias        = params.use_bias)
+        #                                               bias        = params.bias)
 
         self.bottleneck = scn.SubmanifoldConvolution(dimension=3,
             nIn         = params.n_initial_filters,
             nOut        = 3,
             filter_size = [1,1,1],
-            bias        = params.use_bias)
+            bias        = params.bias)
 
         self._s_to_d = scn.SparseToDense(dimension=3, nPlanes = 3)
 
@@ -428,7 +428,7 @@ class UResNet3D(torch.nn.Module):
         self.empty_voxel = torch.tensor([100., 0,0])
         self.empty_image = torch.zeros(size=[3,spatial_size[0], spatial_size[1]])
         self.empty_image[0,:,:] = 100
-        
+
     def cuda(self, *args):
         torch.nn.Module.cuda(self, *args)
 
@@ -442,12 +442,14 @@ class UResNet3D(torch.nn.Module):
 
     def forward(self, _input):
 
+
         batch_size = _input[-1]
 
         x = self.input_tensor(_input)
 
         # Apply the initial convolutions:
         x = self.initial_convolution(x)
+
 
         # Apply the main unet architecture:
         x = self.net_core(x)

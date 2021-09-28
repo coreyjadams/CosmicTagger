@@ -25,7 +25,7 @@ class Block(tf.keras.layers.Layer):
             strides             = strides,
             padding             = 'same',
             activation          = None,
-            use_bias            = params.use_bias,
+            use_bias            = params.bias,
             data_format         = params.data_format,
             kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
@@ -73,7 +73,7 @@ class ConvolutionUpsample(tf.keras.layers.Layer):
             strides             = strides,
             padding             = 'same',
             activation          = None,
-            use_bias            = params.use_bias,
+            use_bias            = params.bias,
             data_format         = params.data_format,
             kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
@@ -527,7 +527,7 @@ class UResNet(tf.keras.models.Model):
             filters             = 3,
             kernel_size         = [1,1],
             strides             = [1,1],
-            use_bias            = params.use_bias,
+            use_bias            = params.bias,
             data_format         = params.data_format,
             kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
