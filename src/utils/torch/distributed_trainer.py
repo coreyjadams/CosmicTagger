@@ -7,7 +7,6 @@ import numpy
 
 import torch
 
-
 # Always want mpi, but horovod is imported below.
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
@@ -48,9 +47,10 @@ class distributed_trainer(torch_trainer):
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
 
         if self.args.framework.distributed_mode == "horovod":
-            if self.args.run.compute_mode == "GPU":
-                os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+            # if self.args.run.compute_mode == "GPU":
+                # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
             self._rank            = hvd.rank()
+            self._local_rank      = hvd.local_rank()
         else:
 
             import socket
@@ -71,6 +71,7 @@ class distributed_trainer(torch_trainer):
 
             self._rank = rank
             self._size = size
+            self._local_rank = local_rank
 
             # It will want the master address too, which we'll broadcast:
             if rank == 0:
@@ -94,6 +95,21 @@ class distributed_trainer(torch_trainer):
 
         if self._rank == 0:
             torch_trainer.save_model(self)
+
+    def default_device_context(self):
+
+        # Convert the input data to torch tensors
+        if self.args.run.compute_mode == "GPU":
+            return torch.cuda.device(int(self._local_rank))
+        elif self.args.run.compute_mode == "XPU":
+            return contextlib.nullcontext
+            # device = torch.device("xpu")
+        elif self.args.run.compute_mode == "DPCPP":
+            return contextlib.nullcontext
+            # device = torch.device("dpcpp")
+        else:
+            return contextlib.nullcontext
+            # device = torch.device('cpu')
 
 
     def init_optimizer(self):
@@ -198,9 +214,6 @@ class distributed_trainer(torch_trainer):
 
         return metrics
 
-    # def on_step_end(self):
-    #     # self.lr_scheduler.step()
-    #     pass
 
 
 

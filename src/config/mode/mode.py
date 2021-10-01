@@ -28,6 +28,7 @@ class Inference(Mode):
     start_index:        int  = 0
     summary_iteration:  int  = 1
     no_summary_images:  bool = False
+    weights_location:   str  = ""
 
 cs = ConfigStore.instance()
 cs.store(group="mode", name="train", node=Train)

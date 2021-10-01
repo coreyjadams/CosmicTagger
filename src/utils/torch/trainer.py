@@ -90,40 +90,37 @@ class torch_trainer(trainercore):
         if self.args.mode.name == "train":
             self.build_lr_schedule()
 
-        self.init_network()
+        with self.default_device_context():
+            self.init_network()
 
-        self.print_network_info()
+            self._net.to(self.default_device())
 
-        if self.args.mode.name == "train":
-            self.init_optimizer()
+            # self._net.to(device)
 
-        self.init_saver()
+            self.print_network_info()
 
-        self._global_step = 0
+            if self.args.mode.name == "train":
+                self.init_optimizer()
 
-        self.restore_model()
+            self.init_saver()
 
-        # If using half precision on the model, convert it now:
-        if self.args.run.precision == "bfloat16":
-            self._net = self._net.bfloat16()
+            self._global_step = 0
 
-        if self.args.run.compute_mode == "CPU":
-            pass
-        elif self.args.run.compute_mode == "GPU":
-            self._net.cuda()
-        elif self.args.run.compute_mode == "XPU":
-            self._net.to("xpu")
-        elif self.args.run.compute_mode == "DPCPP":
-            self._net.to("dpcpp")
+            self.restore_model()
 
-        self.loss_calculator = LossCalculator.LossCalculator(self.args.mode.optimizer.loss_balance_scheme)
+            # If using half precision on the model, convert it now:
+            if self.args.run.precision == "bfloat16":
+                self._net = self._net.bfloat16()
 
 
-        # For half precision, we disable gradient accumulation.  This is to allow
-        # dynamic loss scaling
-        if self.args.run.precision == "mixed":
-            if self.args.mode.name == "train" and  self.args.mode.optimizer.gradient_accumulation > 1:
-                raise Exception("Can not accumulate gradients in half precision.")
+            self.loss_calculator = LossCalculator.LossCalculator(self.args.mode.optimizer.loss_balance_scheme)
+
+
+            # For half precision, we disable gradient accumulation.  This is to allow
+            # dynamic loss scaling
+            if self.args.run.precision == "mixed":
+                if self.args.mode.name == "train" and  self.args.mode.optimizer.gradient_accumulation > 1:
+                    raise Exception("Can not accumulate gradients in half precision.")
 
 
 
@@ -155,6 +152,7 @@ class torch_trainer(trainercore):
         # get the initial learning_rate:
         initial_learning_rate = self.lr_calculator(self._global_step)
 
+
         # IMPORTANT: the scheduler in torch is a multiplicative factor,
         # but I've written it as learning rate itself.  So set the LR to 1.0
         if self.args.mode.optimizer.name == "rmsprop":
@@ -162,12 +160,11 @@ class torch_trainer(trainercore):
         else:
             self._opt = torch.optim.Adam(self._net.parameters(), 1.0)
 
+
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
         if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
             self.scaler = torch.cuda.amp.GradScaler()
-
-
 
     def init_saver(self):
 
@@ -189,10 +186,25 @@ class torch_trainer(trainercore):
         ''' This function attempts to restore the model from file
         '''
 
-        _, checkpoint_file_path = self.get_model_filepath()
+        def check_inference_weights_path(file_path):
 
+            # Look for the "checkpoint" file:
+            checkpoint_file_path = file_path + "checkpoint"
+            # If it exists, open it and read the latest checkpoint:
+            if os.path.isfile(checkpoint_file_path):
+                return checkpoint_file_path
+
+
+        # First, check if the weights path is set:
+        if self.args.mode.name == "inference" and self.args.mode.weights_location != "":
+            checkpoint_file_path = check_inference_weights_path(self.args.mode.weights_location)
+        else:
+            _, checkpoint_file_path = self.get_model_filepath()
+
+        print(checkpoint_file_path)
 
         if not os.path.isfile(checkpoint_file_path):
+            logger.info("No checkpoint file found, restarting from scratch")
             return None
         # Parse the checkpoint file and use that to get the latest file path
 
@@ -201,7 +213,8 @@ class torch_trainer(trainercore):
                 if line.startswith("latest: "):
                     chkp_file = line.replace("latest: ", "").rstrip('\n')
                     chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
-                    logger.info("Restoring weights from ", chkp_file)
+                    print(chkp_file)
+                    logger.info(f"Restoring weights from {chkp_file}")
                     break
         try:
             state = torch.load(chkp_file)
@@ -217,6 +230,8 @@ class torch_trainer(trainercore):
         new_state_dict = {}
         for key in state['state_dict']:
             new_key = key.replace(".block_", ".blocks.")
+            if new_key.startswith("module."):
+                new_key = new_key.replace("module.", "")
             new_state_dict[new_key] = state['state_dict'][key]
 
         state['state_dict'] = new_state_dict
@@ -307,9 +322,6 @@ class torch_trainer(trainercore):
         checkpoint_file_path = file_path + "checkpoint"
 
         return name, checkpoint_file_path
-
-
-
 
 
 
@@ -513,74 +525,85 @@ class torch_trainer(trainercore):
     def on_step_end(self):
         pass
 
+    def default_device_context(self):
 
-    def to_torch(self, minibatch_data, device=None):
-
-        # Convert the input data to torch tensors
         if self.args.run.compute_mode == "GPU":
-            if device is None:
-                device = torch.device('cuda')
+            return torch.cuda.device(0)
         elif self.args.run.compute_mode == "XPU":
-            if device is None:
-                device = torch.device("xpu")
+            return contextlib.nullcontext
+            # device = torch.device("xpu")
         elif self.args.run.compute_mode == "DPCPP":
-            if device is None:
-                device = torch.device("dpcpp")
+            return contextlib.nullcontext
+            # device = torch.device("dpcpp")
         else:
-            if device is None:
-                device = torch.device('cpu')
+            return contextlib.nullcontext
+            # device = torch.device('cpu')
 
-        for key in minibatch_data:
-            if key == 'entries' or key == 'event_ids':
-                continue
-            if self.args.framework.sparse:
-                # if key == 'weight': continue
-                if key == 'image':
-                    minibatch_data[key] = (
-                            torch.tensor(minibatch_data[key][0]).long(),
-                            torch.tensor(minibatch_data[key][1], device=device),
-                            minibatch_data[key][2],
-                        )
-                elif key == 'label':
+    def default_device(self):
+
+        if self.args.run.compute_mode == "GPU":
+            return torch.device("cuda")
+        elif self.args.run.compute_mode == "XPU":
+            device = torch.device("xpu")
+        elif self.args.run.compute_mode == "DPCPP":
+            device = torch.device("dpcpp")
+        else:
+            device = torch.device('cpu')
+
+    def to_torch(self, minibatch_data, device_context=None):
+
+        if device_context is None:
+            device_context = self.default_device_context()
+
+        device = self.default_device()
+        with device_context:
+            for key in minibatch_data:
+                if key == 'entries' or key == 'event_ids':
+                    continue
+                if self.args.framework.sparse:
+                    # if key == 'weight': continue
+                    if key == 'image':
+                        minibatch_data[key] = (
+                                torch.tensor(minibatch_data[key][0], device=device).long(),
+                                torch.tensor(minibatch_data[key][1], device=device),
+                                minibatch_data[key][2],
+                            )
+                    elif key == 'label':
+                        minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
+                else:
+                    # minibatch_data[key] = torch.tensor(minibatch_data[key])
                     minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
-            else:
-                # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
-                minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
-        if self.args.data.synthetic:
-            minibatch_data['image'] = minibatch_data['image'].float()
-            minibatch_data['label'] = minibatch_data['label']
+            if self.args.data.synthetic:
+                minibatch_data['image'] = minibatch_data['image'].float()
+                minibatch_data['label'] = minibatch_data['label']
 
-        if self.args.run.precision == "bfloat16":
-            minibatch_data["image"] = minibatch_data["image"].bfloat16()
+            if self.args.run.precision == "bfloat16":
+                minibatch_data["image"] = minibatch_data["image"].bfloat16()
 
-        # self.reduce_precision(minibatch_data)
+            # self.reduce_precision(minibatch_data)
 
         return minibatch_data
-
-    # def reduce_precision(self, minibatch_data):
-    #     if self.args.run.precision == "mixed":
-    #         minibatch_data['image'] = minibatch_data['image'].half()
 
 
     def forward_pass(self, minibatch_data):
 
-        minibatch_data = self.to_torch(minibatch_data)
+
+        with self.default_device_context():
+            minibatch_data = self.to_torch(minibatch_data)
+            labels_image = minibatch_data['label']
+            # Run a forward pass of the model on the input image:
+            logits_image = self._net(minibatch_data['image'])
 
 
-        # Run a forward pass of the model on the input image:
-        logits_image = self._net(minibatch_data['image'])
-        labels_image = minibatch_data['label']
+            labels_image = labels_image.long()
+            labels_image = torch.chunk(labels_image, chunks=3, dim=1)
+            shape =  labels_image[0].shape
 
 
-        labels_image = labels_image.long()
-        labels_image = torch.chunk(labels_image, chunks=3, dim=1)
-        shape =  labels_image[0].shape
+            # weight = weight.view([shape[0], shape[-3], shape[-2], shape[-1]])
 
-
-        # weight = weight.view([shape[0], shape[-3], shape[-2], shape[-1]])
-
-        # print numpy.unique(labels_image.cpu(), return_counts=True)
-        labels_image = [ _label.view([shape[0], shape[-2], shape[-1]]) for _label in labels_image ]
+            # print numpy.unique(labels_image.cpu(), return_counts=True)
+            labels_image = [ _label.view([shape[0], shape[-2], shape[-1]]) for _label in labels_image ]
 
         return logits_image, labels_image
 
@@ -603,115 +626,116 @@ class torch_trainer(trainercore):
         grad_accum = self.args.mode.optimizer.gradient_accumulation
 
         use_cuda=torch.cuda.is_available()
-        for interior_batch in range(grad_accum):
+        with self.default_device_context():
+            for interior_batch in range(grad_accum):
 
-            # Fetch the next batch of data with larcv
-            io_start_time = datetime.datetime.now()
-            minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
-            io_end_time = datetime.datetime.now()
-            io_fetch_time += (io_end_time - io_start_time).total_seconds()
+                # Fetch the next batch of data with larcv
+                io_start_time = datetime.datetime.now()
+                minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
+                io_end_time = datetime.datetime.now()
+                io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
 
 
-            if self.args.run.profile:
-                if not self.args.distributed or self._rank == 0:
-                    autograd_prof = torch.autograd.profiler.profile(use_cuda = use_cuda)
+                if self.args.run.profile:
+                    if not self.args.distributed or self._rank == 0:
+                        autograd_prof = torch.autograd.profiler.profile(use_cuda = use_cuda)
+                    else:
+                        autograd_prof = dummycontext()
                 else:
                     autograd_prof = dummycontext()
-            else:
-                autograd_prof = dummycontext()
 
-            with autograd_prof as prof:
+                with autograd_prof as prof:
 
-                # if mixed precision, and cuda, use autocast:
-                if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
-                    with torch.cuda.amp.autocast():
-                        logits_image, labels_image = self.forward_pass(minibatch_data)
-                else:
-                    logits_image, labels_image = self.forward_pass(minibatch_data)
-
-                verbose = False
-
-                if verbose: self.print("Completed Forward pass")
-                # Compute the loss based on the logits
-
-
-
-                loss = self.loss_calculator(labels_image, logits_image)
-
-                if verbose: self.print("Completed loss")
-
-                # Compute the gradients for the network parameters:
-                if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
-                    self.scaler.scale(loss).backward()
-                else:
-                    loss.backward()
-
-
-                if verbose: self.print("Completed backward pass")
-
-
-                # Compute any necessary metrics:
-                interior_metrics = self._compute_metrics(logits_image, labels_image, loss)
-
-                for key in interior_metrics:
-                    if key in metrics:
-                        metrics[key] += interior_metrics[key]
+                    # if mixed precision, and cuda, use autocast:
+                    if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+                        with torch.cuda.amp.autocast():
+                            logits_image, labels_image = self.forward_pass(minibatch_data)
                     else:
-                        metrics[key] = interior_metrics[key]
+                        logits_image, labels_image = self.forward_pass(minibatch_data)
 
-            # save profile data per step
-            if self.args.run.profile:
-                if not self.args.distributed or self._rank == 0:
-                    prof.export_chrome_trace("timeline_" + str(self._global_step) + ".json")
+                    verbose = False
 
-        # Here, make sure to normalize the interior metrics:
-        for key in metrics:
-            metrics[key] /= grad_accum
+                    if verbose: self.print("Completed Forward pass")
+                    # Compute the loss based on the logits
 
-        # Add the global step / second to the tensorboard log:
-        try:
-            metrics['global_step_per_sec'] = 1./self._seconds_per_global_step
-            metrics['images_per_second'] = self.args.run.minibatch_size / self._seconds_per_global_step
-        except:
-            metrics['global_step_per_sec'] = 0.0
-            metrics['images_per_second'] = 0.0
+                    loss = self.loss_calculator(labels_image, logits_image)
 
-        metrics['io_fetch_time'] = io_fetch_time
+                    if verbose: self.print("Completed loss")
 
-        if verbose: logger.debug("Calculated metrics")
-
-        step_start_time = datetime.datetime.now()
-        # Apply the parameter update:
-        if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
-            self.scaler.step(self._opt)
-            self.scaler.update()
-        else:
-            self._opt.step()
-
-        self.lr_scheduler.step()
-
-        if verbose: logger.debug("Updated Weights")
-        global_end_time = datetime.datetime.now()
-
-        metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
+                    # Compute the gradients for the network parameters:
+                    if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+                        self.scaler.scale(loss).backward()
+                    else:
+                        loss.backward()
 
 
-        self.log(metrics, saver="train")
-
-        if verbose: logger.debug("Completed Log")
-
-        self.summary(metrics, saver="train")
-        self.summary_images(logits_image, labels_image, saver="train")
-        # self.graph_summary()
-        if verbose: logger.debug("Summarized")
+                    if verbose: self.print("Completed backward pass")
 
 
-        # Compute global step per second:
-        self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
+                    # Compute any necessary metrics:
+                    interior_metrics = self._compute_metrics(logits_image, labels_image, loss)
 
-        # Increment the global step value:
-        self.increment_global_step()
+                    for key in interior_metrics:
+                        if key in metrics:
+                            metrics[key] += interior_metrics[key]
+                        else:
+                            metrics[key] = interior_metrics[key]
+
+                # save profile data per step
+                if self.args.run.profile:
+                    if not self.args.distributed or self._rank == 0:
+                        prof.export_chrome_trace("timeline_" + str(self._global_step) + ".json")
+
+            # Here, make sure to normalize the interior metrics:
+            for key in metrics:
+                metrics[key] /= grad_accum
+
+            # Add the global step / second to the tensorboard log:
+            try:
+                metrics['global_step_per_sec'] = 1./self._seconds_per_global_step
+                metrics['images_per_second'] = self.args.run.minibatch_size / self._seconds_per_global_step
+            except:
+                metrics['global_step_per_sec'] = 0.0
+                metrics['images_per_second'] = 0.0
+
+            metrics['io_fetch_time'] = io_fetch_time
+
+            if verbose: logger.debug("Calculated metrics")
+
+            step_start_time = datetime.datetime.now()
+
+
+            # Apply the parameter update:
+            if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+                self.scaler.step(self._opt)
+                self.scaler.update()
+            else:
+                self._opt.step()
+
+            self.lr_scheduler.step()
+
+            if verbose: logger.debug("Updated Weights")
+            global_end_time = datetime.datetime.now()
+
+            metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
+
+
+            self.log(metrics, saver="train")
+
+            if verbose: logger.debug("Completed Log")
+
+            self.summary(metrics, saver="train")
+            self.summary_images(logits_image, labels_image, saver="train")
+            # self.graph_summary()
+            if verbose: logger.debug("Summarized")
+
+
+            # Compute global step per second:
+            self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
+
+            # Increment the global step value:
+            self.increment_global_step()
 
         return
 

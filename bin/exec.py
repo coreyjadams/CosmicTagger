@@ -102,22 +102,6 @@ class exec(object):
         self.trainer.batch_process()
 
 
-    def add_network_parser(self, parser):
-
-        # Add the uresnet configuration:
-        from src.networks.config import UResNetConfig
-        UResNetConfig().build_parser(parser)
-
-
-    def add_network_parsers(self, parser):
-        # Here, we define the networks available.  In io test mode, used to determine what the IO is.
-        network_parser = parser.add_subparsers(
-            title          = "Networks",
-            dest           = "network",
-            description    = 'Which network architecture to use.')
-
-
-
     def iotest(self):
 
         self.make_trainer()
