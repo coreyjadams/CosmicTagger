@@ -67,7 +67,7 @@ class exec(object):
         # Create a handler for STDOUT, but only on the root rank.
         # If not distributed, we still get 0 passed in here.
         if rank == 0:
-            stream_handler = logging.StreamHandler()
+            stream_handler = logging.StreamHandler(sys.stdout)
             formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
             stream_handler.setFormatter(formatter)
             handler = handlers.MemoryHandler(capacity = 0, target=stream_handler)
@@ -131,9 +131,10 @@ class exec(object):
             logger.info(f"{i}: Time to fetch a minibatch of data: {end - start:.2f}s")
 
         total_time = time.time() - global_start
+        images_read = self.args.run.iterations * self.args.run.minibatch_size
         logger.info(f"Total IO Time: {total_time:.2f}s")
         logger.info(f"Total images read per batch: {self.args.run.minibatch_size}")
-        logger.info(f"Average Image IO Throughput: {self.args.run.minibatch_size / total_time:.3f}")
+        logger.info(f"Average Image IO Throughput: { images_read / total_time:.3f}")
 
     def make_trainer(self):
 
@@ -230,11 +231,12 @@ class exec(object):
 
     def validate_arguments(self):
 
+        logger = logging.getLogger()
 
         if self.args.framework.name == "torch":
             # In torch, only option is channels first:
             if self.args.data.data_format == "channels_last":
-                print("Torch requires channels_first, switching automatically")
+                logger.warning("Torch requires channels_first, switching automatically")
                 self.args.data.data_format = "channels_first"
 
 
