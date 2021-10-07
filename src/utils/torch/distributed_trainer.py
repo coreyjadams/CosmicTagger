@@ -51,6 +51,7 @@ class distributed_trainer(torch_trainer):
                 # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
             self._rank            = hvd.rank()
             self._local_rank      = hvd.local_rank()
+            self._size            = hvd.size()
         else:
 
             import socket
@@ -111,6 +112,17 @@ class distributed_trainer(torch_trainer):
             return contextlib.nullcontext
             # device = torch.device('cpu')
 
+    def default_device(self):
+
+        if self.args.run.compute_mode == "GPU":
+            return torch.device(f"cuda:{self._local_rank}")
+        elif self.args.run.compute_mode == "XPU":
+            device = torch.device("xpu")
+        elif self.args.run.compute_mode == "DPCPP":
+            device = torch.device("dpcpp")
+        else:
+            device = torch.device('cpu')
+
 
     def init_optimizer(self):
 
@@ -140,15 +152,18 @@ class distributed_trainer(torch_trainer):
 
     def restore_model(self):
 
+        # Load on rank 0:
         if self._rank == 0:
             state = self.load_state_from_file()
         else:
             state = None
 
+        # Restore the weights on rank 0:
         if state is not None and self._rank == 0:
             self.restore_state(state)
 
 
+        # Broadcast from rank 0 to sync weights
         if self.args.framework.distributed_mode == "horovod":
 
             # Broadcast the global step:
@@ -177,15 +192,19 @@ class distributed_trainer(torch_trainer):
             if self.args.run.compute_mode == "GPU":
                 self._net.cuda()
 
+            # print(self._net.parameters)
+
             self._net = torch.nn.parallel.DistributedDataParallel(self._net, find_unused_parameters=False)
 
-
+            # print(self._net.parameters)
 
             self._global_step = MPI.COMM_WORLD.bcast(self._global_step, root=0)
-            state_dict = MPI.COMM_WORLD.bcast(self.lr_scheduler.state_dict(), root=0)
+            if self.args.mode.name == "train":
+                state_dict = MPI.COMM_WORLD.bcast(self.lr_scheduler.state_dict(), root=0)
 
         # Load the state dict:
-        self.lr_scheduler.load_state_dict(state_dict)
+        if self.args.mode.name == "train":
+            self.lr_scheduler.load_state_dict(state_dict)
 
     def summary(self, metrics, saver=""):
 

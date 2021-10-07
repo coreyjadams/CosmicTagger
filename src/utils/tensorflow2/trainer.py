@@ -313,8 +313,7 @@ class tf_trainer(trainercore):
             self._opt = tf.keras.optimizers.Adam(self._learning_rate)
 
         if self.args.run.precision == "mixed":
-            from tensorflow.keras.mixed_precision import experimental as mixed_precision
-            self._opt = mixed_precision.LossScaleOptimizer(self._opt, loss_scale='dynamic')
+            self._opt = tensorflow.keras.mixed_precision.LossScaleOptimizer(self._opt, loss_scale='dynamic')
 
 
         self.tape = tf.GradientTape()

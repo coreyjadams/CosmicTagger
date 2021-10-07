@@ -1,4 +1,4 @@
-name: default
+name: uresnet
 bias: True
 batch_norm: True
 n_initial_filters: 16

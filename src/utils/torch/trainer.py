@@ -76,9 +76,11 @@ class torch_trainer(trainercore):
         if self.args.mode.name == "train":
             self._net.train(True)
 
-        # Here we set up weights using the aggregate metrics for the dataset:
 
-        self._log_keys = ['loss', 'Average/Non_Bkg_Accuracy', 'Average/mIoU']
+
+        self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
+        if self.args.mode.name == "train":
+            self._log_keys.append("loss")
 
     def initialize(self, io_only=False):
 
@@ -113,7 +115,8 @@ class torch_trainer(trainercore):
                 self._net = self._net.bfloat16()
 
 
-            self.loss_calculator = LossCalculator.LossCalculator(self.args.mode.optimizer.loss_balance_scheme)
+            if self.args.mode.name == "train":
+                self.loss_calculator = LossCalculator.LossCalculator(self.args.mode.optimizer.loss_balance_scheme)
 
 
             # For half precision, we disable gradient accumulation.  This is to allow
@@ -121,6 +124,26 @@ class torch_trainer(trainercore):
             if self.args.run.precision == "mixed":
                 if self.args.mode.name == "train" and  self.args.mode.optimizer.gradient_accumulation > 1:
                     raise Exception("Can not accumulate gradients in half precision.")
+
+            self.trace_module()
+
+    def trace_module(self):
+
+        if self.args.run.precision == "mixed":
+            logger.warning("Tracing not available with mixed precision, sorry")
+            return
+
+        # Trace the module:
+        minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
+        example_inputs = self.to_torch(minibatch_data)
+        # Run a forward pass of the model on the input image:
+
+        if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+            with torch.cuda.amp.autocast():
+                self._net = torch.jit.trace_module(self._net, {"forward" : example_inputs['image']} )
+        else:
+            self._net = torch.jit.trace_module(self._net, {"forward" : example_inputs['image']} )
+
 
 
 
@@ -136,7 +159,6 @@ class torch_trainer(trainercore):
         n_trainable_parameters = 0
         for name, var in self._net.named_parameters():
             n_trainable_parameters += numpy.prod(var.shape)
-            # print(name, var.shape)
         return n_trainable_parameters
 
     def restore_model(self):
@@ -201,7 +223,6 @@ class torch_trainer(trainercore):
         else:
             _, checkpoint_file_path = self.get_model_filepath()
 
-        print(checkpoint_file_path)
 
         if not os.path.isfile(checkpoint_file_path):
             logger.info("No checkpoint file found, restarting from scratch")
@@ -213,25 +234,23 @@ class torch_trainer(trainercore):
                 if line.startswith("latest: "):
                     chkp_file = line.replace("latest: ", "").rstrip('\n')
                     chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
-                    print(chkp_file)
                     logger.info(f"Restoring weights from {chkp_file}")
                     break
         try:
             state = torch.load(chkp_file)
             return state
         except:
-            print("Could not load from checkpoint file")
+            logger.warning("Could not load from checkpoint file")
             return None
 
     def restore_state(self, state):
 
-        # THIS IS A HACK
-
         new_state_dict = {}
         for key in state['state_dict']:
-            new_key = key.replace(".block_", ".blocks.")
-            if new_key.startswith("module."):
-                new_key = new_key.replace("module.", "")
+            if key.startswith("module."):
+                new_key = key.lstrip("module.")
+            else:
+                new_key = key
             new_state_dict[new_key] = state['state_dict'][key]
 
         state['state_dict'] = new_state_dict
@@ -393,7 +412,8 @@ class torch_trainer(trainercore):
         # Call all of the functions in the metrics dictionary:
         metrics = {}
 
-        metrics['loss']     = loss.data
+        if loss is not None:
+            metrics['loss']     = loss.data
         accuracy = self._calculate_accuracy(logits, labels)
         metrics.update(accuracy)
 
@@ -580,7 +600,9 @@ class torch_trainer(trainercore):
             if self.args.run.precision == "bfloat16":
                 minibatch_data["image"] = minibatch_data["image"].bfloat16()
 
-            # self.reduce_precision(minibatch_data)
+            if self.args.run.precision == "mixed":
+                minibatch_data["image"] = minibatch_data["image"].half()
+
 
         return minibatch_data
 
@@ -638,7 +660,7 @@ class torch_trainer(trainercore):
 
 
                 if self.args.run.profile:
-                    if not self.args.distributed or self._rank == 0:
+                    if not self.args.run.distributed or self._rank == 0:
                         autograd_prof = torch.autograd.profiler.profile(use_cuda = use_cuda)
                     else:
                         autograd_prof = dummycontext()
@@ -656,12 +678,10 @@ class torch_trainer(trainercore):
 
                     verbose = False
 
-                    if verbose: self.print("Completed Forward pass")
                     # Compute the loss based on the logits
 
                     loss = self.loss_calculator(labels_image, logits_image)
 
-                    if verbose: self.print("Completed loss")
 
                     # Compute the gradients for the network parameters:
                     if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
@@ -670,7 +690,6 @@ class torch_trainer(trainercore):
                         loss.backward()
 
 
-                    if verbose: self.print("Completed backward pass")
 
 
                     # Compute any necessary metrics:
@@ -684,7 +703,7 @@ class torch_trainer(trainercore):
 
                 # save profile data per step
                 if self.args.run.profile:
-                    if not self.args.distributed or self._rank == 0:
+                    if not self.args.run.distributed or self._rank == 0:
                         prof.export_chrome_trace("timeline_" + str(self._global_step) + ".json")
 
             # Here, make sure to normalize the interior metrics:
@@ -760,7 +779,12 @@ class torch_trainer(trainercore):
             minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
             io_end_time = datetime.datetime.now()
 
-            logits_image, labels_image = self.forward_pass(minibatch_data)
+            # if mixed precision, and cuda, use autocast:
+            if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+                with torch.cuda.amp.autocast():
+                    logits_image, labels_image = self.forward_pass(minibatch_data)
+            else:
+                logits_image, labels_image = self.forward_pass(minibatch_data)
 
             # Compute the loss based on the logits
             loss = self.loss_calculator(labels_image, logits_image)
@@ -805,7 +829,11 @@ class torch_trainer(trainercore):
 
         # Run a forward pass of the model on the input image:
         with torch.no_grad():
-            logits_image, labels_image = self.forward_pass(minibatch_data)
+            if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+                with torch.cuda.amp.autocast():
+                    logits_image, labels_image = self.forward_pass(minibatch_data)
+            else:
+                logits_image, labels_image = self.forward_pass(minibatch_data)
 
 
         # If there is an aux file, for ana that means an output file.
@@ -891,15 +919,17 @@ class torch_trainer(trainercore):
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss
-            loss = self.loss_calculator(labels_image, logits_image)
+            # loss = self.loss_calculator(labels_image, logits_image)
 
             # Compute the metrics for this iteration:
-            metrics = self._compute_metrics(logits_image, labels_image, loss)
+            metrics = self._compute_metrics(logits_image, labels_image, loss=None)
 
 
             self.log(metrics, saver="ana")
             # self.summary(metrics, saver="test")
             # self.summary_images(logits_image, labels_image, saver="ana")
+
+        self._global_step += 1
 
         return
 

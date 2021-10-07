@@ -60,7 +60,7 @@ class trainercore(object):
         if self.args.mode == "build_net": return
 
 
-        if not self.args.data.synthetic:        
+        if not self.args.data.synthetic:
             f = pathlib.Path(self.args.data.data_directory + self.args.data.file)
             aux_f = pathlib.Path(self.args.data.data_directory + self.args.data.aux_file)
         else:
@@ -283,10 +283,31 @@ class trainercore(object):
 
         end = time.time()
 
-        logger.info(f"Total time to batch_process: {end - start}")
+        if self.args.data.synthetic and self.args.run.distributed:
+            try:
+                total_images_per_batch = self.args.run.minibatch_size * self._size
+            except:
+                total_images_per_batch = self.args.run.minibatch_size
+        else:
+            total_images_per_batch = self.args.run.minibatch_size
+
+
+        logger.info(f"Total time to batch_process: {end - start:.4f}")
         if post_one_time is not None:
-            logger.info(f"Total time to batch process except first iteration: {end - post_one_time}")
+            throughput = (self.args.run.iterations - 1) * total_images_per_batch
+            throughput /= (end - post_one_time)
+            logger.info("Total time to batch process except first iteration: "
+                        f"{end - post_one_time:.4f}"
+                        f", throughput: {throughput:.4f}")
         if post_two_time is not None:
-            logger.info(f"Total time to batch process except first two iterations: {end - post_two_time}")
+            throughput = (self.args.run.iterations - 2) * total_images_per_batch
+            throughput /= (end - post_two_time)
+            logger.info("Total time to batch process except first two iterations: "
+                        f"{end - post_two_time:.4f}"
+                        f", throughput: {throughput:.4f}")
         if len(times) > 40:
-            logger.info(f"Total time to batch process last 40 iterations: {numpy.sum(times[-40:])}" )
+            throughput = (40) * total_images_per_batch
+            throughput /= (numpy.sum(times[-40:]))
+            logger.info("Total time to batch process last 40 iterations: "
+                        f"{numpy.sum(times[-40:]):.4f}"
+                        f", throughput: {throughput:.4f}" )

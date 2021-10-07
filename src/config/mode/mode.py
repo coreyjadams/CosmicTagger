@@ -13,13 +13,13 @@ class ModeKind(Enum):
 
 @dataclass
 class Mode:
-    name: ModeKind = ModeKind.training
+    name:               ModeKind = ModeKind.training
+    no_summary_images:  bool     = False
 
 @dataclass
 class Train(Mode):
     checkpoint_iteration:   int         =  500
     summary_iteration:      int         = 1
-    no_summary_images:      bool        = False
     logging_iteration:      int         = 1
     optimizer:              Optimizer   = Optimizer()
 
@@ -27,7 +27,7 @@ class Train(Mode):
 class Inference(Mode):
     start_index:        int  = 0
     summary_iteration:  int  = 1
-    no_summary_images:  bool = False
+    logging_iteration:  int  = 1
     weights_location:   str  = ""
 
 cs = ConfigStore.instance()

@@ -43,7 +43,8 @@ class distributed_trainer(tf_trainer):
 
         self._rank            = hvd.rank()
         self.local_minibatch_size = int(self.args.run.minibatch_size / hvd.size())
-
+        self._local_rank      = hvd.local_rank()
+        self._size            = hvd.size()
 
     def init_optimizer(self):
                 # with tf.variable_scope("hvd"):
@@ -100,8 +101,9 @@ class distributed_trainer(tf_trainer):
         # This syncs everythign up.
         # print(bcast)
 
-        hvd.broadcast_variables(self._net.variables, root_rank=0)
-        hvd.broadcast_variables(self._opt.variables(), root_rank=0)
+        if self.args.mode.name == "train":
+            hvd.broadcast_variables(self._net.variables, root_rank=0)
+            hvd.broadcast_variables(self._opt.variables(), root_rank=0)
 
     def restore_model(self):
 
