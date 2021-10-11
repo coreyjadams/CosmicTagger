@@ -658,6 +658,7 @@ class tf_trainer(trainercore):
         # Compute any necessary metrics:
         metrics = self._compute_metrics(logits, prediction, labels, loss=None)
 
+
         if tf.math.is_nan(metrics['Average/mIoU']):
             for key in metrics:
                 print(f"{key}: {metrics[key]}")

@@ -127,6 +127,11 @@ class torch_trainer(trainercore):
 
             self.trace_module()
 
+            if self.args.mode.name == "inference":
+                self.inference_metrics = {}
+                self.inference_metrics['n'] = 0
+
+
     def trace_module(self):
 
         if self.args.run.precision == "mixed":
@@ -373,10 +378,11 @@ class torch_trainer(trainercore):
 
             # This is more stable than the accuracy, since the union is unlikely to be ever 0
 
-
-
-            # To compute the IoU, we use torch bytetensors which are similar to numpy masks.
             non_zero_locations       = labels[plane] != 0
+
+            weighted_accuracy = correct * non_zero_locations
+            non_zero_accuracy = torch.sum(weighted_accuracy, dim=[1,2]) / torch.sum(non_zero_locations, dim=[1,2])
+
             neutrino_label_locations = labels[plane] == self.NEUTRINO_INDEX
             cosmic_label_locations   = labels[plane] == self.COSMIC_INDEX
 
@@ -384,11 +390,32 @@ class torch_trainer(trainercore):
             cosmic_prediction_locations   = predicted_label == self.COSMIC_INDEX
 
 
-            non_zero_accuracy = torch.mean(correct[non_zero_locations])
+            neutrino_intersection = (neutrino_prediction_locations & \
+                neutrino_label_locations).sum(dim=[1,2]).float()
+            cosmic_intersection = (cosmic_prediction_locations & \
+                cosmic_label_locations).sum(dim=[1,2]).float()
 
-            neutrino_iou = ( (neutrino_prediction_locations & neutrino_label_locations).sum().float() + 0.01) / ( (neutrino_prediction_locations | neutrino_label_locations).sum().float() + 0.01)
-            cosmic_iou = ( (cosmic_prediction_locations & cosmic_label_locations).sum().float() + 0.01) /  ((cosmic_prediction_locations | cosmic_label_locations).sum().float() + 0.01)
+            neutrino_union        = (neutrino_prediction_locations | \
+                neutrino_label_locations).sum(dim=[1,2]).float()
+            cosmic_union        = (cosmic_prediction_locations | \
+                cosmic_label_locations).sum(dim=[1,2]).float()
+            # neutrino_intersection =
 
+            one = torch.ones(1, dtype=neutrino_intersection.dtype,device=neutrino_intersection.device)
+
+            neutrino_safe_unions = torch.where(neutrino_union != 0, True, False)
+            neutrino_iou         = torch.where(neutrino_safe_unions, \
+                neutrino_intersection / neutrino_union, one)
+
+            cosmic_safe_unions = torch.where(cosmic_union != 0, True, False)
+            cosmic_iou         = torch.where(cosmic_safe_unions, \
+                cosmic_intersection / cosmic_union, one)
+
+            # Finally, we do average over the batch
+
+            cosmic_iou = torch.mean(cosmic_iou)
+            neutrino_iou = torch.mean(neutrino_iou)
+            non_zero_accuracy = torch.mean(non_zero_accuracy)
 
             accuracy[f'plane{plane}/Total_Accuracy']   = torch.mean(correct)
             accuracy[f'plane{plane}/Cosmic_IoU']       = cosmic_iou
@@ -401,7 +428,6 @@ class torch_trainer(trainercore):
             accuracy['Average/Neutrino_IoU']     += (0.3333333)*neutrino_iou
             accuracy['Average/Non_Bkg_Accuracy'] += (0.3333333)*non_zero_accuracy
             accuracy['Average/mIoU']             += (0.3333333)*(0.5)*(cosmic_iou + neutrino_iou)
-
 
 
         return accuracy
@@ -836,85 +862,85 @@ class torch_trainer(trainercore):
                 logits_image, labels_image = self.forward_pass(minibatch_data)
 
 
-        # If there is an aux file, for ana that means an output file.
-        # Call the larcv interface to write data:
-        if self._aux_saver is not None:
-
-            # For writing output, we get the non-zero locations from the labels.
-            # Then, we get the neutrino and cosmic scores for those locations in the logits,
-            # After applying a softmax.
-
-            # To do this, we just need to capture the following objects:
-            # - the dense shape
-            # - the location of all non-zero pixels, flattened
-            # - the softmax score for all non-zero pixels, flattened.
-
-
-            # Compute the softmax over all images in the batch:
-            softmax = [ torch.nn.Softmax(dim=1)(l) for l in logits_image]
-
-
-            for b_index in range(self.args.run.minibatch_size):
-
-                # We want to make sure we get the locations from the non-zero input pixels:
-                images = torch.chunk(minibatch_data['image'][b_index,:,:,:], chunks=3, dim=0)
-
-                # Reshape images here to remove the empty index:
-                images = [image.squeeze() for image in images]
-
-                # Locations is a list of a tuple of coordinates for each image
-                locations = [torch.where(image != 0) for image in images]
-
-                # Shape is a list of shapes for each image:
-                shape = [ image.shape for image in images ]
-
-                # Batch softmax is a list of the softmax tensor on each plane
-                batch_softmax = [s[b_index] for s in softmax]
-
-                # To get the neutrino scores, we want to access the softmax at the neutrino index
-                # And slice over just the non-zero locations:
-                neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]]
-                    for plane, b in enumerate(batch_softmax) ]
-                cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]]
-                    for plane, b in enumerate(batch_softmax) ]
-
-                # Lastly, flatten the locations.
-                # For the unraveled index, there is a complication that torch stores images
-                # with [H,W] and larcv3 stores images with [W, H] by default.
-                # To solve this -
-                # Reverse the shape:
-                shape = [ s[::-1] for s in shape ]
-                # Go through the locations in reverse:
-                locations = [ numpy.ravel_multi_index(l[::-1], s) for l, s in zip(locations, shape) ]
-
-
-
-                # Now, package up the objects to send to the file writer:
-                neutrino_data = []
-                cosmic_data = []
-                for plane in range(3):
-                    neutrino_data.append({
-                        'values' : neutrino_scores[plane].numpy(),
-                        'index'  : locations[plane],
-                        'shape'  : shape[plane]
-                    })
-                    cosmic_data.append({
-                        'values' : cosmic_scores[plane].numpy(),
-                        'index'  : locations[plane],
-                        'shape'  : shape[plane]
-                    })
-
-
-                # Write the data through the writer:
-                self.larcv_fetcher.write(cosmic_data,
-                    producer = "cosmic_prediction",
-                    entry    = minibatch_data['entries'][b_index],
-                    event_id = minibatch_data['event_ids'][b_index])
-
-                self.larcv_fetcher.write(neutrino_data,
-                    producer = "neutrino_prediction",
-                    entry    = minibatch_data['entries'][b_index],
-                    event_id = minibatch_data['event_ids'][b_index])
+        # # If there is an aux file, for ana that means an output file.
+        # # Call the larcv interface to write data:
+        # if self._aux_saver is not None:
+        #
+        #     # For writing output, we get the non-zero locations from the labels.
+        #     # Then, we get the neutrino and cosmic scores for those locations in the logits,
+        #     # After applying a softmax.
+        #
+        #     # To do this, we just need to capture the following objects:
+        #     # - the dense shape
+        #     # - the location of all non-zero pixels, flattened
+        #     # - the softmax score for all non-zero pixels, flattened.
+        #
+        #
+        #     # Compute the softmax over all images in the batch:
+        #     softmax = [ torch.nn.Softmax(dim=1)(l) for l in logits_image]
+        #
+        #
+        #     for b_index in range(self.args.run.minibatch_size):
+        #
+        #         # We want to make sure we get the locations from the non-zero input pixels:
+        #         images = torch.chunk(minibatch_data['image'][b_index,:,:,:], chunks=3, dim=0)
+        #
+        #         # Reshape images here to remove the empty index:
+        #         images = [image.squeeze() for image in images]
+        #
+        #         # Locations is a list of a tuple of coordinates for each image
+        #         locations = [torch.where(image != 0) for image in images]
+        #
+        #         # Shape is a list of shapes for each image:
+        #         shape = [ image.shape for image in images ]
+        #
+        #         # Batch softmax is a list of the softmax tensor on each plane
+        #         batch_softmax = [s[b_index] for s in softmax]
+        #
+        #         # To get the neutrino scores, we want to access the softmax at the neutrino index
+        #         # And slice over just the non-zero locations:
+        #         neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]]
+        #             for plane, b in enumerate(batch_softmax) ]
+        #         cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]]
+        #             for plane, b in enumerate(batch_softmax) ]
+        #
+        #         # Lastly, flatten the locations.
+        #         # For the unraveled index, there is a complication that torch stores images
+        #         # with [H,W] and larcv3 stores images with [W, H] by default.
+        #         # To solve this -
+        #         # Reverse the shape:
+        #         shape = [ s[::-1] for s in shape ]
+        #         # Go through the locations in reverse:
+        #         locations = [ numpy.ravel_multi_index(l[::-1], s) for l, s in zip(locations, shape) ]
+        #
+        #
+        #
+        #         # Now, package up the objects to send to the file writer:
+        #         neutrino_data = []
+        #         cosmic_data = []
+        #         for plane in range(3):
+        #             neutrino_data.append({
+        #                 'values' : neutrino_scores[plane].numpy(),
+        #                 'index'  : locations[plane],
+        #                 'shape'  : shape[plane]
+        #             })
+        #             cosmic_data.append({
+        #                 'values' : cosmic_scores[plane].numpy(),
+        #                 'index'  : locations[plane],
+        #                 'shape'  : shape[plane]
+        #             })
+        #
+        #
+        #         # Write the data through the writer:
+        #         self.larcv_fetcher.write(cosmic_data,
+        #             producer = "cosmic_prediction",
+        #             entry    = minibatch_data['entries'][b_index],
+        #             event_id = minibatch_data['event_ids'][b_index])
+        #
+        #         self.larcv_fetcher.write(neutrino_data,
+        #             producer = "neutrino_prediction",
+        #             entry    = minibatch_data['entries'][b_index],
+        #             event_id = minibatch_data['event_ids'][b_index])
 
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
@@ -923,6 +949,7 @@ class torch_trainer(trainercore):
 
             # Compute the metrics for this iteration:
             metrics = self._compute_metrics(logits_image, labels_image, loss=None)
+            self.accumulate_metrics(metrics)
 
 
             self.log(metrics, saver="ana")
@@ -932,6 +959,29 @@ class torch_trainer(trainercore):
         self._global_step += 1
 
         return
+
+    def accumulate_metrics(self, metrics):
+
+        self.inference_metrics['n'] += 1
+        for key in metrics:
+            if key not in self.inference_metrics:
+                self.inference_metrics[key] = metrics[key]
+                # self.inference_metrics[f"{key}_sq"] = metrics[key]**2
+            else:
+                self.inference_metrics[key] += metrics[key]
+                # self.inference_metrics[f"{key}_sq"] += metrics[key]**2
+
+    def inference_report(self):
+        print("reporting!")
+        if not hasattr(self, "inference_metrics"):
+            return
+        n = self.inference_metrics["n"]
+        total_entries = n*self.args.run.minibatch_size
+        logger.info(f"Inference report: {n} batches processed for {total_entries} entries.")
+        for key in self.inference_metrics:
+            if key == 'n' or '_sq' in key: continue
+            value = self.inference_metrics[key] / n
+            logger.info(f"  {key}: {value:.4f}")
 
     def close_savers(self):
         if self._saver is not None:
