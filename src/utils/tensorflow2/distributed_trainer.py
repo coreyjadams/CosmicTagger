@@ -101,8 +101,8 @@ class distributed_trainer(tf_trainer):
         # This syncs everythign up.
         # print(bcast)
 
+        hvd.broadcast_variables(self._net.variables, root_rank=0)
         if self.args.mode.name == "train":
-            hvd.broadcast_variables(self._net.variables, root_rank=0)
             hvd.broadcast_variables(self._opt.variables(), root_rank=0)
 
     def restore_model(self):
@@ -161,6 +161,19 @@ class distributed_trainer(tf_trainer):
             return
         else:
             tf_trainer.log(self, metrics, kind, step)
+
+    def _compute_metrics(self, logits, prediction, labels, loss):
+
+
+        metrics = tf_trainer._compute_metrics(self, logits, prediction, labels, loss)
+
+
+        reduced_metrics = {}
+        for key in metrics.keys():
+            reduced_metrics[key] = hvd.allreduce(metrics[key])
+
+        return reduced_metrics
+
 
     # def batch_process(self):
 

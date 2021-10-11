@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - network: uresnet
+  - network: SCC_21
   - framework: torch
   - mode: train
   - data: real

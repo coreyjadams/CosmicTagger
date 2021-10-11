@@ -246,6 +246,9 @@ class trainercore(object):
     def close_savers(self):
         pass
 
+    def inference_report(self):
+        pass
+
     def batch_process(self):
 
 
@@ -291,6 +294,9 @@ class trainercore(object):
         else:
             total_images_per_batch = self.args.run.minibatch_size
 
+
+        if self.args.mode.name == "inference":
+            self.inference_report()
 
         logger.info(f"Total time to batch_process: {end - start:.4f}")
         if post_one_time is not None:

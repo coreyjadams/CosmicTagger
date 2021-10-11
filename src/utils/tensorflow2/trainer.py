@@ -52,14 +52,14 @@ class tf_trainer(trainercore):
 
         # Here, if using mixed precision, set a global policy:
         if self.args.run.precision == "mixed":
-            from tensorflow.keras.mixed_precision import experimental as mixed_precision
+            from tensorflow.keras import mixed_precision
             self.policy = mixed_precision.Policy('mixed_float16')
-            mixed_precision.set_policy(self.policy)
+            mixed_precision.set_global_policy(self.policy)
 
         if self.args.run.precision == "bfloat16":
-            from tensorflow.keras.mixed_precision import experimental as mixed_precision
+            from tensorflow.keras import mixed_precision
             self.policy = mixed_precision.Policy('mixed_bfloat16')
-            mixed_precision.set_policy(self.policy)
+            mixed_precision.set_global_policy(self.policy)
 
         batch_dims = self.larcv_fetcher.batch_dims(1)
 
@@ -211,6 +211,10 @@ class tf_trainer(trainercore):
         # Try to restore a model?
         restored = self.restore_model()
 
+        if self.args.mode.name == "inference":
+            self.inference_metrics = {}
+            self.inference_metrics['n'] = 0
+
 
     def init_learning_rate(self):
         # Use a place holder for the learning rate :
@@ -222,7 +226,23 @@ class tf_trainer(trainercore):
         ''' This function attempts to restore the model from file
         '''
 
-        file_path = self.get_checkpoint_dir()
+
+        def check_inference_weights_path(file_path):
+            print(file_path)
+            # Look for the "checkpoint" file:
+            checkpoint_file_path = file_path + "checkpoint"
+            # If it exists, open it and read the latest checkpoint:
+            if os.path.isfile(checkpoint_file_path):
+                return file_path
+
+
+        # First, check if the weights path is set:
+        if self.args.mode.name == "inference" and self.args.mode.weights_location != "":
+            file_path = check_inference_weights_path(self.args.mode.weights_location)
+        else:
+            file_path = self.get_checkpoint_dir()
+
+
 
         path = tf.train.latest_checkpoint(file_path)
 
@@ -313,8 +333,7 @@ class tf_trainer(trainercore):
             self._opt = tf.keras.optimizers.Adam(self._learning_rate)
 
         if self.args.run.precision == "mixed":
-            from tensorflow.keras.mixed_precision import experimental as mixed_precision
-            self._opt = mixed_precision.LossScaleOptimizer(self._opt, loss_scale='dynamic')
+            self._opt = tf.keras.mixed_precision.LossScaleOptimizer(self._opt)
 
 
         self.tape = tf.GradientTape()
@@ -332,11 +351,11 @@ class tf_trainer(trainercore):
             metrics[f"plane{p}/Neutrino_IoU"]            = accuracy["neut_iou"][p]
             metrics[f"plane{p}/Cosmic_IoU"]              = accuracy["cosmic_iou"][p]
 
-        metrics["Average/Total_Accuracy"]          = float(tf.reduce_mean(accuracy["total_accuracy"]).numpy())
-        metrics["Average/Non_Bkg_Accuracy"]        = float(tf.reduce_mean(accuracy["non_bkg_accuracy"]).numpy())
-        metrics["Average/Neutrino_IoU"]            = float(tf.reduce_mean(accuracy["neut_iou"]).numpy())
-        metrics["Average/Cosmic_IoU"]              = float(tf.reduce_mean(accuracy["cosmic_iou"]).numpy())
-        metrics["Average/mIoU"]                    = float(tf.reduce_mean(accuracy["miou"]).numpy())
+        metrics["Average/Total_Accuracy"]          = tf.reduce_mean(accuracy["total_accuracy"])
+        metrics["Average/Non_Bkg_Accuracy"]        = tf.reduce_mean(accuracy["non_bkg_accuracy"])
+        metrics["Average/Neutrino_IoU"]            = tf.reduce_mean(accuracy["neut_iou"])
+        metrics["Average/Cosmic_IoU"]              = tf.reduce_mean(accuracy["cosmic_iou"])
+        metrics["Average/mIoU"]                    = tf.reduce_mean(accuracy["miou"])
 
         if loss is not None:
             metrics['loss'] = loss
@@ -431,14 +450,15 @@ class tf_trainer(trainercore):
 
     def val_step(self):
 
+
         if not hasattr(self, "_aux_data_size"):
             return
 
         if self.args.data.synthetic:
             return
-
-        if self._val_writer is None:
-            return
+        #
+        # if self._val_writer is None:
+        #     return
 
         gs = self.current_step()
 
@@ -451,7 +471,6 @@ class tf_trainer(trainercore):
             labels, logits, prediction = self.forward_pass(image, label, training=False)
 
             loss = self.loss_calculator(labels, logits)
-
 
             metrics = self._compute_metrics(logits, prediction, labels, loss)
 
@@ -611,6 +630,7 @@ class tf_trainer(trainercore):
             force_pop = True
         minibatch_data = self.larcv_fetcher.fetch_next_batch("train", force_pop=force_pop)
 
+
         # Escape if we get None:
         if minibatch_data is None: return
 
@@ -637,6 +657,12 @@ class tf_trainer(trainercore):
 
         # Compute any necessary metrics:
         metrics = self._compute_metrics(logits, prediction, labels, loss=None)
+
+        if tf.math.is_nan(metrics['Average/mIoU']):
+            for key in metrics:
+                print(f"{key}: {metrics[key]}")
+
+        self.accumulate_metrics(metrics)
 
 
         # Add the global step / second to the tensorboard log:
@@ -752,6 +778,28 @@ class tf_trainer(trainercore):
         # self._global_step += 1
 
         return
+
+    def accumulate_metrics(self, metrics):
+
+        self.inference_metrics['n'] += 1
+        for key in metrics:
+            if key not in self.inference_metrics:
+                self.inference_metrics[key] = metrics[key]
+                # self.inference_metrics[f"{key}_sq"] = metrics[key]**2
+            else:
+                self.inference_metrics[key] += metrics[key]
+                # self.inference_metrics[f"{key}_sq"] += metrics[key]**2
+
+    def inference_report(self):
+        if not hasattr(self, "inference_metrics"):
+            return
+        n = self.inference_metrics["n"]
+        total_entries = n*self.args.run.minibatch_size
+        logger.info(f"Inference report: {n} batches processed for {total_entries} entries.")
+        for key in self.inference_metrics:
+            if key == 'n' or '_sq' in key: continue
+            value = self.inference_metrics[key] / n
+            logger.info(f"  {key}: {value:.4f}")
 
     def feed_dict(self, inputs):
         '''Build the feed dict
