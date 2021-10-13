@@ -234,6 +234,8 @@ class tf_trainer(trainercore):
             # If it exists, open it and read the latest checkpoint:
             if os.path.isfile(checkpoint_file_path):
                 return file_path
+            else:
+                return None
 
 
         # First, check if the weights path is set:

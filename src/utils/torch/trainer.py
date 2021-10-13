@@ -972,7 +972,6 @@ class torch_trainer(trainercore):
                 # self.inference_metrics[f"{key}_sq"] += metrics[key]**2
 
     def inference_report(self):
-        print("reporting!")
         if not hasattr(self, "inference_metrics"):
             return
         n = self.inference_metrics["n"]
