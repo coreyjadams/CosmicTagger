@@ -39,9 +39,10 @@ def dummycontext():
 
 import datetime
 
-
-from torch.utils.tensorboard import SummaryWriter
-
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except:
+    from tensorboardX import SummaryWriter
 
 
 class torch_trainer(trainercore):
@@ -576,8 +577,8 @@ class torch_trainer(trainercore):
         if self.args.run.compute_mode == "GPU":
             return torch.cuda.device(0)
         elif self.args.run.compute_mode == "XPU":
-            return contextlib.nullcontext
-            # device = torch.device("xpu")
+            # return contextlib.nullcontext
+            return torch_ipex.device(0)
         elif self.args.run.compute_mode == "DPCPP":
             return contextlib.nullcontext
             # device = torch.device("dpcpp")
