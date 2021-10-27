@@ -126,7 +126,7 @@ class torch_trainer(trainercore):
                 if self.args.mode.name == "train" and  self.args.mode.optimizer.gradient_accumulation > 1:
                     raise Exception("Can not accumulate gradients in half precision.")
 
-            self.trace_module()
+            # self.trace_module()
 
             if self.args.mode.name == "inference":
                 self.inference_metrics = {}
