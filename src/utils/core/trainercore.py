@@ -317,3 +317,12 @@ class trainercore(object):
             logger.info("Total time to batch process last 40 iterations: "
                         f"{numpy.sum(times[-40:]):.4f}"
                         f", throughput: {throughput:.4f}" )
+        warm_up = 4 if len(times) > 5 else 0
+        img_sec_mean = self.args.run.minibatch_size / numpy.mean(times[warm_up:])
+        if self.args.run.distributed is True and self._size > 1:
+            logger.info("avg imgs/sec on rank " + str(self._rank) + ": " + f"{img_sec_mean:.2f}")
+            logger.info("total imgs/sec on " + str(self._size) + " ranks: " + f"{(self._size * img_sec_mean):.2f}")
+        else:
+            logger.info("avg imgs/sec: " + f"{img_sec_mean:.2f}")
+            logger.info("total imgs/sec: " +  f"{(img_sec_mean):.2f}")
+

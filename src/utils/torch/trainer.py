@@ -13,10 +13,17 @@ import numpy
 
 
 import torch
+ipex_loaded=False
 try:
-    import torch_ipex
+    import ipex
+    ipex_loaded=True
 except:
     pass
+if not ipex_loaded:
+    try:
+        import torch_ipex
+    except:
+        pass
 
 
 
@@ -96,7 +103,7 @@ class torch_trainer(trainercore):
         with self.default_device_context():
             self.init_network()
 
-            self._net.to(self.default_device())
+            self._net = self._net.to(self.default_device())
 
             # self._net.to(device)
 
@@ -578,7 +585,15 @@ class torch_trainer(trainercore):
             return torch.cuda.device(0)
         elif self.args.run.compute_mode == "XPU":
             # return contextlib.nullcontext
-            return torch_ipex.device(0)
+            try:
+                return ipex.xpu.device(0)
+            except:
+                pass
+            try:
+                return torch_ipex.device(0)
+            except:
+                pass
+            return contextlib.nullcontext
         elif self.args.run.compute_mode == "DPCPP":
             return contextlib.nullcontext
             # device = torch.device("dpcpp")
@@ -596,6 +611,7 @@ class torch_trainer(trainercore):
             device = torch.device("dpcpp")
         else:
             device = torch.device('cpu')
+        return device
 
     def to_torch(self, minibatch_data, device_context=None):
 

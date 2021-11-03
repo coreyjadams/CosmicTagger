@@ -11,6 +11,18 @@ import torch
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
+ipex_loaded=False
+try:
+    import ipex
+    ipex_loaded=True
+except:
+    pass
+if not ipex_loaded:
+    try:
+        import torch_ipex
+    except:
+        pass
+
 # set IPEX XPU device before importing IPEX
 try:
     import horovod.torch as hvd
@@ -107,8 +119,16 @@ class distributed_trainer(torch_trainer):
             else:
                 return torch.cuda.device(int(self._local_rank))
         elif self.args.run.compute_mode == "XPU":
+            # return contextlib.nullcontext
+            try:
+                return ipex.xpu.device(int(self._local_rank))
+            except:
+                pass
+            try:
+                return torch_ipex.device(int(self._local_rank))
+            except:
+                pass
             return contextlib.nullcontext
-            # device = torch.device("xpu")
         elif self.args.run.compute_mode == "DPCPP":
             return contextlib.nullcontext
             # device = torch.device("dpcpp")
@@ -125,11 +145,12 @@ class distributed_trainer(torch_trainer):
             else:
                 return torch.device(f"cuda:{self._local_rank}")
         elif self.args.run.compute_mode == "XPU":
-            device = torch.device("xpu")
+            device = torch.device(f"xpu:{self._local_rank}")
         elif self.args.run.compute_mode == "DPCPP":
             device = torch.device("dpcpp")
         else:
             device = torch.device('cpu')
+        return device
 
 
     def init_optimizer(self):
