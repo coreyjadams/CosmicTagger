@@ -74,7 +74,10 @@ class distributed_trainer(torch_trainer):
 
 
             # Pytorch will look for these:
-            local_rank = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
+            if 'OMPI_COMM_WORLD_LOCAL_RANK' in os.environ.keys():
+                local_rank = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
+            else:
+                local_rank = os.environ['MPI_LOCALRANKID']
             size = MPI.COMM_WORLD.Get_size()
             rank = MPI.COMM_WORLD.Get_rank()
 
@@ -97,7 +100,10 @@ class distributed_trainer(torch_trainer):
             os.environ["MASTER_PORT"] = str(2345)
 
             # What backend?  nccl on GPU, gloo on CPU
-            if self.args.run.compute_mode == "GPU": backend = 'nccl'
+            if self.args.run.compute_mode == "XPU":
+                import torch_ccl
+                backend = 'ccl'
+            elif self.args.run.compute_mode == "GPU": backend = 'nccl'
             elif self.args.run.compute_mode == "CPU": backend = 'gloo'
 
             torch.distributed.init_process_group(
@@ -218,12 +224,16 @@ class distributed_trainer(torch_trainer):
 
         elif self.args.framework.distributed_mode == "DDP":
 
-            if self.args.run.compute_mode == "GPU":
+            devices = None
+            if self.args.run.compute_mode == "XPU":
+                devices = ["xpu:{}".format(self._local_rank)]
+                self._net.to(devices[0])
+            elif self.args.run.compute_mode == "GPU":
                 self._net.cuda()
 
             # print(self._net.parameters)
 
-            self._net = torch.nn.parallel.DistributedDataParallel(self._net, find_unused_parameters=False)
+            self._net = torch.nn.parallel.DistributedDataParallel(self._net, device_ids=devices, find_unused_parameters=False)
 
             # print(self._net.parameters)
 
