@@ -15,6 +15,7 @@ class ModeKind(Enum):
 class Mode:
     name:               ModeKind = ModeKind.training
     no_summary_images:  bool     = False
+    weights_location:   str      = ""
 
 @dataclass
 class Train(Mode):
@@ -28,7 +29,6 @@ class Inference(Mode):
     start_index:        int  = 0
     summary_iteration:  int  = 1
     logging_iteration:  int  = 1
-    weights_location:   str  = ""
 
 cs = ConfigStore.instance()
 cs.store(group="mode", name="train", node=Train)

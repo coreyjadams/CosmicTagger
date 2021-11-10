@@ -117,7 +117,7 @@ class trainercore(object):
                     'function'      : 'decay',
                     'start'         : 21,
                     'n_epochs'      : 4,
-                        'floor'         : 0.00001,
+                        'floor'         : 0.0001,
                     'decay_rate'    : 0.999
                 },
             }
