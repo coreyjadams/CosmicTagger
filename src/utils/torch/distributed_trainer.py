@@ -101,7 +101,11 @@ class distributed_trainer(torch_trainer):
 
         # Convert the input data to torch tensors
         if self.args.run.compute_mode == "GPU":
-            return torch.cuda.device(int(self._local_rank))
+            if 'CUDA_VISIBLE_DEVICES' in os.environ:
+                # Then, it's manually set, use it
+                return torch.cuda.device(0)
+            else:
+                return torch.cuda.device(int(self._local_rank))
         elif self.args.run.compute_mode == "XPU":
             return contextlib.nullcontext
             # device = torch.device("xpu")
@@ -115,7 +119,11 @@ class distributed_trainer(torch_trainer):
     def default_device(self):
 
         if self.args.run.compute_mode == "GPU":
-            return torch.device(f"cuda:{self._local_rank}")
+            if 'CUDA_VISIBLE_DEVICES' in os.environ:
+                # Then, it's manually set, use it
+                return torch.device("cuda:0")
+            else:
+                return torch.device(f"cuda:{self._local_rank}")
         elif self.args.run.compute_mode == "XPU":
             device = torch.device("xpu")
         elif self.args.run.compute_mode == "DPCPP":
