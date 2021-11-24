@@ -11,17 +11,15 @@ import torch
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
-ipex_loaded=False
 try:
-    import ipex
-    ipex_loaded=True
+    import torch_ipex as ipex
 except:
     pass
-if not ipex_loaded:
-    try:
-        import torch_ipex
-    except:
-        pass
+    
+import logging
+logger = logging.getLogger()
+logger.propogate = False
+
 
 # set IPEX XPU device before importing IPEX
 try:

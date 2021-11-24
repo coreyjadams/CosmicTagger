@@ -13,17 +13,11 @@ import numpy
 
 
 import torch
-ipex_loaded=False
 try:
-    import ipex
-    ipex_loaded=True
+    import torch_ipex as ipex
 except:
     pass
-if not ipex_loaded:
-    try:
-        import torch_ipex
-    except:
-        pass
+
 
 
 
@@ -102,6 +96,7 @@ class torch_trainer(trainercore):
 
         with self.default_device_context():
             self.init_network()
+
 
             self._net = self._net.to(self.default_device())
 
@@ -374,6 +369,7 @@ class torch_trainer(trainercore):
 
 
         for plane in [0,1,2]:
+
             values, predicted_label = torch.max(logits[plane], dim=1)
 
             correct = (predicted_label == labels[plane].long()).float()
@@ -410,6 +406,7 @@ class torch_trainer(trainercore):
             # neutrino_intersection =
 
             one = torch.ones(1, dtype=neutrino_intersection.dtype,device=neutrino_intersection.device)
+
 
             neutrino_safe_unions = torch.where(neutrino_union != 0, True, False)
             neutrino_iou         = torch.where(neutrino_safe_unions, \
@@ -586,11 +583,11 @@ class torch_trainer(trainercore):
         elif self.args.run.compute_mode == "XPU":
             # return contextlib.nullcontext
             try:
-                return ipex.xpu.device(0)
+                return ipex.xpu.device("xpu:0")
             except:
                 pass
             try:
-                return torch_ipex.device(0)
+                return ipex.device("xpu:0")
             except:
                 pass
             return contextlib.nullcontext
