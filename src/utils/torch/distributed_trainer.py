@@ -11,6 +11,18 @@ import torch
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
+ipex_loaded=False
+try:
+    import ipex
+    ipex_loaded=True
+except:
+    pass
+if not ipex_loaded:
+    try:
+        import torch_ipex
+    except:
+        pass
+
 # set IPEX XPU device before importing IPEX
 try:
     import horovod.torch as hvd
@@ -62,6 +74,7 @@ class distributed_trainer(torch_trainer):
 
 
             # Pytorch will look for these:
+
             if 'MV2_COMM_WORLD_LOCAL_RANK' in os.environ:
                 local_rank = os.environ['MV2_COMM_WORLD_LOCAL_RANK']
             elif 'OMPI_COMM_WORLD_LOCAL_RANK' in os.environ:
@@ -69,6 +82,7 @@ class distributed_trainer(torch_trainer):
             else:
                 logger.error("Can not determine local rank for DDP")
                 raise Exception("DDP failed to initialize due to local rank issue")
+
             size = MPI.COMM_WORLD.Get_size()
             rank = MPI.COMM_WORLD.Get_rank()
 
@@ -91,7 +105,10 @@ class distributed_trainer(torch_trainer):
             os.environ["MASTER_PORT"] = str(2345)
 
             # What backend?  nccl on GPU, gloo on CPU
-            if self.args.run.compute_mode == "GPU": backend = 'nccl'
+            if self.args.run.compute_mode == "XPU":
+                import torch_ccl
+                backend = 'ccl'
+            elif self.args.run.compute_mode == "GPU": backend = 'nccl'
             elif self.args.run.compute_mode == "CPU": backend = 'gloo'
 
             torch.distributed.init_process_group(
@@ -113,8 +130,12 @@ class distributed_trainer(torch_trainer):
             else:
                 return torch.cuda.device(int(self._local_rank))
         elif self.args.run.compute_mode == "XPU":
+            # return contextlib.nullcontext
+            try:
+                return ipex.xpu.device(int(self._local_rank))
+            except:
+                pass
             return contextlib.nullcontext
-            # device = torch.device("xpu")
         elif self.args.run.compute_mode == "DPCPP":
             return contextlib.nullcontext
             # device = torch.device("dpcpp")
@@ -131,11 +152,12 @@ class distributed_trainer(torch_trainer):
             else:
                 return torch.device(f"cuda:{self._local_rank}")
         elif self.args.run.compute_mode == "XPU":
-            device = torch.device("xpu")
+            device = torch.device(f"xpu:{self._local_rank}")
         elif self.args.run.compute_mode == "DPCPP":
             device = torch.device("dpcpp")
         else:
             device = torch.device('cpu')
+        return device
 
 
     def init_optimizer(self):
@@ -203,12 +225,16 @@ class distributed_trainer(torch_trainer):
 
         elif self.args.framework.distributed_mode == "DDP":
 
-            if self.args.run.compute_mode == "GPU":
+            devices = None
+            if self.args.run.compute_mode == "XPU":
+                devices = ["xpu:{}".format(self._local_rank)]
+                self._net.to(devices[0])
+            elif self.args.run.compute_mode == "GPU":
                 self._net.cuda()
 
             # print(self._net.parameters)
 
-            self._net = torch.nn.parallel.DistributedDataParallel(self._net, find_unused_parameters=False)
+            self._net = torch.nn.parallel.DistributedDataParallel(self._net, device_ids=devices, find_unused_parameters=False)
 
             # print(self._net.parameters)
 
