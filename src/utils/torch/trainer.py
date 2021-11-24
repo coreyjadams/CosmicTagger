@@ -231,7 +231,7 @@ class torch_trainer(trainercore):
 
 
         # First, check if the weights path is set:
-        if self.args.mode.name == "inference" and self.args.mode.weights_location != "":
+        if self.args.mode.weights_location != "":
             checkpoint_file_path = check_inference_weights_path(self.args.mode.weights_location)
         else:
             _, checkpoint_file_path = self.get_model_filepath()

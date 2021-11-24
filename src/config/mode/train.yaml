@@ -8,3 +8,4 @@ optimizer:
   name: adam
   loss_balance_scheme: light
   gradient_accumulation: 1
+weights_location: ""

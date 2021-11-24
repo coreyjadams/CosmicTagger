@@ -16,7 +16,7 @@ CosmicTagger's dependencies can be installed via Conda and/or Pip. For example, 
 
 ```
 conda create -n cosmic_tagger python==3.7
-conda install cmake h5py scikit-build numpy
+conda install cmake hdf5 scikit-build numpy
 ```
 
 As of April 2021, the version of `larcv3` on PyPI (v3.3.3) does not work with CosmicTagger. A version corresponding to commit `c73936e` or later is currently necessary. To build `larcv3` from source, 
@@ -34,63 +34,67 @@ pip install -r requirements.txt
 
 ## Configuration
 
-In general, this network has a suite of parameters available.  For example, running the `--framework torch` version will print the following configuration:
+In general, this network has a suite of parameters available, for example:
 
 ```
 -- CONFIG --
- aux_file......................: /lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/cosmic_tagging_test.h5
- aux_iteration.................: 10
- aux_minibatch_size............: 2
- batch_norm....................: True
- block_concat..................: False
- blocks_deepest_layer..........: 5
- blocks_final..................: 0
- blocks_per_layer..............: 2
- bottleneck_deepest............: 256
- checkpoint_directory..........: None
- checkpoint_iteration..........: 500
- compute_mode..................: GPU
- connections...................: sum
- conv_mode.....................: 2D
- data_format...................: channels_first
- distributed...................: False
- distributed_mode..............: horovod
- downsample_images.............: 1
- downsampling..................: max_pooling
- file..........................: /lus/theta-fs0/projects/datascience/cadams/datasets/SBND/H5/cosmic_tagging/cosmic_tagging_train.h5
- filter_size_deepest...........: 5
- framework.....................: torch
- gradient_accumulation.........: 1
- growth_rate...................: additive
- inter_op_parallelism_threads..: 4
- intra_op_parallelism_threads..: 24
- iterations....................: 25000
- learning_rate.................: 0.0003
- log_directory.................: log/
- logging_iteration.............: 1
- loss_balance_scheme...........: focal
- minibatch_size................: 2
- mode..........................: train
- n_initial_filters.............: 16
- network_depth.................: 6
- no_summary_images.............: False
- optimizer.....................: rmsprop
- precision.....................: float32
- profile.......................: False
- regularize_weights............: 1e-05
- residual......................: True
- sparse........................: False
- start_index...................: 0
- summary_iteration.............: 1
- synthetic.....................: False
- training......................: True
- upsampling....................: interpolation
- use_bias......................: True
- weight_decay..................: 0.0
-
+data:
+  aux_file....................: cosmic_tagging_test.h5
+  data_directory..............: /grand/projects/datascience/cadams/datasets/SBND/
+  data_format.................: channels_last
+  downsample..................: 1
+  file........................: cosmic_tagging_train.h5
+  synthetic...................: False
+framework:
+  environment_variables:
+    TF_XLA_FLAGS..............: --tf_xla_auto_jit=2
+  inter_op_parallelism_threads: 2
+  intra_op_parallelism_threads: 24
+  name........................: tensorflow
+mode:
+  checkpoint_iteration........: 500
+  logging_iteration...........: 1
+  name........................: train
+  no_summary_images...........: False
+  optimizer:
+    gradient_accumulation.....: 1
+    learning_rate.............: 0.0003
+    loss_balance_scheme.......: light
+    name......................: adam
+  summary_iteration...........: 1
+  weights_location............:
+network:
+  batch_norm..................: True
+  bias........................: True
+  block_concat................: False
+  blocks_deepest_layer........: 5
+  blocks_final................: 5
+  blocks_per_layer............: 2
+  bottleneck_deepest..........: 256
+  connections.................: concat
+  conv_mode...................: 2D
+  data_format.................: channels_last
+  downsampling................: max_pooling
+  filter_size_deepest.........: 5
+  growth_rate.................: 1
+  n_initial_filters...........: 16
+  name........................: uresnet
+  network_depth...............: 6
+  residual....................: True
+  upsampling..................: interpolation
+  weight_decay................: 0.0
+run:
+  aux_iterations..............: 10
+  aux_minibatch_size..........: 16
+  compute_mode................: GPU
+  distributed.................: False
+  id..........................: test
+  iterations..................: 50
+  minibatch_size..............: 16
+  output_dir..................: output/tensorflow/uresnet/test/
+  precision...................: float32
+  profile.....................: False
 ```
-
-The parameters are all controlled via argparse, and so are easy to inspect.  They can be viewed in `src/utils/flags.py`, or on the command line via the `-help` flag.
 
 ## Datasets
 
@@ -98,7 +102,7 @@ The data for this network is in larcv3 format (https://github.com/DeepLearnPhysi
 
 The UNet design is symmetric and does downsampling/upsampling by factors of 2.  So, in order to preserve the proper sizes during the upsampling sets, it's important that the smallest resolution image reached by the network does not contain a dimension with an odd number of pixels.  Concretely, this means that the sum of `network_depth` and `downsample_images` must be less than 8, since 1280 pixels / 2^8 = 5. 
 
-The training dataset `cosmic_tagging_train.h5` contains 43075 images.  The validation set `cosmic_tagging_val.h5`, specified by `--aux-file` and used to monitor overfitting during training, is 7362 images.  The final hold-out test set `cosmic_tagging_test.h5` contains 7449 images. To evaluate the accuracy of a trained model on the hold-out test set (after all training and tuning is complete), rerun the application in inference mode with `--file <path-to-cosmic_tagging_test.h5`.
+The training dataset `cosmic_tagging_train.h5` contains 43075 images.  The validation set `cosmic_tagging_val.h5`, specified by `--aux-file` and used to monitor overfitting during training, is 7362 images.  The final hold-out test set `cosmic_tagging_test.h5` contains 7449 images. To evaluate the accuracy of a trained model on the hold-out test set (after all training and tuning is complete), rerun the application in inference mode with `data.file=cosmic_tagging_test.h5`
 
 ### Data format
 
@@ -126,11 +130,11 @@ The sparse implementation of this network requires sparsehash, and SparseConvNet
 
 In all cases, there is a general Python executable in `bin/exec.py`.  This takes several important arguments and many minor arguments.  Important arguments are:
 
-`python bin/exec.py mode [-d] --file /path/to/file.h5 -i 100 -mb 8 `
+`python bin/exec.py mode=[iotest|train|inference] run.id=[run-id] [other arguments]`
 
-mode is either `train` or `iotest` (or inference, but untested in this repo).  `-d` toggles distributed training, which will work even on one node and if python is executed by mpirun or aprun, will work.  `-i` is the number of iterations, and `-mb` is the minibatch size.  All other arguments can be seen in by calling `python bin/exec.py --help`
+mode is either `train` or `iotest` or `inference`.  `run.distributed=true` toggles distributed training, which will work even on one node and if python is executed by mpirun (or similar), will work.  `run.iterations=$ITER` is the number of iterations, and `run.minibatch_size` is the minibatch size.  All other arguments can be seen in by calling `python bin/exec.py --help`.  In general, you can override an argument by setting it on the command line, and nested arguments are seperated with a period.  For example: `mode.optimizer.learning_rate=123.456` is valid (but won't converged of course) while just `learning_rate=123.456` will be an error.
 
-This is a memory intesive network with the dense models.  Typically, 1 image in the standard network can utilize more than 10GB of memory to store intermediate activations.  To allow increased batch size, both `torch` and `tf` models support gradient accumulation across several images before weight updates.  Set the `--gradient-accumulation` flag to an integer greater than 1 to enable this.
+This is a memory intesive network with the dense models.  Typically, 1 image in the standard network can utilize more than 10GB of memory to store intermediate activations.  To allow increased batch size, both `torch` and `tensorflow` models support gradient accumulation across several images before weight updates.  Set the `mode.optimizer.gradient_accumulation` flag to an integer greater than 1 to enable this.
 
 # Analysis Metrics
 

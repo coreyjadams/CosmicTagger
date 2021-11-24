@@ -57,7 +57,7 @@ class larcv_fetcher(object):
         self.image_shape = [ int(i / self.ds) for i in self.full_image_shape ]
 
     def __del__(self):
-        if self.writer is not None:
+        if hasattr(self, "writer") and self.writer is not None:
             self.writer.finalize()
 
 

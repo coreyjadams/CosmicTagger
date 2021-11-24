@@ -74,10 +74,15 @@ class distributed_trainer(torch_trainer):
 
 
             # Pytorch will look for these:
-            if 'OMPI_COMM_WORLD_LOCAL_RANK' in os.environ.keys():
+
+            if 'MV2_COMM_WORLD_LOCAL_RANK' in os.environ:
+                local_rank = os.environ['MV2_COMM_WORLD_LOCAL_RANK']
+            elif 'OMPI_COMM_WORLD_LOCAL_RANK' in os.environ:
                 local_rank = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
             else:
-                local_rank = os.environ['MPI_LOCALRANKID']
+                logger.error("Can not determine local rank for DDP")
+                raise Exception("DDP failed to initialize due to local rank issue")
+
             size = MPI.COMM_WORLD.Get_size()
             rank = MPI.COMM_WORLD.Get_rank()
 
@@ -128,10 +133,6 @@ class distributed_trainer(torch_trainer):
             # return contextlib.nullcontext
             try:
                 return ipex.xpu.device(int(self._local_rank))
-            except:
-                pass
-            try:
-                return torch_ipex.device(int(self._local_rank))
             except:
                 pass
             return contextlib.nullcontext
