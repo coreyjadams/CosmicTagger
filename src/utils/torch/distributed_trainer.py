@@ -37,7 +37,6 @@ from .trainer import torch_trainer
 
 
 
-
 class distributed_trainer(torch_trainer):
     '''
     This class is the core interface for training.  Each function to
@@ -78,8 +77,14 @@ class distributed_trainer(torch_trainer):
             elif 'OMPI_COMM_WORLD_LOCAL_RANK' in os.environ:
                 local_rank = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
             else:
-                logger.error("Can not determine local rank for DDP")
-                raise Exception("DDP failed to initialize due to local rank issue")
+                # Try the last-ditch effort of home-brewed local rank deterimination
+                from src.utils.core.mpi_utils import local_rank as lr
+                # This needs to be a collective call!
+                try:
+                    local_rank = lr()
+                except:
+                    logger.error("Can not determine local rank for DDP")
+                    raise Exception("DDP failed to initialize due to local rank issue")
 
             size = MPI.COMM_WORLD.Get_size()
             rank = MPI.COMM_WORLD.Get_rank()
