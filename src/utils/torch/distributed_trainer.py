@@ -91,7 +91,7 @@ class distributed_trainer(torch_trainer):
 
             os.environ["RANK"] = str(rank)
             os.environ["WORLD_SIZE"] = str(size)
-            os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
+            #os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
 
             self._rank = rank
             self._size = size
