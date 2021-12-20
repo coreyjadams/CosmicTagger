@@ -47,7 +47,6 @@ class distributed_trainer(torch_trainer):
     def __init__(self, args):
 
 
-
         torch_trainer.__init__(self, args)
         # Rely on the base class for most standard parameters, only
         # search for parameters relevant for distributed computing here
@@ -76,6 +75,8 @@ class distributed_trainer(torch_trainer):
                 local_rank = os.environ['MV2_COMM_WORLD_LOCAL_RANK']
             elif 'OMPI_COMM_WORLD_LOCAL_RANK' in os.environ:
                 local_rank = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
+            elif 'MPI_LOCALRANKID' in os.environ: 
+                local_rank = os.environ['MPI_LOCALRANKID']
             else:
                 # Try the last-ditch effort of home-brewed local rank deterimination
                 from src.utils.core.mpi_utils import local_rank as lr
@@ -89,9 +90,12 @@ class distributed_trainer(torch_trainer):
             size = MPI.COMM_WORLD.Get_size()
             rank = MPI.COMM_WORLD.Get_rank()
 
+
+
+
             os.environ["RANK"] = str(rank)
             os.environ["WORLD_SIZE"] = str(size)
-            #os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
+            os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
 
             self._rank = rank
             self._size = size
