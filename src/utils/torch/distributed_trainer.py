@@ -69,15 +69,22 @@ class distributed_trainer(torch_trainer):
             rank = MPI.COMM_WORLD.Get_rank()
 
 
-            # Pytorch will look for these:
+            # look for these envariables:
 
-            if 'MV2_COMM_WORLD_LOCAL_RANK' in os.environ:
-                local_rank = os.environ['MV2_COMM_WORLD_LOCAL_RANK']
-            elif 'OMPI_COMM_WORLD_LOCAL_RANK' in os.environ:
-                local_rank = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
-            elif 'MPI_LOCALRANKID' in os.environ: 
-                local_rank = os.environ['MPI_LOCALRANKID']
-            else:
+            local_rank_key_options = [
+                    'OMPI_COMM_WORLD_LOCAL_RANK',
+                    'MV2_COMM_WORLD_LOCAL_RANK',
+                    'MPI_LOCALRANKID',
+                    'PMI_LOCAL_RANK',
+                    ]
+            # testable default value:
+            local_rank = None
+            for key in local_rank_key_options:
+                if key in os.environ:
+                    local_rank = os.environ[key]
+                    logger.info(f"Determined local rank through environment variable {key}")
+                    break
+            if local_rank is None:
                 # Try the last-ditch effort of home-brewed local rank deterimination
                 from src.utils.core.mpi_utils import local_rank as lr
                 # This needs to be a collective call!
@@ -90,12 +97,12 @@ class distributed_trainer(torch_trainer):
             size = MPI.COMM_WORLD.Get_size()
             rank = MPI.COMM_WORLD.Get_rank()
 
-
+            torch.cuda.set_device(int(local_rank))
 
 
             os.environ["RANK"] = str(rank)
             os.environ["WORLD_SIZE"] = str(size)
-            os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
+            # os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
 
             self._rank = rank
             self._size = size
