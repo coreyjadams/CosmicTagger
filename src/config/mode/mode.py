@@ -4,32 +4,39 @@ from dataclasses import dataclass
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
-from .optimizer import Optimizer
+from . optimizer import Optimizer
 
 class ModeKind(Enum):
-    training  = 0
+    train     = 0
     iotest    = 1
     inference = 2
 
 @dataclass
 class Mode:
-    name:               ModeKind = ModeKind.training
-    no_summary_images:  bool     = False
-    weights_location:   str      = ""
+    name:          ModeKind = ModeKind.train
+    no_summary_images: bool = False
+    weights_location:  str  = ""
 
 @dataclass
 class Train(Mode):
-    checkpoint_iteration:   int         =  500
-    summary_iteration:      int         = 1
-    logging_iteration:      int         = 1
-    optimizer:              Optimizer   = Optimizer()
+    checkpoint_iteration:   int = 500
+    summary_iteration:      int = 1
+    logging_iteration:      int = 1
+    optimizer:        Optimizer = Optimizer()
 
 @dataclass
 class Inference(Mode):
-    start_index:        int  = 0
-    summary_iteration:  int  = 1
-    logging_iteration:  int  = 1
+    name:         ModeKind  = ModeKind.inference
+    start_index:       int  = 0
+    summary_iteration: int  = 1
+    logging_iteration: int  = 1
+
+@dataclass
+class IOTest(Mode):
+    name:   ModeKind = ModeKind.iotest
+    start_index: int = 0
 
 cs = ConfigStore.instance()
-cs.store(group="mode", name="train", node=Train)
+cs.store(group="mode", name="train",     node=Train)
 cs.store(group="mode", name="inference", node=Inference)
+cs.store(group="mode", name="iotest",    node=IOTest)

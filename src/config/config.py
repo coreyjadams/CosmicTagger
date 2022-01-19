@@ -1,7 +1,8 @@
 from enum import Enum
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hydra.core.config_store import ConfigStore
+from typing import List, Any
 from omegaconf import MISSING
 
 from .network   import Network
@@ -31,16 +32,17 @@ class Precision(Enum):
 class Run:
     distributed:        bool        = True
     compute_mode:       ComputeMode = ComputeMode.GPU
-    iterations:         int         = MISSING
-    aux_iterations:     int         = MISSING
-    minibatch_size:     int         = MISSING
-    aux_minibatch_size: int         = MISSING
-    id:                 int         = MISSING
+    iterations:         int         = 500
+    aux_iterations:     int         = 10
+    minibatch_size:     int         = 2
+    # aux_minibatch_size: int         = MISSING
+    id:                 str         = MISSING
     precision:          Precision   = Precision.float32
     profile:            bool        = False
 
 cs = ConfigStore.instance()
 
+cs.store(group="run", name="base_run", node=Run)
 
 cs.store(
     name="disable_hydra_logging",
@@ -48,15 +50,33 @@ cs.store(
     node={"version": 1, "disable_existing_loggers": False, "root": {"handlers": []}},
 )
 
+
+defaults = [
+    {"run"       : "base_run"},
+    {"mode"      : "train"},
+    {"data"      : "real"},
+    {"framework" : "tensorflow"},
+    {"network"   : "uresnet"}
+]
+
 @dataclass
 class Config:
-    defaults: List = field(
-        default_factory=lambda: [
-            {"hydra/job_logging": "disable_hydra_logging"},
-        ]
-    )
+    defaults: List[Any] = field(default_factory=lambda: defaults)
+    #         "_self_",
+    #         {"run" : Run()}
+    #     ]
+    # )
+
+    run:        Run       = MISSING
+    mode:       Mode      = MISSING
+    data:       Any       = MISSING
+    framework:  Framework = MISSING
+    network:    Network   = MISSING
+    output_dir: str       = MISSING
+
+cs.store(name="base_config", node=Config)
 
 
-cs.store(name="config", node=Config)
 
-cs.store(name="run", node=Run)
+
+

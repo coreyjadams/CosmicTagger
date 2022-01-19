@@ -17,6 +17,7 @@ and merges across the downsampled layers either before or after the convolutions
 It then performs an upsampling step, and returns the upsampled tensor.
 
 '''
+from src.config.network import Connection, GrowthRate, DownSampling, UpSampling, ConvMode
 
 class Block3D(nn.Module):
 
@@ -341,7 +342,7 @@ class UNetCore3D(nn.Module):
                                              padding  = [1,1],
                                              params   = params)
 
-            if params.growth_rate == "multiplicative":
+            if params.growth_rate == GrowthRate.multiplicative:
                 n_filters_next = 2 * inplanes
             else:
                 n_filters_next = inplanes + params.n_initial_filters
@@ -349,7 +350,7 @@ class UNetCore3D(nn.Module):
 
             # Down sampling operation:
             # This does change the number of filters from above down-pass blocks
-            if params.downsampling == "convolutional":
+            if params.downsampling == DownSampling.convolutional:
                 self.downsample = ConvolutionDownsample3D(inplanes    = inplanes,
                                                           outplanes   = n_filters_next,
                                                           params      = params)
@@ -367,7 +368,7 @@ class UNetCore3D(nn.Module):
 
 
             # Upsampling operation:
-            if params.upsampling == "convolutional":
+            if params.upsampling == UpSampling.convolutional:
                 self.upsample       = ConvolutionUpsample3D(inplanes  = n_filters_next,
                                                             outplanes = inplanes,
                                                             params    = params)
@@ -385,9 +386,9 @@ class UNetCore3D(nn.Module):
                                            params   = params)
 
             # Residual connection operation:
-            if params.connections == "sum":
+            if params.connections == Connection.sum:
                 self.connection = SumConnection3D()
-            elif params.connections == "concat":
+            elif params.connections == Connection.concat:
                 self.connection = ConcatConnection3D(inplanes=inplanes, params=params)
             else:
                 self.connection = NoConnection3D()

@@ -1,4 +1,0 @@
-name: torch
-sparse: False
-distributed_mode: DDP
-environment_variables: {}

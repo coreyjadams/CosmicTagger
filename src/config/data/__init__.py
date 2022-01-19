@@ -1,1 +1,1 @@
-from .data import Data, Real, Synthetic
+from .data import DataFormatKind, Data, Real, Synthetic

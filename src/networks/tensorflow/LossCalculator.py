@@ -3,6 +3,8 @@ from tensorflow.python.keras.utils import losses_utils
 
 import numpy
 
+from src.config.mode import LossBalanceScheme
+
 class LossCalculator(object):
 
     def __init__(self, balance_type=None, channels_dim=1):
@@ -42,8 +44,8 @@ class LossCalculator(object):
             # labels and logits are by plane, loop over them:
             for i in [0,1,2]:
                 plane_loss = self._criterion(labels=labels[i], logits=logits[i])
-                if self.balance_type != "none":
-                    if self.balance_type == "focal":
+                if self.balance_type != LossBalanceScheme.none:
+                    if self.balance_type == LossBalanceScheme.focal:
 
                         # Compute this as focal loss:
                         softmax = tf.nn.softmax(logits[i], axis = self.channels_dim)
@@ -53,7 +55,7 @@ class LossCalculator(object):
                         weights = tf.reduce_sum(input_tensor=weights, axis=self.channels_dim)
 
 
-                    elif self.balance_type == "even":
+                    elif self.balance_type == LossBalanceScheme.even:
                         counts = self.label_counts(labels[i])
 
                         class_weights = tf.constant(0.3333, dtype=tf.float32)/(counts + tf.constant(1.0, dtype=tf.float32))
@@ -66,7 +68,7 @@ class LossCalculator(object):
                         # weights[labels[i] == 2 ] = class_weights[2]
                         pass
 
-                    elif self.balance_type == "light":
+                    elif self.balance_type == LossBalanceScheme.light:
                         total_pixels = numpy.prod(labels[i].get_shape().as_list())
 
                         weights = tf.fill(labels[i].shape, 1.)

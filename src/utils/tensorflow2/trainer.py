@@ -73,8 +73,9 @@ class tf_trainer(trainercore):
         # Add the dataformat for the network construction:
 
 
+        from src.config.networks import conv_mode
         # Build the network object, forward pass only:
-        if self.args.network.conv_mode == '2D':
+        if self.args.network.conv_mode == ConvMode.conv_2D:
             self._net = uresnet2D.UResNet(self.args.network)
         else:
             self._net = uresnet3D.UResNet3D(self.args.network)
@@ -323,11 +324,12 @@ class tf_trainer(trainercore):
 
 
     def init_optimizer(self):
+        from src.config.mode import OptimizerKind
 
         self.init_learning_rate()
 
 
-        if self.args.mode.optimizer.name == "rmsprop":
+        if self.args.mode.optimizer.name == OptimizerKind.rmsprop:
             # Use RMS prop:
             self._opt = tf.keras.optimizers.RMSprop(self._learning_rate)
         else:

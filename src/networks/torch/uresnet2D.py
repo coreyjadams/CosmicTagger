@@ -19,6 +19,9 @@ It then performs an upsampling step, and returns the upsampled tensor.
 
 '''
 
+from src.config.network import Connection, GrowthRate, DownSampling, UpSampling
+
+
 class Block(nn.Module):
 
     def __init__(self, *, inplanes, outplanes, kernel = [3,3], padding=[1,1], params):
@@ -390,14 +393,14 @@ class UNetCore(nn.Module):
                                            n_blocks = self.layers,
                                            params   = params)
 
-            if params.growth_rate == "multiplicative":
+            if params.growth_rate == GrowthRate.multiplicative:
                 n_filters_next = 2 * inplanes
             else:
                 n_filters_next = inplanes + params.n_initial_filters
 
             # Down sampling operation:
             # This does change the number of filters from above down-pass blocks
-            if params.downsampling == "convolutional":
+            if params.downsampling == DownSampling.convolutional:
                 self.downsample = ConvolutionDownsample(inplanes    = inplanes,
                                                         outplanes   = n_filters_next,
                                                         params      = params)
@@ -414,7 +417,7 @@ class UNetCore(nn.Module):
                                            params   = params )
 
             # Upsampling operation:
-            if params.upsampling == "convolutional":
+            if params.upsampling == UpSampling.convolutional:
                 self.upsample       = ConvolutionUpsample(inplanes  = n_filters_next,
                                                           outplanes = inplanes,
                                                           params    = params)
@@ -430,9 +433,9 @@ class UNetCore(nn.Module):
                                          params   = params)
 
             # Residual connection operation:
-            if params.connections == "sum":
+            if params.connections == Connection.sum:
                 self.connection = SumConnection()
-            elif params.connections == "concat":
+            elif params.connections == Connection.concat:
                 self.connection = ConcatConnection(inplanes=inplanes, params=params)
             else:
                 self.connection = NoConnection()

@@ -23,6 +23,8 @@ network_dir = os.path.dirname(os.path.abspath(__file__))
 network_dir = os.path.dirname(network_dir)
 sys.path.insert(0,network_dir)
 
+from src.config import Config
+from src.config.mode import ModeKind
 
 class exec(object):
 
@@ -34,19 +36,18 @@ class exec(object):
 
         # Create the output directory if needed:
         if rank == 0:
-            outpath = pathlib.Path(self.args.run.output_dir)
+            outpath = pathlib.Path(self.args.output_dir)
             outpath.mkdir(exist_ok=True, parents=True)
 
         self.configure_logger(rank)
 
         self.validate_arguments()
 
-
-        if config.mode.name == "train":
+        if config.mode.name == ModeKind.train:
             self.train()
-        if config.mode.name == "iotest":
+        if config.mode.name == ModeKind.iotest:
             self.iotest()
-        if config.mode.name == "inference":
+        if config.mode.name == ModeKind.inference:
             self.inference()
 
 
@@ -74,7 +75,7 @@ class exec(object):
             logger.addHandler(handler)
 
             # Add a file handler too:
-            log_file = self.args.run.output_dir + "/process.log"
+            log_file = self.args.output_dir + "/process.log"
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(formatter)
             file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
@@ -231,13 +232,17 @@ class exec(object):
 
     def validate_arguments(self):
 
+        from src.config.data import DataFormatKind
+
         logger = logging.getLogger()
 
         if self.args.framework.name == "torch":
             # In torch, only option is channels first:
-            if self.args.data.data_format == "channels_last":
+            if self.args.data.data_format == DataFormatKind.channels_last:
                 logger.warning("Torch requires channels_first, switching automatically")
-                self.args.data.data_format = "channels_first"
+                self.args.data.data_format = DataFormatKind.channels_first
+
+        self.args.network.data_format = self.args.data.data_format
 
 
 

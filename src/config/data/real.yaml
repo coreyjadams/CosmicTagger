@@ -1,6 +1,0 @@
-synthetic: False
-file: cosmic_tagging_train.h5
-aux_file: cosmic_tagging_test.h5
-data_directory: /grand/projects/datascience/cadams/datasets/SBND/
-data_format: channels_last
-downsample: 1
