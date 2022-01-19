@@ -1,21 +1,10 @@
+
+
 defaults:
-- network: polaris
-- framework: torch
-- mode: train
-- data: real
-data:
+  - base_config
+  - override network: polaris
+  - override framework: torch
+  - _self_
+
+data: 
   downsample: 0
-run:
-  distributed: true
-  iterations: 500
-  compute_mode: GPU
-  aux_minibatch_size: ${run.minibatch_size}
-  aux_iterations: 10
-  id: ???
-  precision: float32
-  profile: false
-  output_dir: output/${framework.name}/${network.name}/${run.id}/
-  minibatch_size: 2
-mode:
-  optimizer:
-    loss_balance_scheme: focal

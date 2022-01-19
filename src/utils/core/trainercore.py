@@ -42,10 +42,10 @@ class trainercore(object):
             sparse = False
 
         self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
-            mode        = args.mode.name,
+            mode        = args.mode.name.name,
             distributed = args.run.distributed,
             downsample  = args.data.downsample,
-            dataformat  = args.data.data_format,
+            dataformat  = args.data.data_format.name,
             synthetic   = args.data.synthetic,
             sparse      = sparse )
 

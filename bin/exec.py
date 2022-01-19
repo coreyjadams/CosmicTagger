@@ -206,6 +206,8 @@ class exec(object):
                     )
                 substr += s + self.dictionary_to_str(in_dict[key], indentation=indentation+2)
             else:
+                if hasattr(in_dict[key], "name"): attr = in_dict[key].name
+                else: attr = in_dict[key]
                 s = '{none:{fill1}{align1}{width1}}{message:{fill2}{align2}{width2}}: {attr}\n'.format(
                    none= "",
                    fill1=" ",
@@ -215,7 +217,7 @@ class exec(object):
                    fill2='.',
                    align2='<',
                    width2=30-indentation,
-                   attr = in_dict[key],
+                   attr = attr,
                 )
                 substr += s
         return substr
@@ -248,6 +250,8 @@ class exec(object):
 
 @hydra.main(config_path="../src/config", config_name="config")
 def main(cfg : OmegaConf) -> None:
+
+    print(cfg)
 
     s = exec(cfg)
 

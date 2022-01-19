@@ -1,5 +1,5 @@
 defaults:
-  - _self_
   - base_config
+  - _self_
 
-output_dir: output/${framework.name}/${network.name}/${run.id}/
+# output_dir: output/${framework.name}/${network.name}/${run.id}/
