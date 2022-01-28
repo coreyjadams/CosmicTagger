@@ -1,6 +1,6 @@
 import os
 import sys
-import time
+import time, datetime
 from collections import OrderedDict
 
 import numpy
@@ -111,12 +111,18 @@ class distributed_trainer(torch_trainer):
             # It will want the master address too, which we'll broadcast:
             if rank == 0:
                 master_addr = socket.gethostname()
+                sock = socket.socket()
+                sock.bind(('',0))
+                master_port  = sock.getsockname()[1]
+                master_port  = 2345
             else:
                 master_addr = None
-
+                master_port = None
+            logger.info(f"DDP Using master IP {master_addr}")
             master_addr = MPI.COMM_WORLD.bcast(master_addr, root=0)
+            master_port = MPI.COMM_WORLD.bcast(master_port, root=0)
             os.environ["MASTER_ADDR"] = master_addr
-            os.environ["MASTER_PORT"] = str(2345)
+            os.environ["MASTER_PORT"] = str(master_port)
 
             # What backend?  nccl on GPU, gloo on CPU
             if self.args.run.compute_mode == "XPU":
@@ -125,8 +131,16 @@ class distributed_trainer(torch_trainer):
             elif self.args.run.compute_mode == "GPU": backend = 'nccl'
             elif self.args.run.compute_mode == "CPU": backend = 'gloo'
 
+            # init_method = 'file:///home/cadams/ddp_init/ddp_init.txt'
+            init_method = 'env://'
+
             torch.distributed.init_process_group(
-                backend=backend, init_method='env://')
+                backend     = backend, 
+                init_method = init_method,
+                world_size  = size,
+                rank        = rank,
+                timeout     = datetime.timedelta(seconds=120)
+            )
 
 
     def save_model(self):
