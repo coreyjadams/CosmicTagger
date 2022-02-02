@@ -128,7 +128,7 @@ class larcv_fetcher(object):
                 name      = name+"data",
                 MaxVoxels = 50000,
                 Augment   = False,
-                Channels  = "[0,1,2]"
+                Channels  = [0,1,2]
             )
 
             # Bring in the labels:
@@ -138,10 +138,9 @@ class larcv_fetcher(object):
                 name      = name+"label",
                 MaxVoxels = 50000,
                 Augment   = False,
-                Channels  = "[0,1,2]"
+                Channels  = [0,1,2]
             )
 
-            print(cb.print_config())
 
             # Build up the data_keys:
             data_keys = {
