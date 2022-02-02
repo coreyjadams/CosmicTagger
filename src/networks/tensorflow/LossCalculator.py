@@ -12,8 +12,8 @@ class LossCalculator(object):
         object.__init__(self)
 
 
-        if balance_type not in ["focal", "light", "even", "none"] and balance_type is not None:
-            raise Exception("Unsupported loss balancing recieved: ", balance_type)
+        # if balance_type not in ["focal", "light", "even", "none"] and balance_type is not None:
+        #     raise Exception("Unsupported loss balancing recieved: ", balance_type)
 
         self.balance_type = balance_type
         self.channels_dim = channels_dim

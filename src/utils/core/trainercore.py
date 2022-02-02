@@ -18,7 +18,7 @@ import pathlib
 import logging
 logger = logging.getLogger("cosmictagger")
 
-from src.config.data import DataFormatKind
+from src.config import DataFormatKind, ModeKind
 
 class trainercore(object):
     '''
@@ -54,6 +54,9 @@ class trainercore(object):
 
 
 
+    def is_training(self):
+        return self.args.mode.name == ModeKind.train
+
     def initialize(self, io_only=True):
         self._initialize_io(color=0)
 
@@ -72,7 +75,7 @@ class trainercore(object):
         if not self.args.data.synthetic and not f.exists():
             raise Exception(f"Can not continue with file {f} - does not exist.")
         if not self.args.data.synthetic and not aux_f.exists():
-            if self.args.mode.name == "train":
+            if self.is_training():
                 logger.warning("WARNING: Aux file does not exist.  Setting to None for training")
                 self.args.data.aux_file = None
             else:
@@ -90,11 +93,11 @@ class trainercore(object):
             "train", f, self.args.run.minibatch_size, color)
 
         if aux_f is not None:
-            if self.args.mode.name == "train":
+            if self.is_training():
                 # Fetching data for on the fly testing:
                 self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
                     "aux", aux_f, self.args.run.minibatch_size, color)
-            elif self.args.mode == "inference":
+            elif self.args.mode == ModeKind.inference:
                 self._aux_data_size = self.larcv_fetcher.prepare_writer(
                     input_file = f, output_file = str(aux_f))
 
@@ -265,14 +268,14 @@ class trainercore(object):
         # Run iterations
         for self._iteration in range(self.args.run.iterations):
             iteration_start = time.time()
-            if self.args.mode.name == "train" and self._iteration >= self.args.run.iterations:
+            if self.is_training() and self._iteration >= self.args.run.iterations:
 
                 logger.info('Finished training (iteration %d)' % self._iteration)
                 self.checkpoint()
                 break
 
 
-            if self.args.mode.name == "train":
+            if self.is_training():
                 self.val_step()
                 self.train_step()
                 self.checkpoint()
@@ -297,7 +300,7 @@ class trainercore(object):
             total_images_per_batch = self.args.run.minibatch_size
 
 
-        if self.args.mode.name == "inference":
+        if self.args.mode.name == ModeKind.inference:
             self.inference_report()
 
         logger.info(f"Total time to batch_process: {end - start:.4f}")

@@ -45,6 +45,7 @@ try:
 except:
     from tensorboardX import SummaryWriter
 
+from src.config import ComputeMode, Precision, ConvMode, ModeKind
 
 class torch_trainer(trainercore):
     '''
@@ -59,13 +60,14 @@ class torch_trainer(trainercore):
 
 
     def init_network(self):
+        from src.config import ConvMode
 
         if self.args.network.conv_mode == ConvMode.conv_2D and not self.args.framework.sparse:
             from src.networks.torch.uresnet2D import UResNet
             self._net = UResNet(self.args.network)
 
         else:
-            if self.args.framework.sparse and self.args.mode.name != "iotest":
+            if self.args.framework.sparse and self.args.mode.name != ModeKind.iotest:
                 from src.networks.torch.sparseuresnet3D import UResNet3D
             else:
                 from src.networks.torch.uresnet3D       import UResNet3D
@@ -75,13 +77,13 @@ class torch_trainer(trainercore):
 
 
 
-        if self.args.mode.name == "train":
+        if self.is_training():
             self._net.train(True)
 
 
 
         self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
-        if self.args.mode.name == "train":
+        if is_training():
             self._log_keys.append("loss")
 
     def initialize(self, io_only=False):
@@ -91,7 +93,7 @@ class torch_trainer(trainercore):
         if io_only:
             return
 
-        if self.args.mode.name == "train":
+        if is_training():
             self.build_lr_schedule()
 
         with self.default_device_context():
@@ -104,7 +106,7 @@ class torch_trainer(trainercore):
 
             self.print_network_info()
 
-            if self.args.mode.name == "train":
+            if is_training():
                 self.init_optimizer()
 
             self.init_saver()
@@ -114,30 +116,30 @@ class torch_trainer(trainercore):
             self.restore_model()
 
             # If using half precision on the model, convert it now:
-            if self.args.run.precision == "bfloat16":
+            if self.args.run.precision == Precision.bfloat16:
                 self._net = self._net.bfloat16()
 
 
-            if self.args.mode.name == "train":
+            if is_training():
                 self.loss_calculator = LossCalculator.LossCalculator(self.args.mode.optimizer.loss_balance_scheme)
 
 
             # For half precision, we disable gradient accumulation.  This is to allow
             # dynamic loss scaling
-            if self.args.run.precision == "mixed":
-                if self.args.mode.name == "train" and  self.args.mode.optimizer.gradient_accumulation > 1:
+            if self.args.run.precision == Precision.mixed:
+                if is_training() and  self.args.mode.optimizer.gradient_accumulation > 1:
                     raise Exception("Can not accumulate gradients in half precision.")
 
             # self.trace_module()
 
-            if self.args.mode.name == "inference":
+            if self.args.mode.name == ModeKind.inference:
                 self.inference_metrics = {}
                 self.inference_metrics['n'] = 0
 
 
     def trace_module(self):
 
-        if self.args.run.precision == "mixed":
+        if self.args.run.precision == Precision.mixed:
             logger.warning("Tracing not available with mixed precision, sorry")
             return
 
@@ -146,7 +148,7 @@ class torch_trainer(trainercore):
         example_inputs = self.to_torch(minibatch_data)
         # Run a forward pass of the model on the input image:
 
-        if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+        if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
             with torch.cuda.amp.autocast():
                 self._net = torch.jit.trace_module(self._net, {"forward" : example_inputs['image']} )
         else:
@@ -195,7 +197,7 @@ class torch_trainer(trainercore):
 
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
-        if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+        if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
             self.scaler = torch.cuda.amp.GradScaler()
 
     def init_saver(self):
@@ -207,9 +209,9 @@ class torch_trainer(trainercore):
 
         self._saver = SummaryWriter(dir + "/train/")
 
-        if hasattr(self, "_aux_data_size") and self.args.mode.name == "train":
+        if hasattr(self, "_aux_data_size") and is_training():
             self._aux_saver = SummaryWriter(dir + "/test/")
-        elif hasattr(self, "_aux_data_size") and not self.args.mode.name == "train":
+        elif hasattr(self, "_aux_data_size") and not is_training():
             self._aux_saver = SummaryWriter(dir + "/val/")
         else:
             self._aux_saver = None
@@ -266,14 +268,14 @@ class torch_trainer(trainercore):
         state['state_dict'] = new_state_dict
 
         self._net.load_state_dict(state['state_dict'])
-        if self.args.mode.name == "train":
+        if is_training():
             self._opt.load_state_dict(state['optimizer'])
             self.lr_scheduler.load_state_dict(state['scheduler'])
 
         self._global_step = state['global_step']
 
         # If using GPUs, move the model to GPU:
-        if self.args.run.compute_mode == "GPU" and self.args.mode.name == "train":
+        if self.args.run.compute_mode == ComputeMode.GPU and is_training():
             for state in self._opt.state.values():
                 for k, v in state.items():
                     if torch.is_tensor(v):
@@ -501,7 +503,7 @@ class torch_trainer(trainercore):
 
 
             # try to get the learning rate
-            if self.args.mode.name == "train":
+            if is_training():
                 self._saver.add_scalar("learning_rate", self._opt.state_dict()['param_groups'][0]['lr'], self._global_step)
             return
 
@@ -580,9 +582,9 @@ class torch_trainer(trainercore):
 
     def default_device_context(self):
 
-        if self.args.run.compute_mode == "GPU":
+        if self.args.run.compute_mode == ComputeMode.GPU:
             return torch.cuda.device(0)
-        elif self.args.run.compute_mode == "XPU":
+        elif self.args.run.compute_mode == ComputeMode.XPU:
             # return contextlib.nullcontext
             try:
                 return ipex.xpu.device("xpu:0")
@@ -593,21 +595,21 @@ class torch_trainer(trainercore):
             except:
                 pass
             return contextlib.nullcontext
-        elif self.args.run.compute_mode == "DPCPP":
-            return contextlib.nullcontext
-            # device = torch.device("dpcpp")
+        # elif self.args.run.compute_mode == "DPCPP":
+        #     return contextlib.nullcontext
+        #     # device = torch.device("dpcpp")
         else:
             return contextlib.nullcontext
             # device = torch.device('cpu')
 
     def default_device(self):
 
-        if self.args.run.compute_mode == "GPU":
+        if self.args.run.compute_mode == ComputeMode.GPU:
             return torch.device("cuda")
-        elif self.args.run.compute_mode == "XPU":
+        elif self.args.run.compute_mode == ComputeMode.XPU:
             device = torch.device("xpu")
-        elif self.args.run.compute_mode == "DPCPP":
-            device = torch.device("dpcpp")
+        # elif self.args.run.compute_mode == "DPCPP":
+        #     device = torch.device("dpcpp")
         else:
             device = torch.device('cpu')
         return device
@@ -639,10 +641,10 @@ class torch_trainer(trainercore):
                 minibatch_data['image'] = minibatch_data['image'].float()
                 minibatch_data['label'] = minibatch_data['label']
 
-            if self.args.run.precision == "bfloat16":
+            if self.args.run.precision == Precision.bfloat16:
                 minibatch_data["image"] = minibatch_data["image"].bfloat16()
 
-            if self.args.run.precision == "mixed":
+            if self.args.run.precision == Precision.mixed:
                 minibatch_data["image"] = minibatch_data["image"].half()
 
 
@@ -712,7 +714,7 @@ class torch_trainer(trainercore):
                 with autograd_prof as prof:
 
                     # if mixed precision, and cuda, use autocast:
-                    if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+                    if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                         with torch.cuda.amp.autocast():
                             logits_image, labels_image = self.forward_pass(minibatch_data)
                     else:
@@ -726,7 +728,7 @@ class torch_trainer(trainercore):
 
 
                     # Compute the gradients for the network parameters:
-                    if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+                    if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                         self.scaler.scale(loss).backward()
                     else:
                         loss.backward()
@@ -768,7 +770,7 @@ class torch_trainer(trainercore):
 
 
             # Apply the parameter update:
-            if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+            if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                 self.scaler.step(self._opt)
                 self.scaler.update()
             else:
@@ -803,7 +805,7 @@ class torch_trainer(trainercore):
     def val_step(self):
 
         # First, validation only occurs on training:
-        if not self.args.mode.name == "train": return
+        if not is_training(): return
 
         if self.args.data.synthetic: return
         # Second, validation can not occur without a validation dataloader.
@@ -822,7 +824,7 @@ class torch_trainer(trainercore):
             io_end_time = datetime.datetime.now()
 
             # if mixed precision, and cuda, use autocast:
-            if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+            if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                 with torch.cuda.amp.autocast():
                     logits_image, labels_image = self.forward_pass(minibatch_data)
             else:
@@ -850,7 +852,7 @@ class torch_trainer(trainercore):
     def ana_step(self):
 
         # First, validation only occurs on training:
-        if self.args.mode.name == "train": return
+        if is_training(): return
 
         # perform a validation step
 
@@ -871,92 +873,12 @@ class torch_trainer(trainercore):
 
         # Run a forward pass of the model on the input image:
         with torch.no_grad():
-            if self.args.run.precision == "mixed" and self.args.run.compute_mode == "GPU":
+            if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                 with torch.cuda.amp.autocast():
                     logits_image, labels_image = self.forward_pass(minibatch_data)
             else:
                 logits_image, labels_image = self.forward_pass(minibatch_data)
 
-
-        # # If there is an aux file, for ana that means an output file.
-        # # Call the larcv interface to write data:
-        # if self._aux_saver is not None:
-        #
-        #     # For writing output, we get the non-zero locations from the labels.
-        #     # Then, we get the neutrino and cosmic scores for those locations in the logits,
-        #     # After applying a softmax.
-        #
-        #     # To do this, we just need to capture the following objects:
-        #     # - the dense shape
-        #     # - the location of all non-zero pixels, flattened
-        #     # - the softmax score for all non-zero pixels, flattened.
-        #
-        #
-        #     # Compute the softmax over all images in the batch:
-        #     softmax = [ torch.nn.Softmax(dim=1)(l) for l in logits_image]
-        #
-        #
-        #     for b_index in range(self.args.run.minibatch_size):
-        #
-        #         # We want to make sure we get the locations from the non-zero input pixels:
-        #         images = torch.chunk(minibatch_data['image'][b_index,:,:,:], chunks=3, dim=0)
-        #
-        #         # Reshape images here to remove the empty index:
-        #         images = [image.squeeze() for image in images]
-        #
-        #         # Locations is a list of a tuple of coordinates for each image
-        #         locations = [torch.where(image != 0) for image in images]
-        #
-        #         # Shape is a list of shapes for each image:
-        #         shape = [ image.shape for image in images ]
-        #
-        #         # Batch softmax is a list of the softmax tensor on each plane
-        #         batch_softmax = [s[b_index] for s in softmax]
-        #
-        #         # To get the neutrino scores, we want to access the softmax at the neutrino index
-        #         # And slice over just the non-zero locations:
-        #         neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]]
-        #             for plane, b in enumerate(batch_softmax) ]
-        #         cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]]
-        #             for plane, b in enumerate(batch_softmax) ]
-        #
-        #         # Lastly, flatten the locations.
-        #         # For the unraveled index, there is a complication that torch stores images
-        #         # with [H,W] and larcv3 stores images with [W, H] by default.
-        #         # To solve this -
-        #         # Reverse the shape:
-        #         shape = [ s[::-1] for s in shape ]
-        #         # Go through the locations in reverse:
-        #         locations = [ numpy.ravel_multi_index(l[::-1], s) for l, s in zip(locations, shape) ]
-        #
-        #
-        #
-        #         # Now, package up the objects to send to the file writer:
-        #         neutrino_data = []
-        #         cosmic_data = []
-        #         for plane in range(3):
-        #             neutrino_data.append({
-        #                 'values' : neutrino_scores[plane].numpy(),
-        #                 'index'  : locations[plane],
-        #                 'shape'  : shape[plane]
-        #             })
-        #             cosmic_data.append({
-        #                 'values' : cosmic_scores[plane].numpy(),
-        #                 'index'  : locations[plane],
-        #                 'shape'  : shape[plane]
-        #             })
-        #
-        #
-        #         # Write the data through the writer:
-        #         self.larcv_fetcher.write(cosmic_data,
-        #             producer = "cosmic_prediction",
-        #             entry    = minibatch_data['entries'][b_index],
-        #             event_id = minibatch_data['event_ids'][b_index])
-        #
-        #         self.larcv_fetcher.write(neutrino_data,
-        #             producer = "neutrino_prediction",
-        #             entry    = minibatch_data['entries'][b_index],
-        #             event_id = minibatch_data['event_ids'][b_index])
 
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:

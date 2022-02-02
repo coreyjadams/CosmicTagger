@@ -35,7 +35,7 @@ except:
 
 from .trainer import torch_trainer
 
-from src.config.framework import DistributedMode
+from src.config.framework import DistributedMode, ComputeMode
 
 
 class distributed_trainer(torch_trainer):
@@ -126,11 +126,11 @@ class distributed_trainer(torch_trainer):
             os.environ["MASTER_PORT"] = str(master_port)
 
             # What backend?  nccl on GPU, gloo on CPU
-            if self.args.run.compute_mode == "XPU":
+            if self.args.run.compute_mode == ComputeMode.XPU:
                 import torch_ccl
                 backend = 'ccl'
-            elif self.args.run.compute_mode == "GPU": backend = 'nccl'
-            elif self.args.run.compute_mode == "CPU": backend = 'gloo'
+            elif self.args.run.compute_mode == ComputeMode.GPU: backend = 'nccl'
+            elif self.args.run.compute_mode == ComputeMode.CPU: backend = 'gloo'
 
             # init_method = 'file:///home/cadams/ddp_init/ddp_init.txt'
             init_method = 'env://'
@@ -152,20 +152,20 @@ class distributed_trainer(torch_trainer):
     def default_device_context(self):
 
         # Convert the input data to torch tensors
-        if self.args.run.compute_mode == "GPU":
+        if self.args.run.compute_mode == ComputeMode.GPU:
             if 'CUDA_VISIBLE_DEVICES' in os.environ:
                 # Then, it's manually set, use it
                 return torch.cuda.device(0)
             else:
                 return torch.cuda.device(int(self._local_rank))
-        elif self.args.run.compute_mode == "XPU":
+        elif self.args.run.compute_mode == ComputeMode.XPU:
             # return contextlib.nullcontext
             try:
                 return ipex.xpu.device(int(self._local_rank))
             except:
                 pass
             return contextlib.nullcontext
-        elif self.args.run.compute_mode == "DPCPP":
+        elif self.args.run.compute_mode == ComputeMode.DPCPP:
             return contextlib.nullcontext
             # device = torch.device("dpcpp")
         else:
@@ -174,15 +174,15 @@ class distributed_trainer(torch_trainer):
 
     def default_device(self):
 
-        if self.args.run.compute_mode == "GPU":
+        if self.args.run.compute_mode == ComputeMode.GPU:
             if 'CUDA_VISIBLE_DEVICES' in os.environ:
                 # Then, it's manually set, use it
                 return torch.device("cuda:0")
             else:
                 return torch.device(f"cuda:{self._local_rank}")
-        elif self.args.run.compute_mode == "XPU":
+        elif self.args.run.compute_mode == ComputeMode.XPU:
             device = torch.device(f"xpu:{self._local_rank}")
-        elif self.args.run.compute_mode == "DPCPP":
+        elif self.args.run.compute_mode == ComputeMode.DPCPP:
             device = torch.device("dpcpp")
         else:
             device = torch.device('cpu')
@@ -241,7 +241,7 @@ class distributed_trainer(torch_trainer):
             hvd.broadcast_optimizer_state(self._opt, root_rank = 0)
 
             # Horovod doesn't actually move the optimizer onto a GPU:
-            if self.args.run.compute_mode == "GPU":
+            if self.args.run.compute_mode == ComputeMode.GPU:
                 for state in self._opt.state.values():
                     for k, v in state.items():
                         if torch.is_tensor(v):
@@ -255,10 +255,10 @@ class distributed_trainer(torch_trainer):
         elif self.args.framework.distributed_mode == DistributedMode.DDP:
 
             devices = None
-            if self.args.run.compute_mode == "XPU":
+            if self.args.run.compute_mode == ComputeMode.XPU:
                 devices = ["xpu:{}".format(self._local_rank)]
                 self._net.to(devices[0])
-            elif self.args.run.compute_mode == "GPU":
+            elif self.args.run.compute_mode == ComputeMode.GPU:
                 self._net.cuda()
 
             # print(self._net.parameters)
@@ -268,11 +268,11 @@ class distributed_trainer(torch_trainer):
             # print(self._net.parameters)
 
             self._global_step = MPI.COMM_WORLD.bcast(self._global_step, root=0)
-            if self.args.mode.name == "train":
+            if self.is_training():
                 state_dict = MPI.COMM_WORLD.bcast(self.lr_scheduler.state_dict(), root=0)
 
         # Load the state dict:
-        if self.args.mode.name == "train":
+        if self.is_training():
             self.lr_scheduler.load_state_dict(state_dict)
 
     def summary(self, metrics, saver=""):

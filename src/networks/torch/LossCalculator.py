@@ -1,7 +1,7 @@
 import torch
 import numpy
 
-from src.config.mode import LossBalanceScheme
+from src.config import LossBalanceScheme
 
 class LossCalculator(torch.nn.Module):
 
