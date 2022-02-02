@@ -3,7 +3,7 @@ from tensorflow.python.keras.utils import losses_utils
 
 import numpy
 
-from src.config.mode import LossBalanceScheme
+from src.config import LossBalanceScheme
 
 class LossCalculator(object):
 

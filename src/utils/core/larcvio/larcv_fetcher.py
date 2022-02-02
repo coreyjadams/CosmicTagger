@@ -2,13 +2,14 @@ import os
 import time
 
 from . import data_transforms
-from . import io_templates
 import tempfile
 
 import numpy
 
 import logging
 logger = logging.getLogger("cosmictagger")
+
+from larcv.config_builder import ConfigBuilder
 
 class larcv_fetcher(object):
 
@@ -76,6 +77,7 @@ class larcv_fetcher(object):
 
     def prepare_cosmic_sample(self, name, input_file, batch_size, color=None):
 
+
         if self.synthetic:
             self.synthetic_index = 0
             self.batch_size = batch_size
@@ -87,35 +89,82 @@ class larcv_fetcher(object):
             return 1e6
 
         else:
-            config = io_templates.dataset_io(
-                    input_file  = input_file,
-                    name        = name,
-                    compression = self.downsample)
+
+            # First, verify the files exist:
+            if not os.path.exists(input_file):
+                raise Exception(f"File {input_file} not found")
 
 
-            # Generate a named temp file:
-            main_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-            main_file.write(config.generate_config_str())
+            cb = ConfigBuilder()
+            cb.set_parameter([str(input_file)], "InputFiles")
+            cb.set_parameter(5, "ProcessDriver", "IOManager", "Verbosity")
+            cb.set_parameter(5, "ProcessDriver", "Verbosity")
+            cb.set_parameter(5, "Verbosity")
 
-            main_file.close()
+            # Do we need to do compression?
+            if self.downsample != 0:
+                cb.add_preprocess(
+                    datatype = "sparse2d",
+                    Product  = "sparse2d",
+                    producer = "sbndwire",
+                    process  = "Downsample",
+                    OutputProducer = "sbndwire",
+                    Downsample = 2**self.downsample,
+                    PoolType = 1 # average,
+                )
+                cb.add_preprocess(
+                    datatype = "sparse2d",
+                    Product  = "sparse2d",
+                    producer = "sbnd_cosmicseg",
+                    process  = "Downsample",
+                    OutputProducer = "sbnd_cosmicseg",
+                    Downsample = 2**self.downsample,
+                    PoolType = 2 # max
+                )
+            # Bring in the wires:
+            cb.add_batch_filler(
+                datatype  = "sparse2d",
+                producer  = "sbndwire",
+                name      = name+"data",
+                MaxVoxels = 50000,
+                Augment   = False,
+                Channels  = "[0,1,2]"
+            )
 
+            # Bring in the labels:
+            cb.add_batch_filler(
+                datatype  = "sparse2d",
+                producer  = "sbnd_cosmicseg",
+                name      = name+"label",
+                MaxVoxels = 50000,
+                Augment   = False,
+                Channels  = "[0,1,2]"
+            )
 
-            io_config = {
-                'filler_name' : config._name,
-                'filler_cfg'  : main_file.name,
-                'verbosity'   : 5,
-                'make_copy'   : False
-            }
+            print(cb.print_config())
 
             # Build up the data_keys:
             data_keys = {
                 'image': name + 'data',
                 'label': name + 'label'
                 }
-            self._larcv_interface.last_entry = 11
 
+
+            # Prepare data managers:
+            io_config = {
+                'filler_name' : name,
+                'filler_cfg'  : cb.get_config(),
+                'verbosity'   : 5,
+                'make_copy'   : False
+            }
+
+            print("preparing")
             self._larcv_interface.prepare_manager(name, io_config, batch_size, data_keys, color=color)
-            os.unlink(main_file.name)
+            print("Done")
+
+
+            if self.mode == "inference":
+                self._larcv_interface.set_next_index(name, start_index)
 
             # This queues up the next data
             # self._larcv_interface.prepare_next(name)
@@ -126,6 +175,14 @@ class larcv_fetcher(object):
             logger.info("Larcv file prepared")
 
             return self._larcv_interface.size(name)
+
+
+
+
+
+
+
+
 
 
     def fetch_next_batch(self, name, force_pop=False):

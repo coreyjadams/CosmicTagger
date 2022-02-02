@@ -28,7 +28,7 @@ integer_format = tf.int64
 import logging
 logger = logging.getLogger()
 
-from config import Precision 
+from src.config import Precision 
 
 class tf_trainer(trainercore):
     '''
