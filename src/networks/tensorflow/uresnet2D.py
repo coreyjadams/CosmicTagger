@@ -1,7 +1,6 @@
 import tensorflow as tf
 
-from src.config.data    import DataFormatKind
-from src.config.network import Connection, GrowthRate, DownSampling, UpSampling
+from src.config import Connection, GrowthRate, DownSampling, UpSampling
 
 
 class Block(tf.keras.layers.Layer):
@@ -15,8 +14,7 @@ class Block(tf.keras.layers.Layer):
 
         tf.keras.layers.Layer.__init__(self)
 
-
-        if params.data_format == DataFormatKind.channels_first:
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -64,7 +62,7 @@ class ConvolutionUpsample(tf.keras.layers.Layer):
         tf.keras.layers.Layer.__init__(self)
 
 
-        if params.data_format == DataFormatKind.channels_first:
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -188,7 +186,7 @@ class DeepestBlock(tf.keras.layers.Layer):
 
 
 
-        if params.data_format == DataFormatKind.channels_first:
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -279,7 +277,7 @@ class ConcatConnection(tf.keras.layers.Layer):
         tf.keras.layers.Layer.__init__(self)
 
 
-        if params.data_format == DataFormatKind.channels_first:
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -491,7 +489,7 @@ class UResNet(tf.keras.models.Model):
 
         tf.keras.models.Model.__init__(self)
 
-        if params.data_format == DataFormatKind.channels_first:
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1

@@ -14,7 +14,7 @@ class Block3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if params.data_format == DataFormatKind.channels_first:
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -63,7 +63,7 @@ class ConvolutionUpsample3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if params.data_format == DataFormatKind.channels_first:
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -118,7 +118,7 @@ class ResidualBlock3D(tf.keras.models.Model):
             batch_norm {bool} -- [description] (default: {True})
             activation {[type]} -- [description] (default: {tf.nn.relu})
             name {str} -- [description] (default: {""})
-            data_format {str} -- [description] (default: {DataFormatKind.channels_first})
+            data_format {str} -- [description] (default: {"channels_first"})
             use_bias {bool} -- [description] (default: {False})
             regularize {number} -- [description] (default: {0.0})
             bottleneck {number} -- [description] (default: {64})
@@ -204,7 +204,7 @@ class DeepestBlock3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if params.data_format == DataFormatKind.channels_first:
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -220,7 +220,7 @@ class DeepestBlock3D(tf.keras.models.Model):
 
         self.blocks = BlockSeries3D(
             out_filters = n_filters_bottleneck,
-            kernel      = [1, 
+            kernel      = [1,
                            params.filter_size_deepest,
                            params.filter_size_deepest],
             n_blocks    = params.blocks_deepest_layer,
@@ -273,7 +273,7 @@ class ConcatConnection3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if params.data_format == DataFormatKind.channels_first:
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -387,12 +387,12 @@ class UNetCore3D(tf.keras.models.Model):
                     n_filters   = out_filters,
                     params      = params)
 
-            
+
             if params.growth_rate == GrowthRate.multiplicative:
                 n_filters_next = 2 * out_filters
             else:
                 n_filters_next = out_filters + params.n_initial_filters
-                
+
             # Submodule:
             self.main_module    = UNetCore3D(
                 depth           = depth-1,
@@ -491,7 +491,7 @@ class UResNet3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if params.data_format == DataFormatKind.channels_first:
+        if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -504,9 +504,9 @@ class UResNet3D(tf.keras.models.Model):
 
         n_filters = params.n_initial_filters
         # Next, build out the convolution steps:
-        
+
         n_filters_next = 2 * params.n_initial_filters
-            
+
         self.net_core = UNetCore3D(
             depth                    = params.network_depth,
             in_filters               = params.n_initial_filters,
@@ -546,7 +546,7 @@ class UResNet3D(tf.keras.models.Model):
         # Reshape this tensor into the right shape to apply this multiplane network.
         x = input_tensor
 
-        # If data_format is DataFormatKind.channels_first, we expect the shape to be:
+        # If data_format is "channels_first", we expect the shape to be:
         # [B, 3, H, W] and we need it to be:
         # [B, 1, 3, H, W]
 
@@ -590,7 +590,7 @@ class UResNet3D(tf.keras.models.Model):
         # So, we need to do some splitting here:
         # print(x.get_shape())
 
-        # If data_format is DataFormatKind.channels_first, we expect the shape to be:
+        # If data_format is "channels_first", we expect the shape to be:
         # [B, 3, 3, H, W] and we need it to be:
         # 3 tensors of [B, 3, 1, H, W] which gets reshaped to [B, 3, H, W]
 

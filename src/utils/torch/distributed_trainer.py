@@ -15,7 +15,7 @@ try:
     import torch_ipex as ipex
 except:
     pass
-    
+
 import logging
 logger = logging.getLogger()
 logger.propogate = False
@@ -35,7 +35,7 @@ except:
 
 from .trainer import torch_trainer
 
-from src.config.framework import DistributedMode, ComputeMode
+from src.config import DistributedMode, ComputeMode
 
 
 class distributed_trainer(torch_trainer):
@@ -136,7 +136,7 @@ class distributed_trainer(torch_trainer):
             init_method = 'env://'
 
             torch.distributed.init_process_group(
-                backend     = backend, 
+                backend     = backend,
                 init_method = init_method,
                 world_size  = size,
                 rank        = rank,

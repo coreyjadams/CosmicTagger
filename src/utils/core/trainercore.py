@@ -49,9 +49,9 @@ class trainercore(object):
             synthetic   = args.data.synthetic,
             sparse      = sparse )
 
+
         if args.data.data_format == DataFormatKind.channels_first: self._channels_dim = 1
         if args.data.data_format == DataFormatKind.channels_last : self._channels_dim = -1
-
 
 
     def is_training(self):

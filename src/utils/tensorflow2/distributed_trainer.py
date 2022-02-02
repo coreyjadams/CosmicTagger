@@ -19,7 +19,7 @@ hvd.init()
 
 # from horovod.tensorflow.keras import DistributedOptimizer
 
-
+from src.config import ModeKind, ComputeMode
 
 
 class distributed_trainer(tf_trainer):
@@ -35,7 +35,7 @@ class distributed_trainer(tf_trainer):
         # search for parameters relevant for distributed computing here
         tf_trainer.__init__(self, args)
 
-        if self.args.run.compute_mode == "GPU":
+        if self.args.run.compute_mode == ComputeMode.GPU:
             gpus = tf.config.list_physical_devices('GPU')
             tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
 
@@ -100,9 +100,9 @@ class distributed_trainer(tf_trainer):
         # If the model was restored, this is correct.  If not,
         # This syncs everythign up.
         # print(bcast)
-
-        hvd.broadcast_variables(self._net.variables, root_rank=0)
-        if self.args.mode.name == "train":
+        if self.args.mode.name != ModeKind.iotest:
+            hvd.broadcast_variables(self._net.variables, root_rank=0)
+        if self.is_training():
             hvd.broadcast_variables(self._opt.variables(), root_rank=0)
 
     def restore_model(self):

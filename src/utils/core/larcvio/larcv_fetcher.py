@@ -157,9 +157,7 @@ class larcv_fetcher(object):
                 'make_copy'   : False
             }
 
-            print("preparing")
             self._larcv_interface.prepare_manager(name, io_config, batch_size, data_keys, color=color)
-            print("Done")
 
 
             if self.mode == "inference":

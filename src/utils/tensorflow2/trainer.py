@@ -28,7 +28,7 @@ integer_format = tf.int64
 import logging
 logger = logging.getLogger()
 
-from src.config import Precision 
+from src.config import Precision, ComputeMode, ModeKind
 
 class tf_trainer(trainercore):
     '''
@@ -52,12 +52,12 @@ class tf_trainer(trainercore):
         start = time.time()
 
         # Here, if using mixed precision, set a global policy:
-        if self.args.run.precision == "mixed":
+        if self.args.run.precision == Precision.mixed:
             from tensorflow.keras import mixed_precision
             self.policy = mixed_precision.Policy('mixed_float16')
             mixed_precision.set_global_policy(self.policy)
 
-        if self.args.run.precision == "bfloat16":
+        if self.args.run.precision == Precision.bfloat16:
             from tensorflow.keras import mixed_precision
             self.policy = mixed_precision.Policy('mixed_bfloat16')
             mixed_precision.set_global_policy(self.policy)
@@ -74,7 +74,7 @@ class tf_trainer(trainercore):
         # Add the dataformat for the network construction:
 
 
-        from src.config.networks import conv_mode
+        from src.config import ConvMode
         # Build the network object, forward pass only:
         if self.args.network.conv_mode == ConvMode.conv_2D:
             self._net = uresnet2D.UResNet(self.args.network)
@@ -83,7 +83,7 @@ class tf_trainer(trainercore):
 
         self._net.trainable = True
 
-        # self._logits = self._net(self._input['image'], training=self.args.mode.name == "train")
+        # self._logits = self._net(self._input['image'], training=self.is_training())
 
         # # If channels first, need to permute the logits:
         # if self._channels_dim == 1:
@@ -101,7 +101,7 @@ class tf_trainer(trainercore):
 
 
         self.acc_calculator  = AccuracyCalculator.AccuracyCalculator()
-        if self.args.mode.name == "train":
+        if self.is_training():
             self.loss_calculator = LossCalculator.LossCalculator(
                 self.args.mode.optimizer.loss_balance_scheme, self._channels_dim)
 
@@ -134,10 +134,10 @@ class tf_trainer(trainercore):
 
         self._config = tf.compat.v1.ConfigProto()
 
-        if self.args.run.compute_mode == "CPU":
+        if self.args.run.compute_mode == ComputeMode.CPU:
             self._config.inter_op_parallelism_threads = self.args.framework.inter_op_parallelism_threads
             self._config.intra_op_parallelism_threads = self.args.framework.intra_op_parallelism_threads
-        elif self.args.run.compute_mode == "GPU":
+        elif self.args.run.compute_mode == ComputeMode.GPU:
             gpus = tf.config.experimental.list_physical_devices('GPU')
 
 
@@ -190,7 +190,7 @@ class tf_trainer(trainercore):
         if io_only:
             return
 
-        if self.args.mode.name == "train":
+        if self.is_training():
             self.build_lr_schedule()
 
         start = time.time()
@@ -213,7 +213,7 @@ class tf_trainer(trainercore):
         # Try to restore a model?
         restored = self.restore_model()
 
-        if self.args.mode.name == "inference":
+        if self.args.mode.name == ModeKind.inference:
             self.inference_metrics = {}
             self.inference_metrics['n'] = 0
 
@@ -241,7 +241,7 @@ class tf_trainer(trainercore):
 
 
         # First, check if the weights path is set:
-        if self.args.mode.name == "inference" and self.args.mode.weights_location != "":
+        if self.args.mode.name == ModeKind.inference and self.args.mode.weights_location != "":
             file_path = check_inference_weights_path(self.args.mode.weights_location)
         else:
             file_path = self.get_checkpoint_dir()
@@ -273,7 +273,7 @@ class tf_trainer(trainercore):
     def get_checkpoint_dir(self):
 
         # Find the base path of the log directory
-        file_path= self.args.run.output_dir + "/checkpoints/"
+        file_path= self.args.output_dir + "/checkpoints/"
 
         return file_path
 
@@ -317,15 +317,15 @@ class tf_trainer(trainercore):
         # self._saver = tf.compat.v1.train.Saver()
 
         # Create a file writer for training metrics:
-        self._main_writer = tf.summary.create_file_writer(self.args.run.output_dir +  "/train/")
+        self._main_writer = tf.summary.create_file_writer(self.args.output_dir +  "/train/")
 
         # Additionally, in training mode if there is aux data use it for validation:
         if hasattr(self, "_aux_data_size"):
-            self._val_writer = tf.summary.create_file_writer(self.args.run.output_dir + "/test/")
+            self._val_writer = tf.summary.create_file_writer(self.args.output_dir + "/test/")
 
 
     def init_optimizer(self):
-        from src.config.mode import OptimizerKind
+        from src.config import OptimizerKind
 
         self.init_learning_rate()
 
@@ -337,7 +337,7 @@ class tf_trainer(trainercore):
             # default is Adam:
             self._opt = tf.keras.optimizers.Adam(self._learning_rate)
 
-        if self.args.run.precision == "mixed":
+        if self.args.run.precision == Precision.mixed:
             self._opt = tf.keras.mixed_precision.LossScaleOptimizer(self._opt)
 
 
@@ -391,9 +391,9 @@ class tf_trainer(trainercore):
 
     # @tf.function
     def cast_input(self, image, label):
-        if self.args.run.precision == "float32" or self.args.run.precision == "mixed":
+        if self.args.run.precision == Precision.float32 or self.args.run.precision == Precision.mixed:
             input_dtype = tf.float32
-        elif self.args.run.precision == "bfloat16":
+        elif self.args.run.precision == Precision.bfloat16:
             input_dtype = tf.bfloat16
 
         image = tf.convert_to_tensor(image, dtype=input_dtype)
@@ -404,19 +404,19 @@ class tf_trainer(trainercore):
     @tf.function
     def forward_pass(self, image, label, training):
 
-        if self.args.run.precision == "bfloat16":
+        if self.args.run.precision == Precision.bfloat16:
             image = tf.cast(image, tf.bfloat16)
 
         # Run a forward pass of the model on the input image:
         logits = self._net(image, training=training)
 
-        if self.args.run.precision == "mixed":
+
+        if self.args.run.precision == Precision.mixed:
             logits = [ tf.cast(l, tf.float32) for l in logits ]
-        # elif self.args.run.precision == "bfloat16":
+        # elif self.args.run.precision == Precision.bfloat16:
         #     logits = [ tf.cast(l, tf.bfloat16) for l in logits ]
 
         prediction = tf.argmax(logits, axis=self._channels_dim, output_type = tf.dtypes.int32)
-
         labels = tf.split(label, num_or_size_splits=3, axis=self._channels_dim)
         labels = [tf.squeeze(li, axis=self._channels_dim) for li in labels]
 
@@ -498,16 +498,16 @@ class tf_trainer(trainercore):
 
             # The loss function has to be in full precision or automatic mixed.
             # bfloat16 is not supported
-            if self.args.run.precision == "bfloat16":
+            if self.args.run.precision == Precision.bfloat16:
                 logits = [ tf.cast(l, dtype=tf.float32) for  l in logits ]
 
             loss = self.loss_calculator(labels, logits)
         #
-            if self.args.run.precision == "mixed":
+            if self.args.run.precision == Precision.mixed:
                 scaled_loss = self._opt.get_scaled_loss(loss)
 
         # Do the backwards pass for gradients:
-        if self.args.run.precision == "mixed":
+        if self.args.run.precision == Precision.mixed:
             scaled_gradients = self.get_gradients(scaled_loss, self.tape, self._net.trainable_weights)
             gradients = self._opt.get_unscaled_gradients(scaled_gradients)
         else:
@@ -537,7 +537,7 @@ class tf_trainer(trainercore):
 
             if self.args.run.profile:
                 if not self.args.distributed or self._rank == 0:
-                    tf.profiler.experimental.start(self.args.run.output_dir + "/train/")
+                    tf.profiler.experimental.start(self.args.output_dir + "/train/")
             logits, labels, prediction, loss, internal_gradients = self.gradient_step(image, label)
 
             if self.args.run.profile:
@@ -646,7 +646,7 @@ class tf_trainer(trainercore):
 
         if self.args.run.profile:
             if not self.args.distributed or self._rank == 0:
-                tf.profiler.experimental.start(self.args.run.output_dir + "/train/")
+                tf.profiler.experimental.start(self.args.output_dir + "/train/")
         # Get the logits:
         labels, logits, prediction = self.forward_pass(image, label, training=False)
 
@@ -832,7 +832,7 @@ class tf_trainer(trainercore):
             if inputs[key] is not None:
                 fd.update({self._input[key] : inputs[key]})
 
-        if self.args.mode.name == "train":
+        if self.is_training():
             fd.update({self._learning_rate : self.lr_calculator(self.current_step())})
         return fd
 

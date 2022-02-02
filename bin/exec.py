@@ -144,7 +144,7 @@ class exec(object):
             for env in self.args.framework.environment_variables.keys():
                 os.environ[env] = self.args.framework.environment_variables[env]
 
-        if self.args.mode.name == "iotest":
+        if self.args.mode.name == ModeKind.iotest:
             from src.utils.core import trainercore
             self.trainer = trainercore.trainercore(self.args)
             return
@@ -244,7 +244,7 @@ class exec(object):
                 logger.warning("Torch requires channels_first, switching automatically")
                 self.args.data.data_format = DataFormatKind.channels_first
 
-        self.args.network.data_format = self.args.data.data_format
+        self.args.network.data_format = self.args.data.data_format.name
 
 
 

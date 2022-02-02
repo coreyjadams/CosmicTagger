@@ -83,7 +83,7 @@ class torch_trainer(trainercore):
 
 
         self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
-        if is_training():
+        if self.is_training():
             self._log_keys.append("loss")
 
     def initialize(self, io_only=False):
@@ -93,7 +93,7 @@ class torch_trainer(trainercore):
         if io_only:
             return
 
-        if is_training():
+        if self.is_training():
             self.build_lr_schedule()
 
         with self.default_device_context():
@@ -106,7 +106,7 @@ class torch_trainer(trainercore):
 
             self.print_network_info()
 
-            if is_training():
+            if self.is_training():
                 self.init_optimizer()
 
             self.init_saver()
@@ -120,14 +120,14 @@ class torch_trainer(trainercore):
                 self._net = self._net.bfloat16()
 
 
-            if is_training():
+            if self.is_training():
                 self.loss_calculator = LossCalculator.LossCalculator(self.args.mode.optimizer.loss_balance_scheme)
 
 
             # For half precision, we disable gradient accumulation.  This is to allow
             # dynamic loss scaling
             if self.args.run.precision == Precision.mixed:
-                if is_training() and  self.args.mode.optimizer.gradient_accumulation > 1:
+                if self.is_training() and  self.args.mode.optimizer.gradient_accumulation > 1:
                     raise Exception("Can not accumulate gradients in half precision.")
 
             # self.trace_module()
@@ -181,7 +181,7 @@ class torch_trainer(trainercore):
 
     def init_optimizer(self):
 
-        from src.config.mode import OptimizerKind
+        from src.config import OptimizerKind
 
         # get the initial learning_rate:
         initial_learning_rate = self.lr_calculator(self._global_step)
@@ -204,14 +204,14 @@ class torch_trainer(trainercore):
 
 
         # This sets up the summary saver:
-        dir = self.args.run.output_dir
+        dir = self.args.output_dir
 
 
         self._saver = SummaryWriter(dir + "/train/")
 
-        if hasattr(self, "_aux_data_size") and is_training():
+        if hasattr(self, "_aux_data_size") and self.is_training():
             self._aux_saver = SummaryWriter(dir + "/test/")
-        elif hasattr(self, "_aux_data_size") and not is_training():
+        elif hasattr(self, "_aux_data_size") and not self.is_training():
             self._aux_saver = SummaryWriter(dir + "/val/")
         else:
             self._aux_saver = None
@@ -268,14 +268,14 @@ class torch_trainer(trainercore):
         state['state_dict'] = new_state_dict
 
         self._net.load_state_dict(state['state_dict'])
-        if is_training():
+        if self.is_training():
             self._opt.load_state_dict(state['optimizer'])
             self.lr_scheduler.load_state_dict(state['scheduler'])
 
         self._global_step = state['global_step']
 
         # If using GPUs, move the model to GPU:
-        if self.args.run.compute_mode == ComputeMode.GPU and is_training():
+        if self.args.run.compute_mode == ComputeMode.GPU and self.is_training():
             for state in self._opt.state.values():
                 for k, v in state.items():
                     if torch.is_tensor(v):
@@ -346,7 +346,7 @@ class torch_trainer(trainercore):
         '''
 
         # Find the base path of the log directory
-        file_path= self.args.run.output_dir  + "/checkpoints/"
+        file_path= self.args.output_dir  + "/checkpoints/"
 
 
         name = file_path + 'model-{}.ckpt'.format(self._global_step)
@@ -503,7 +503,7 @@ class torch_trainer(trainercore):
 
 
             # try to get the learning rate
-            if is_training():
+            if self.is_training():
                 self._saver.add_scalar("learning_rate", self._opt.state_dict()['param_groups'][0]['lr'], self._global_step)
             return
 
@@ -805,7 +805,7 @@ class torch_trainer(trainercore):
     def val_step(self):
 
         # First, validation only occurs on training:
-        if not is_training(): return
+        if not self.is_training(): return
 
         if self.args.data.synthetic: return
         # Second, validation can not occur without a validation dataloader.
@@ -852,7 +852,7 @@ class torch_trainer(trainercore):
     def ana_step(self):
 
         # First, validation only occurs on training:
-        if is_training(): return
+        if self.is_training(): return
 
         # perform a validation step
 

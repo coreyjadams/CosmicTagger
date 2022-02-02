@@ -14,6 +14,7 @@ class ComputeMode(Enum):
     CPU   = 0
     GPU   = 1
     DPCPP = 2
+    XPU   = 3
 
 class Precision(Enum):
     float32  = 0
@@ -76,8 +77,3 @@ class Config:
 
 
 cs.store(name="base_config", node=Config)
-
-
-
-
-
