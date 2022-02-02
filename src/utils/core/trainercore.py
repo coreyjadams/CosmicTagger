@@ -18,6 +18,8 @@ import pathlib
 import logging
 logger = logging.getLogger("cosmictagger")
 
+from src.config.data import DataFormatKind
+
 class trainercore(object):
     '''
     This class is the core interface for training.  Each function to
@@ -40,15 +42,15 @@ class trainercore(object):
             sparse = False
 
         self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
-            mode        = args.mode.name,
+            mode        = args.mode.name.name,
             distributed = args.run.distributed,
             downsample  = args.data.downsample,
-            dataformat  = args.data.data_format,
+            dataformat  = args.data.data_format.name,
             synthetic   = args.data.synthetic,
             sparse      = sparse )
 
-        if args.data.data_format == "channels_first": self._channels_dim = 1
-        if args.data.data_format == "channels_last" : self._channels_dim = -1
+        if args.data.data_format == DataFormatKind.channels_first: self._channels_dim = 1
+        if args.data.data_format == DataFormatKind.channels_last : self._channels_dim = -1
 
 
 

@@ -1,6 +1,6 @@
 from enum import Enum
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
@@ -11,20 +11,17 @@ class DistributedMode(Enum):
 @dataclass
 class Framework:
     name: str = MISSING
-    environment_variables: {} 
 
 @dataclass
 class Tensorflow(Framework):
-    name: str = "tensorflow"
-    checkpoint_iteration: int =  500
-    inter_op_parallelism_threads: int = 2
-    intra_op_parallelism_threads: int = 24
-    environment_variables: {"TF_XLA_FLAGS" : "--tf_xla_auto_jit=2"}
+    name:                           str  = "tensorflow"
+    inter_op_parallelism_threads:   int  = 2
+    intra_op_parallelism_threads:   int  = 24
 
 @dataclass
 class Torch(Framework):
-    name: str = "torch"
-    sparse: bool = False
+    name:             str             = "torch"
+    sparse:           bool            = False
     distributed_mode: DistributedMode = DistributedMode.DDP
 
 cs = ConfigStore.instance()

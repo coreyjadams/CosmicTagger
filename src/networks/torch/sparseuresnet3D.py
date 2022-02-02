@@ -20,6 +20,7 @@ and merges across the downsampled layers either before or after the convolutions
 It then performs an upsampling step, and returns the upsampled tensor.
 
 '''
+from src.config.network import Connection, GrowthRate, DownSampling, UpSampling
 
 class SparseBlock(nn.Module):
 
@@ -312,9 +313,9 @@ class SparseUNetCore(nn.Module):
                                                params   = params)
 
             # Residual connection operation:
-            if params.connections == "sum":
+            if params.connections == Connection.sum:
                 self.connection = SumConnection()
-            elif params.connections == "concat":
+            elif params.connections == Connection.concat:
                 self.connection = ConcatConnection(inplanes=inplanes, params=params)
             else:
                 self.connection = NoConnection()
@@ -378,7 +379,7 @@ class UResNet3D(torch.nn.Module):
             bias        = params.bias)
 
 
-        if params.growth_rate == "multiplicative":
+        if params.growth_rate == GrowthRate.multiplicative:
             n_filters_next = 2 * params.n_initial_filters
         else:
             n_filters_next = params.n_initial_filters + params.n_initial_filters

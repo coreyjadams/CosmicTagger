@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+from src.config.network import Connection, GrowthRate, DownSampling, UpSampling
 
 class Block3D(tf.keras.models.Model):
 
@@ -13,7 +14,7 @@ class Block3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if params.data_format == "channels_first":
+        if params.data_format == DataFormatKind.channels_first:
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -62,7 +63,7 @@ class ConvolutionUpsample3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if params.data_format == "channels_first":
+        if params.data_format == DataFormatKind.channels_first:
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -117,7 +118,7 @@ class ResidualBlock3D(tf.keras.models.Model):
             batch_norm {bool} -- [description] (default: {True})
             activation {[type]} -- [description] (default: {tf.nn.relu})
             name {str} -- [description] (default: {""})
-            data_format {str} -- [description] (default: {"channels_first"})
+            data_format {str} -- [description] (default: {DataFormatKind.channels_first})
             use_bias {bool} -- [description] (default: {False})
             regularize {number} -- [description] (default: {0.0})
             bottleneck {number} -- [description] (default: {64})
@@ -203,7 +204,7 @@ class DeepestBlock3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if params.data_format == "channels_first":
+        if params.data_format == DataFormatKind.channels_first:
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -272,7 +273,7 @@ class ConcatConnection3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if params.data_format == "channels_first":
+        if params.data_format == DataFormatKind.channels_first:
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -345,15 +346,15 @@ class UNetCore3D(tf.keras.models.Model):
         params ):        # Wha
 
 
-        if params.upsampling not in ["convolutional", "interpolation"]:
-            raise Exception ("Must use either convolutional or interpolation upsampling")
+        # if params.upsampling not in ["convolutional", "interpolation"]:
+        #     raise Exception ("Must use either convolutional or interpolation upsampling")
 
-        if params.downsampling not in ["convolutional", "max_pooling"]:
-            raise Exception ("Must use either convolutional or max pooling downsampling")
+        # if params.downsampling not in ["convolutional", "max_pooling"]:
+        #     raise Exception ("Must use either convolutional or max pooling downsampling")
 
-        if params.connections not in ['sum', 'concat', 'none']:
-            if params.connections != None:
-                raise Exception("Don't know what to do with connection type ", params.connections)
+        # if params.connections not in ['sum', 'concat', 'none']:
+        #     if params.connections != None:
+        #         raise Exception("Don't know what to do with connection type ", params.connections)
 
 
         tf.keras.models.Model.__init__(self)
@@ -375,7 +376,7 @@ class UNetCore3D(tf.keras.models.Model):
 
             # Down sampling operation
             # This does change the number of filters from above down-pass blocks
-            if params.downsampling == "convolutional":
+            if params.downsampling == DownSampling.convolutional:
                 self.downsample = Block3D(
                     n_filters   = out_filters,
                     strides     = (1,2,2),
@@ -387,7 +388,7 @@ class UNetCore3D(tf.keras.models.Model):
                     params      = params)
 
             
-            if params.growth_rate == "multiplicative":
+            if params.growth_rate == GrowthRate.multiplicative:
                 n_filters_next = 2 * out_filters
             else:
                 n_filters_next = out_filters + params.n_initial_filters
@@ -403,7 +404,7 @@ class UNetCore3D(tf.keras.models.Model):
             # Upsampling operation:
             # Upsampling will decrease the number of fitlers:
 
-            if params.upsampling == "convolutional":
+            if params.upsampling == UpSampling.convolutional:
                 self.upsample = ConvolutionUpsample3D(
                     n_filters   = in_filters,
                     kernel      = (1,2,2),
@@ -428,9 +429,9 @@ class UNetCore3D(tf.keras.models.Model):
 
 
             # Residual connection operation:
-            if params.connections == "sum":
+            if params.connections == Connection.sum:
                 self.connection = SumConnection3D()
-            elif params.connections == "concat":
+            elif params.connections == Connection.concat:
                 # Concat applies a concat + bottleneck
                 self.connection = ConcatConnection3D(
                     in_filters  = in_filters,
@@ -490,7 +491,7 @@ class UResNet3D(tf.keras.models.Model):
         tf.keras.models.Model.__init__(self)
 
 
-        if params.data_format == "channels_first":
+        if params.data_format == DataFormatKind.channels_first:
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -545,7 +546,7 @@ class UResNet3D(tf.keras.models.Model):
         # Reshape this tensor into the right shape to apply this multiplane network.
         x = input_tensor
 
-        # If data_format is 'channels_first', we expect the shape to be:
+        # If data_format is DataFormatKind.channels_first, we expect the shape to be:
         # [B, 3, H, W] and we need it to be:
         # [B, 1, 3, H, W]
 
@@ -589,7 +590,7 @@ class UResNet3D(tf.keras.models.Model):
         # So, we need to do some splitting here:
         # print(x.get_shape())
 
-        # If data_format is 'channels_first', we expect the shape to be:
+        # If data_format is DataFormatKind.channels_first, we expect the shape to be:
         # [B, 3, 3, H, W] and we need it to be:
         # 3 tensors of [B, 3, 1, H, W] which gets reshaped to [B, 3, H, W]
 

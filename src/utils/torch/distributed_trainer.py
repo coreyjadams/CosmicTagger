@@ -35,6 +35,7 @@ except:
 
 from .trainer import torch_trainer
 
+from src.config.framework import DistributedMode
 
 
 class distributed_trainer(torch_trainer):
@@ -54,7 +55,7 @@ class distributed_trainer(torch_trainer):
 
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
 
-        if self.args.framework.distributed_mode == "horovod":
+        if self.args.framework.distributed_mode == DistributedMode.horovod:
             # if self.args.run.compute_mode == "GPU":
                 # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
             self._rank            = hvd.rank()
@@ -195,7 +196,7 @@ class distributed_trainer(torch_trainer):
 
         torch_trainer.init_optimizer(self)
 
-        if self.args.framework.distributed_mode == "horovod":
+        if self.args.framework.distributed_mode == DistributedMode.horovod:
             self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
 
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
@@ -228,7 +229,7 @@ class distributed_trainer(torch_trainer):
 
 
         # Broadcast from rank 0 to sync weights
-        if self.args.framework.distributed_mode == "horovod":
+        if self.args.framework.distributed_mode == DistributedMode.horovod:
 
             # Broadcast the global step:
             self._global_step = hvd.broadcast_object(self._global_step, root_rank = 0)
@@ -251,7 +252,7 @@ class distributed_trainer(torch_trainer):
             # Broadcast the LR Schedule state:
             state_dict = hvd.broadcast_object(self.lr_scheduler.state_dict(), root_rank = 0)
 
-        elif self.args.framework.distributed_mode == "DDP":
+        elif self.args.framework.distributed_mode == DistributedMode.DDP:
 
             devices = None
             if self.args.run.compute_mode == "XPU":
@@ -291,10 +292,10 @@ class distributed_trainer(torch_trainer):
         # Then, it performs an all reduce on all metrics:
         metrics = torch_trainer._compute_metrics(self, logits, minibatch_data, loss)
 
-        if self.args.framework.distributed_mode == "horovod":
+        if self.args.framework.distributed_mode == DistributedMode.horovod:
             for key in metrics:
                 metrics[key] = hvd.allreduce(metrics[key], name = key)
-        elif self.args.framework.distributed_mode == "DDP":
+        elif self.args.framework.distributed_mode == DistributedMode.DDP:
             for key in metrics:
                 torch.distributed.all_reduce(metrics[key])
                 metrics[key] /= self._size

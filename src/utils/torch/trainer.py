@@ -60,7 +60,7 @@ class torch_trainer(trainercore):
 
     def init_network(self):
 
-        if self.args.network.conv_mode == "2D" and not self.args.framework.sparse:
+        if self.args.network.conv_mode == ConvMode.conv_2D and not self.args.framework.sparse:
             from src.networks.torch.uresnet2D import UResNet
             self._net = UResNet(self.args.network)
 
@@ -179,13 +179,15 @@ class torch_trainer(trainercore):
 
     def init_optimizer(self):
 
+        from src.config.mode import OptimizerKind
+
         # get the initial learning_rate:
         initial_learning_rate = self.lr_calculator(self._global_step)
 
 
         # IMPORTANT: the scheduler in torch is a multiplicative factor,
         # but I've written it as learning rate itself.  So set the LR to 1.0
-        if self.args.mode.optimizer.name == "rmsprop":
+        if self.args.mode.optimizer.name == OptimizerKind.rmsprop:
             self._opt = torch.optim.RMSprop(self._net.parameters(), 1.0, eps=1e-4)
         else:
             self._opt = torch.optim.Adam(self._net.parameters(), 1.0)

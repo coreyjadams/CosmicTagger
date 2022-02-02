@@ -1,6 +1,8 @@
 import torch
 import numpy
 
+from src.config.mode import LossBalanceScheme
+
 class LossCalculator(torch.nn.Module):
 
     def __init__(self, balance_type=None):
@@ -8,8 +10,8 @@ class LossCalculator(torch.nn.Module):
         torch.nn.Module.__init__(self)
 
 
-        if balance_type not in ["focal", "light", "even", "none"] and balance_type is not None:
-            raise Exception("Unsupported loss balancing recieved: ", balance_type)
+        # if balance_type not in ["focal", "light", "even", "none"] and balance_type is not None:
+        #     raise Exception("Unsupported loss balancing recieved: ", balance_type)
 
         self.balance_type = balance_type
 
@@ -45,9 +47,9 @@ class LossCalculator(torch.nn.Module):
         # labels and logits are by plane, loop over them:
         for i in [0,1,2]:
             plane_loss = self._criterion(input=logits[i].float(), target=labels[i])
-            if self.balance_type != "none":
+            if self.balance_type != LossBalanceScheme.none:
                 with torch.no_grad():
-                    if self.balance_type == "focal":
+                    if self.balance_type == LossBalanceScheme.focal:
                         # To compute the focal loss, we need to compute the one-hot labels and the
                         # softmax
                         softmax = torch.nn.functional.softmax(logits[i].float(), dim=1)
@@ -68,7 +70,7 @@ class LossCalculator(torch.nn.Module):
                         # scale_factor /= torch.mean(scale_factor)
                         # print("plane_loss.shape: ", plane_loss.shape)
 
-                    elif self.balance_type == "even":
+                    elif self.balance_type == LossBalanceScheme.even:
                         counts = self.label_counts(labels[i])
                         total_pixels = numpy.prod(labels[i].shape)
                         locs = torch.where(labels[i] != 0)
@@ -80,7 +82,7 @@ class LossCalculator(torch.nn.Module):
                         weights[labels[i] == 2 ] = class_weights[2]
                         pass
 
-                    elif self.balance_type == "light":
+                    elif self.balance_type == LossBalanceScheme.light:
 
                         total_pixels = numpy.prod(labels[i].shape)
                         per_pixel_weight = 1.

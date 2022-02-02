@@ -1,22 +1,12 @@
 defaults:
+  - base_config
+  - override network: scc21
+  - override framework: torch
   - _self_
-  - network: SCC_21
-  - framework: torch
-  - mode: train
-  - data: real
 data:
   downsample: 0
-run:
-  distributed: true
-  iterations: 500
-  compute_mode: GPU
-  aux_minibatch_size: ${run.minibatch_size}
-  aux_iterations: 10
-  id: ???
-  precision: float32
-  profile: false
-  output_dir: output/${framework.name}/${network.name}/${run.id}/
-  minibatch_size: 2
 mode:
   optimizer:
     loss_balance_scheme: light
+
+

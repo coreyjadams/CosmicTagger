@@ -1,5 +1,7 @@
 import tensorflow as tf
 
+from src.config.data    import DataFormatKind
+from src.config.network import Connection, GrowthRate, DownSampling, UpSampling
 
 
 class Block(tf.keras.layers.Layer):
@@ -14,7 +16,7 @@ class Block(tf.keras.layers.Layer):
         tf.keras.layers.Layer.__init__(self)
 
 
-        if params.data_format == "channels_first":
+        if params.data_format == DataFormatKind.channels_first:
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -62,7 +64,7 @@ class ConvolutionUpsample(tf.keras.layers.Layer):
         tf.keras.layers.Layer.__init__(self)
 
 
-        if params.data_format == "channels_first":
+        if params.data_format == DataFormatKind.channels_first:
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -186,7 +188,7 @@ class DeepestBlock(tf.keras.layers.Layer):
 
 
 
-        if params.data_format == "channels_first":
+        if params.data_format == DataFormatKind.channels_first:
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -277,7 +279,7 @@ class ConcatConnection(tf.keras.layers.Layer):
         tf.keras.layers.Layer.__init__(self)
 
 
-        if params.data_format == "channels_first":
+        if params.data_format == DataFormatKind.channels_first:
             self.channels_axis = 1
         else:
             self.channels_axis = -1
@@ -347,15 +349,15 @@ class UNetCore(tf.keras.models.Model):
         params ):        # Wha
 
 
-        if params.upsampling not in ["convolutional", "interpolation"]:
-            raise Exception ("Must use either convolutional or interpolation upsampling")
+        # if params.upsampling not in ["convolutional", "interpolation"]:
+        #     raise Exception ("Must use either convolutional or interpolation upsampling")
 
-        if params.downsampling not in ["convolutional", "max_pooling"]:
-            raise Exception ("Must use either convolutional or max pooling downsampling")
+        # if params.downsampling not in ["convolutional", "max_pooling"]:
+        #     raise Exception ("Must use either convolutional or max pooling downsampling")
 
-        if params.connections not in ['sum', 'concat', 'none']:
-            if params.connections != None:
-                raise Exception("Don't know what to do with connection type ", params.connections)
+        # if params.connections not in ['sum', 'concat', 'none']:
+        #     if params.connections != None:
+        #         raise Exception("Don't know what to do with connection type ", params.connections)
 
 
         tf.keras.models.Model.__init__(self)
@@ -376,7 +378,7 @@ class UNetCore(tf.keras.models.Model):
 
             # Down sampling operation
             # This does change the number of filters from above down-pass blocks
-            if params.downsampling == "convolutional":
+            if params.downsampling == DownSampling.convolutional:
                 self.downsample = Block(
                     n_filters   = out_filters,
                     strides     = (2,2),
@@ -387,7 +389,7 @@ class UNetCore(tf.keras.models.Model):
                     n_filters   = out_filters,
                     params      = params)
 
-            if params.growth_rate == "multiplicative":
+            if params.growth_rate == GrowthRate.multiplicative:
                 n_filters_next = 2 * out_filters
             else:
                 n_filters_next = out_filters + params.n_initial_filters
@@ -403,7 +405,7 @@ class UNetCore(tf.keras.models.Model):
             # Upsampling operation:
             # Upsampling will decrease the number of fitlers:
 
-            if params.upsampling == "convolutional":
+            if params.upsampling == UpSampling.convolutional:
                 self.upsample = ConvolutionUpsample(
                     n_filters   = in_filters,
                     kernel      = (2,2),
@@ -426,9 +428,9 @@ class UNetCore(tf.keras.models.Model):
 
 
             # Residual connection operation:
-            if params.connections == "sum":
+            if params.connections == Connection.sum:
                 self.connection = SumConnection()
-            elif params.connections == "concat":
+            elif params.connections == Connection.concat:
                 # Concat applies a concat + bottleneck
                 self.connection = ConcatConnection(
                     in_filters  = in_filters,
@@ -489,7 +491,7 @@ class UResNet(tf.keras.models.Model):
 
         tf.keras.models.Model.__init__(self)
 
-        if params.data_format == "channels_first":
+        if params.data_format == DataFormatKind.channels_first:
             self.channels_axis = 1
         else:
             self.channels_axis = -1
