@@ -5,8 +5,3 @@ defaults:
   - _self_
 data:
   downsample: 0
-mode:
-  optimizer:
-    loss_balance_scheme: light
-
-
