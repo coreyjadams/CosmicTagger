@@ -47,11 +47,13 @@ class distributed_trainer(tf_trainer):
         self._size            = hvd.size()
 
     def init_optimizer(self):
+
                 # with tf.variable_scope("hvd"):
 
         #     # In the distributed case, we may want a learning rate behavior:
         #     self._learning_rate = self.generate_learning_rate(self.args.learning_rate, self._global_step)
         tf_trainer.init_optimizer(self)
+        if self.args.mode.name != ModeKind.train: return
 
         # Wrap the optimizer it in horovod:
         # self._opt = hvd.DistributedOptimizer(self._opt)

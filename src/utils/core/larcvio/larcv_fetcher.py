@@ -9,7 +9,6 @@ import numpy
 import logging
 logger = logging.getLogger("cosmictagger")
 
-from larcv.config_builder import ConfigBuilder
 
 class larcv_fetcher(object):
 
@@ -95,6 +94,7 @@ class larcv_fetcher(object):
                 raise Exception(f"File {input_file} not found")
 
 
+            from larcv.config_builder import ConfigBuilder
             cb = ConfigBuilder()
             cb.set_parameter([str(input_file)], "InputFiles")
             cb.set_parameter(5, "ProcessDriver", "IOManager", "Verbosity")
@@ -159,9 +159,9 @@ class larcv_fetcher(object):
 
             self._larcv_interface.prepare_manager(name, io_config, batch_size, data_keys, color=color)
 
-
-            if self.mode == "inference":
-                self._larcv_interface.set_next_index(name, start_index)
+            #
+            # if self.mode == "inference":
+            #     self._larcv_interface.set_next_index(name, start_index)
 
             # This queues up the next data
             # self._larcv_interface.prepare_next(name)

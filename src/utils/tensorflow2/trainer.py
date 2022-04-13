@@ -246,11 +246,12 @@ class tf_trainer(trainercore):
         else:
             file_path = self.get_checkpoint_dir()
 
+        print(file_path)
 
 
         path = tf.train.latest_checkpoint(file_path)
 
-
+        print(path)
         if path is None:
             logger.info("No checkpoint found, starting from scratch")
             return False
@@ -325,6 +326,9 @@ class tf_trainer(trainercore):
 
 
     def init_optimizer(self):
+
+        if self.args.mode.name != ModeKind.train: return
+
         from src.config import OptimizerKind
 
         self.init_learning_rate()
