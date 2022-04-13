@@ -12,5 +12,7 @@ data:
 mode:
     no_summary_images: True
 
+run:
+    distributed: False
 
 

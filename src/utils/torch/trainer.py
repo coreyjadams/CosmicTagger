@@ -14,7 +14,7 @@ import numpy
 
 import torch
 try:
-    import torch_ipex as ipex
+    import ipex
 except:
     pass
 
@@ -582,6 +582,7 @@ class torch_trainer(trainercore):
 
     def default_device_context(self):
 
+
         if self.args.run.compute_mode == ComputeMode.GPU:
             return torch.cuda.device(0)
         elif self.args.run.compute_mode == ComputeMode.XPU:
@@ -594,12 +595,12 @@ class torch_trainer(trainercore):
                 return ipex.device("xpu:0")
             except:
                 pass
-            return contextlib.nullcontext
+            return contextlib.nullcontext()
         # elif self.args.run.compute_mode == "DPCPP":
-        #     return contextlib.nullcontext
+        #     return contextlib.nullcontext()
         #     # device = torch.device("dpcpp")
         else:
-            return contextlib.nullcontext
+            return contextlib.nullcontext()
             # device = torch.device('cpu')
 
     def default_device(self):

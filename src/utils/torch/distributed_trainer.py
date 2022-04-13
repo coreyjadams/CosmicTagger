@@ -98,8 +98,6 @@ class distributed_trainer(torch_trainer):
             size = MPI.COMM_WORLD.Get_size()
             rank = MPI.COMM_WORLD.Get_rank()
 
-            torch.cuda.set_device(int(local_rank))
-
 
             os.environ["RANK"] = str(rank)
             os.environ["WORLD_SIZE"] = str(size)
@@ -127,7 +125,7 @@ class distributed_trainer(torch_trainer):
 
             # What backend?  nccl on GPU, gloo on CPU
             if self.args.run.compute_mode == ComputeMode.XPU:
-                import torch_ccl
+                # import torch_ccl
                 backend = 'ccl'
             elif self.args.run.compute_mode == ComputeMode.GPU: backend = 'nccl'
             elif self.args.run.compute_mode == ComputeMode.CPU: backend = 'gloo'
