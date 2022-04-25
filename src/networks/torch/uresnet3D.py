@@ -17,11 +17,18 @@ and merges across the downsampled layers either before or after the convolutions
 It then performs an upsampling step, and returns the upsampled tensor.
 
 '''
-from src.config.network import Connection, GrowthRate, DownSampling, UpSampling, ConvMode
+from src.config.network import Connection, GrowthRate, DownSampling, UpSampling, ConvMode, Norm
 
 class Block3D(nn.Module):
 
-    def __init__(self, *, inplanes, outplanes, kernel = [3,3], padding=[1,1], n_planes=1, params):
+    def __init__(self, *, 
+            inplanes, 
+            outplanes, 
+            kernel = [3,3], 
+            padding=[1,1], 
+            n_planes=1, 
+            activation = nn.functional.leaky_relu,
+            params):
         nn.Module.__init__(self)
 
         # print("Receive outplanes ", outplanes)
@@ -45,12 +52,18 @@ class Block3D(nn.Module):
             padding      = padding,
             bias         = params.use_bias)
 
-        self.do_batch_norm = params.batch_norm
 
-        if params.batch_norm:
-            self.bn   = nn.BatchNorm3d(outplanes)
+        if params.normalization == Norm.batch:
+            self._do_normalization = True
+            self.norm = nn.BatchNorm3d(outplanes)
+        elif params.normalization == Norm.layer:
+            self._do_normalization = True
+            self.norm = nn.LayerNorm(outplanes)
+        else:
+            self._do_normalization = False
 
-        self.relu = nn.ReLU(inplace=True)
+
+        self.activation = torcnn.ReLU(inplace=True)
 
     def forward(self, x):
         out = self.conv(x)
@@ -59,6 +72,45 @@ class Block3D(nn.Module):
         out = self.relu(out)
         return out
 
+
+
+class ResidualBlock3D(nn.Module):
+
+    def __init__(self, *, inplanes, outplanes, n_planes=1, kernel=[3,3], padding=[1,1], params):
+        nn.Module.__init__(self)
+
+
+
+        self.convolution_1 = Block(
+            inplanes    = inplanes,
+            outplanes   = outplanes,
+            kernel      = kernel,
+            padding     = padding,
+            params      = params)
+
+        self.convolution_2 = Block(
+            inplanes    = inplanes,
+            outplanes   = outplanes,
+            kernel      = kernel,
+            padding     = padding,
+            activation  = torch.nn.Identity(),
+            params      = params)
+
+
+
+
+    def forward(self, x):
+        residual = x
+
+        out = self.convolution_1(x)
+
+        out = self.convolution_1(out)
+
+
+        out += residual
+        out = self.leaky_relu(out)
+
+        return out
 
 class ResidualBlock3D(nn.Module):
 

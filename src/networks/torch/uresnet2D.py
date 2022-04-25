@@ -19,12 +19,19 @@ It then performs an upsampling step, and returns the upsampled tensor.
 
 '''
 
-from src.config.network import Connection, GrowthRate, DownSampling, UpSampling
+from src.config.network import Connection, GrowthRate, DownSampling, UpSampling, Norm
 
 
 class Block(nn.Module):
 
-    def __init__(self, *, inplanes, outplanes, kernel = [3,3], padding=[1,1], params):
+    def __init__(self, *, 
+            inplanes, 
+            outplanes, 
+            kernel     = [3,3], 
+            strides    = [1,1],
+            padding    = [1,1], 
+            activation = nn.functional.leaky_relu,
+            params):
         nn.Module.__init__(self)
 
 
@@ -32,22 +39,29 @@ class Block(nn.Module):
             in_channels  = inplanes,
             out_channels = outplanes,
             kernel_size  = kernel,
-            stride       = [1, 1],
+            stride       = strides,
             padding      = padding,
             bias         = params.bias)
 
-        self.do_batch_norm = params.batch_norm
 
-        if self.do_batch_norm:
-            self.bn   = nn.BatchNorm2d(outplanes)
+        if params.normalization == Norm.batch:
+            self._do_normalization = True
+            self.norm = nn.BatchNorm2d(outplanes)
+        elif params.normalization == Norm.layer:
+            raise Exception("Layer norm not well supported in torch vision models - use normalization=batch")
+            self._do_normalization = True
+            self.norm = nn.LayerNorm((outplanes, 1, 1))
+        else:
+            self._do_normalization = False
 
-        self.relu = nn.LeakyReLU(inplace=True)
+
+        self.activation = activation
 
     def forward(self, x):
         out = self.conv(x)
-        if self.do_batch_norm:
-            out = self.bn(out)
-        out = self.relu(out)
+        if self._do_normalization:
+            out = self.norm(out)
+        out = self.activation(out)
         return out
 
 
@@ -57,85 +71,70 @@ class ResidualBlock(nn.Module):
         nn.Module.__init__(self)
 
 
-        self.conv1 = nn.Conv2d(
-            in_channels  = inplanes,
-            out_channels = outplanes,
-            kernel_size  = tuple(kernel),
-            stride       = (1, 1),
-            padding      = tuple(padding),
-            bias         = params.bias)
+
+        self.convolution_1 = Block(
+            inplanes    = inplanes,
+            outplanes   = outplanes,
+            kernel      = kernel,
+            padding     = padding,
+            params      = params)
+
+        self.convolution_2 = Block(
+            inplanes    = inplanes,
+            outplanes   = outplanes,
+            kernel      = kernel,
+            padding     = padding,
+            activation  = torch.nn.Identity(),
+            params      = params)
 
 
-        self.do_batch_norm = params.batch_norm
-        if self.do_batch_norm:
-            self.bn1 = nn.BatchNorm2d(outplanes)
 
-        self.relu = nn.LeakyReLU(inplace=True)
-
-
-        self.conv2 = nn.Conv2d(
-            in_channels  = outplanes,
-            out_channels = outplanes,
-            kernel_size  = tuple(kernel),
-            stride       = [1, 1],
-            padding      = tuple(padding),
-            bias         = params.bias)
-
-        if self.do_batch_norm:
-            self.bn2 = nn.BatchNorm2d(outplanes)
 
     def forward(self, x):
         residual = x
 
-        out = self.conv1(x)
+        out = self.convolution_1(x)
 
-        if self.do_batch_norm:
-            out = self.bn1(out)
-        out = self.relu(out)
+        out = self.convolution_1(out)
 
-        out = self.conv2(out)
-
-
-        if self.do_batch_norm:
-            out = self.bn2(out)
 
         out += residual
-        out = self.relu(out)
+        out = self.leaky_relu(out)
 
         return out
 
 
-class ConvolutionDownsample(nn.Module):
+# class ConvolutionDownsample(nn.Module):
 
-    def __init__(self, *, inplanes, outplanes, params):
+#     def __init__(self, *, inplanes, outplanes, params):
 
-        nn.Module.__init__(self)
+#         nn.Module.__init__(self)
 
-        self.conv = nn.Conv2d(
-            in_channels  = inplanes,
-            out_channels = outplanes,
-            kernel_size  = [2, 2],
-            stride       = [2, 2],
-            padding      = [0, 0],
-            bias         = params.bias)
+#         self.conv = nn.Conv2d(
+#             in_channels  = inplanes,
+#             out_channels = outplanes,
+#             kernel_size  = [2, 2],
+#             stride       = [2, 2],
+#             padding      = [0, 0],
+#             bias         = params.bias)
 
-        self.do_batch_norm = params.batch_norm
-        if self.do_batch_norm:
-            self.bn   = nn.BatchNorm2d(outplanes)
-        self.relu = nn.LeakyReLU(inplace=True)
+#         self._do_normalization = params.batch_norm
+#         if self._do_normalization:
+#             self.bn   = nn.BatchNorm2d(outplanes)
+#         self.relu = nn.LeakyReLU(inplace=True)
 
-    def forward(self, x):
-        out = self.conv(x)
+#     def forward(self, x):
+#         out = self.conv(x)
 
-        if self.do_batch_norm:
-            out = self.bn(out)
-        out = self.relu(out)
-        return out
+#         if self._do_normalization:
+#             out = self.bn(out)
+#         out = self.relu(out)
+#         return out
 
 
 class ConvolutionUpsample(nn.Module):
 
-    def __init__(self, *, inplanes, outplanes, params):
+    def __init__(self, *, inplanes, outplanes, activation=nn.functional.leaky_relu, params):
 
         nn.Module.__init__(self)
 
@@ -147,18 +146,27 @@ class ConvolutionUpsample(nn.Module):
             padding      = [0, 0],
             bias         = params.bias)
 
-        self.do_batch_norm = params.batch_norm
-        if self.do_batch_norm:
-            self.bn   = nn.BatchNorm2d(outplanes)
-        self.relu = nn.LeakyReLU(inplace=True)
+
+        if params.normalization == Norm.batch:
+            self._do_normalization = True
+            self.norm = nn.BatchNorm2d(outplanes)
+        elif params.normalization == Norm.layer:
+            raise Exception("Layer norm not well supported in torch vision models - use normalization=batch")
+            self._do_normalization = True
+            self.norm = nn.LayerNorm((outplanes, 1, 1))
+        else:
+            self._do_normalization = False
+
+
+        self.activation = activation
 
     def forward(self, x):
 
         out = self.conv(x)
 
-        if self.do_batch_norm:
-            out = self.bn(out)
-        out = self.relu(out)
+        if self._do_normalization:
+            out = self.norm(out)
+        out = self.activation(out)
         return out
 
 
@@ -401,9 +409,16 @@ class UNetCore(nn.Module):
             # Down sampling operation:
             # This does change the number of filters from above down-pass blocks
             if params.downsampling == DownSampling.convolutional:
-                self.downsample = ConvolutionDownsample(inplanes    = inplanes,
-                                                        outplanes   = n_filters_next,
-                                                        params      = params)
+                self.downsample = Block(
+                    inplanes    = inplanes,
+                    outplanes   = n_filters_next,
+                    strides     = (2,2),
+                    padding     = (0,0),
+                    kernel      = (2,2),
+                    params      = params)
+                # self.downsample = ConvolutionDownsample(inplanes    = inplanes,
+                #                                         outplanes   = n_filters_next,
+                #                                         params      = params)
             else:
                 self.downsample = MaxPooling(inplanes    = inplanes,
                                              outplanes   = n_filters_next,

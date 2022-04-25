@@ -28,12 +28,16 @@ class ConvMode(Enum):
     conv_2D = 0
     conv_3D = 1
 
+class Norm(Enum):
+    none  = 0
+    batch = 1
+    layer = 2
 
 @dataclass 
 class Network:
     name:                 str          = "default"
     bias:                 bool         = True
-    batch_norm:           bool         = True
+    normalization:        Norm         = Norm.batch
     n_initial_filters:    int          = 16
     blocks_per_layer:     int          = 2
     blocks_deepest_layer: int          = 5
@@ -54,7 +58,7 @@ class Network:
 @dataclass
 class UResNet(Network):
     name:                 str          = "uresnet"
-
+    normalization:        Norm         = Norm.layer
 
 @dataclass 
 class A21(Network):
@@ -69,7 +73,7 @@ class A21(Network):
 @dataclass
 class SCC21(Network):
     name:                 str          = "scc21"
-    batch_norm:           bool         = False
+    normalization:        Norm         =  Norm.none
 
 @dataclass
 class Polaris(Network):

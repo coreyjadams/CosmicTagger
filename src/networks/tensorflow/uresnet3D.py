@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from src.config.network import Connection, GrowthRate, DownSampling, UpSampling
+from src.config.network import Connection, GrowthRate, DownSampling, UpSampling, Norm
 
 class Block3D(tf.keras.models.Model):
 
@@ -33,18 +33,22 @@ class Block3D(tf.keras.models.Model):
 
         self.activation = activation
 
-        if params.batch_norm:
-            self._do_batch_norm = True
-            self.batch_norm = tf.keras.layers.BatchNormalization(
+        if params.normalization == Norm.batch:
+            self._do_normalization = True
+            self.norm = tf.keras.layers.BatchNormalization(
+                axis=self.channels_axis)
+        elif params.normalization == Norm.layer:
+            self._do_normalization = True
+            self.norm = tf.keras.layers.LayerNormalization(
                 axis=self.channels_axis)
         else:
-            self._do_batch_norm = False
+            self._do_normalization = False
 
     def call(self, inputs, training):
 
         x = self.convolution(inputs)
-        if self._do_batch_norm:
-            x = self.batch_norm(x)
+        if self._do_normalization:
+            x = self.norm(x)
         if self.activation is not None:
             x = self.activation(x)
         return  x
@@ -82,12 +86,17 @@ class ConvolutionUpsample3D(tf.keras.models.Model):
         self.activation = activation
 
 
-        if params.batch_norm:
-            self._do_batch_norm = True
-            self.batch_norm = tf.keras.layers.BatchNormalization(
+        if params.normalization == Norm.batch:
+            self._do_normalization = True
+            self.norm = tf.keras.layers.BatchNormalization(
+                axis=self.channels_axis)
+        elif params.normalization == Norm.layer:
+            self._do_normalization = True
+            self.norm = tf.keras.layers.LayerNormalization(
                 axis=self.channels_axis)
         else:
-            self._do_batch_norm = False
+            self._do_normalization = False
+
 
 
 
@@ -95,8 +104,8 @@ class ConvolutionUpsample3D(tf.keras.models.Model):
     def call(self, inputs, training):
 
         x = self.convolution(inputs)
-        if self._do_batch_norm:
-            x = self.batch_norm(x)
+        if self._do_normalization:
+            x = self.norm(x)
         return self.activation(x)
 
 
