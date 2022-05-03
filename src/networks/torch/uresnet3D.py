@@ -19,14 +19,18 @@ It then performs an upsampling step, and returns the upsampled tensor.
 '''
 from src.config.network import Connection, GrowthRate, DownSampling, UpSampling, ConvMode, Norm
 
+
+
+
 class Block3D(nn.Module):
 
     def __init__(self, *, 
             inplanes, 
             outplanes, 
-            kernel = [3,3], 
-            padding=[1,1], 
-            n_planes=1, 
+            kernel     = [3,3], 
+            padding    = [1,1], 
+            strides    = [1,1],
+            n_planes   = 1, 
             activation = nn.functional.leaky_relu,
             params):
         nn.Module.__init__(self)
@@ -34,13 +38,13 @@ class Block3D(nn.Module):
         # print("Receive outplanes ", outplanes)
 
         if n_planes == 3:
-            stride = [1, 1, 1]
-            kernel = [3,] + kernel
+            kernel  = [3,] + kernel
             padding = [1,] + padding
+            strides = [1,] + strides
         else:
-            stride = [1, 1, 1]
-            kernel = [1,] + kernel
+            kernel  = [1,] + kernel
             padding = [0,] + padding
+            strides = [1,] + strides
 
         # padding = [0,1,1] if n_planes == 1 else [1,1,1]
         self.outplanes = outplanes
@@ -48,7 +52,7 @@ class Block3D(nn.Module):
             in_channels  = inplanes,
             out_channels = outplanes,
             kernel_size  = kernel,
-            stride       = stride,
+            stride       = strides,
             padding      = padding,
             bias         = params.bias)
 
@@ -63,13 +67,13 @@ class Block3D(nn.Module):
             self._do_normalization = False
 
 
-        self.activation = torch.nn.Leaky_Relu(inplace=True)
+        self.activation = activation
 
     def forward(self, x):
         out = self.conv(x)
-        if self.do_batch_norm:
-            out = self.bn(out)
-        out = self.relu(out)
+        if self._do_normalization:
+            out = self.norm(out)
+        out = self.activation(out)
         return out
 
 
@@ -81,18 +85,20 @@ class ResidualBlock3D(nn.Module):
 
 
 
-        self.convolution_1 = Block(
+        self.convolution_1 = Block3D(
             inplanes    = inplanes,
             outplanes   = outplanes,
             kernel      = kernel,
             padding     = padding,
+            n_planes    = n_planes,
             params      = params)
 
-        self.convolution_2 = Block(
+        self.convolution_2 = Block3D(
             inplanes    = inplanes,
             outplanes   = outplanes,
             kernel      = kernel,
             padding     = padding,
+            n_planes    = n_planes,
             activation  = torch.nn.Identity(),
             params      = params)
 
@@ -108,65 +114,7 @@ class ResidualBlock3D(nn.Module):
 
 
         out += residual
-        out = self.leaky_relu(out)
-
-        return out
-
-class ResidualBlock3D(nn.Module):
-
-    def __init__(self, *, inplanes, outplanes, n_planes=1, kernel = [3,3], padding=[1,1], params):
-        nn.Module.__init__(self)
-
-
-        if n_planes == 3:
-            stride = [1, 1, 1]
-            kernel = [3,] + kernel
-            padding = [1,1,1]
-        else:
-            stride = [1, 1, 1]
-            kernel = [1,] + kernel
-            padding = [0,] + padding
-
-        self.conv1 = nn.Conv3d(
-            in_channels  = inplanes,
-            out_channels = outplanes,
-            kernel_size  = kernel,
-            stride       = stride,
-            padding      = padding,
-            bias         = params.bias)
-
-        self.do_batch_norm = params.batch_norm
-        if self.do_batch_norm:
-            self.bn1 = nn.BatchNorm3d(outplanes)
-
-        self.relu = nn.ReLU(inplace=True)
-
-        self.conv2 = nn.Conv3d(
-            in_channels  = outplanes,
-            out_channels = outplanes,
-            kernel_size  = kernel,
-            stride       = stride,
-            padding      = padding,
-            bias         = params.bias)
-
-        if self.do_batch_norm:
-            self.bn2 = nn.BatchNorm3d(outplanes)
-
-    def forward(self, x):
-        residual = x
-
-        out = self.conv1(x)
-        if self.do_batch_norm:
-            out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-
-        if self.do_batch_norm:
-            out = self.bn2(out)
-
-        out += residual
-        out = self.relu(out)
+        out = nn.functional.leaky_relu(out)
 
         return out
 

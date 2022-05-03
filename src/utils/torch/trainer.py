@@ -157,13 +157,13 @@ class torch_trainer(trainercore):
 
 
 
-    def print_network_info(self, verbose=True):
+    def print_network_info(self, verbose=False):
         if verbose:
             for name, var in self._net.named_parameters():
                 logger.info(f"{name}: {var.shape}")
 
         logger.info("Total number of trainable parameters in this network: {}".format(self.n_parameters()))
-        exit()
+
 
     def n_parameters(self):
         n_trainable_parameters = 0

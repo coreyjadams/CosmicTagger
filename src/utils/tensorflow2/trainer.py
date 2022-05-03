@@ -113,15 +113,13 @@ class tf_trainer(trainercore):
         end = time.time()
         return end - start
 
-    def print_network_info(self, verbose=True):
+    def print_network_info(self, verbose=False):
         n_trainable_parameters = 0
         for var in self._net.variables:
             n_trainable_parameters += numpy.prod(var.get_shape())
             if verbose:
                 logger.info(f"{var.name}: {var.get_shape()}")
         logger.info(f"Total number of trainable parameters in this network: {n_trainable_parameters}")
-
-        exit()
 
     def n_parameters(self):
         n_trainable_parameters = 0
