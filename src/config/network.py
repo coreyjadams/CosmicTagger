@@ -42,12 +42,12 @@ class Network:
     blocks_per_layer:     int          = 2
     blocks_deepest_layer: int          = 5
     blocks_final:         int          = 5
-    network_depth:        int          = 6
+    depth:                int          = 6
     filter_size_deepest:  int          = 5
     bottleneck_deepest:   int          = 256
     residual:             bool         = True
     block_concat:         bool         = False
-    weight_decay:         float        = 0.0
+    weight_decay:         float        = 0.1
     connections:          Connection   = Connection.concat
     conv_mode:            ConvMode     = ConvMode.conv_2D
     growth_rate:          GrowthRate   = GrowthRate.additive

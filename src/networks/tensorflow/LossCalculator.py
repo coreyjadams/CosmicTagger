@@ -7,7 +7,7 @@ from src.config import LossBalanceScheme
 
 class LossCalculator(object):
 
-    def __init__(self, balance_type=None, channels_dim=1):
+    def __init__(self, reg_loss_fn, balance_type=None, channels_dim=1):
 
         object.__init__(self)
 
@@ -23,6 +23,7 @@ class LossCalculator(object):
         else:
             self._criterion = tf.nn.sparse_softmax_cross_entropy_with_logits
 
+        self.reg_loss = reg_loss_fn
 
     def label_counts(self, label_plane):
         # helper function to compute number of each type of label
@@ -36,6 +37,8 @@ class LossCalculator(object):
 
         # This function receives the inputs labels and logits and returns a loss.\
         # If there is balancing scheme specified, weights are computed on the fly
+
+        current_reg_loss = self.reg_loss()
 
         with tf.compat.v1.variable_scope('cross_entropy'):
 
@@ -96,4 +99,4 @@ class LossCalculator(object):
                 else:
                     loss += plane_loss
 
-            return loss
+            return loss, current_reg_loss

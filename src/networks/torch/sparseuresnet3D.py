@@ -386,7 +386,7 @@ class UResNet3D(torch.nn.Module):
 
         # Next, build out the convolution steps:
 
-        self.net_core = SparseUNetCore(depth    = params.network_depth,
+        self.net_core = SparseUNetCore(depth    = params.depth,
                                        inplanes = params.n_initial_filters,
                                        params   = params)
 

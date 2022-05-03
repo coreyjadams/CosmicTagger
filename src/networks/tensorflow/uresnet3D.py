@@ -8,7 +8,7 @@ class Block3D(tf.keras.models.Model):
                  n_filters,
                  kernel  = [1,3,3],
                  strides = [1,1,1],
-                 activation = tf.nn.relu,
+                 activation = tf.nn.leaky_relu,
                  params):
 
         tf.keras.models.Model.__init__(self)
@@ -25,7 +25,7 @@ class Block3D(tf.keras.models.Model):
             strides             = strides,
             padding             = 'same',
             activation          = None,
-            use_bias            = params.use_bias,
+            use_bias            = params.bias,
             data_format         = params.data_format,
             kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
@@ -53,6 +53,10 @@ class Block3D(tf.keras.models.Model):
             x = self.activation(x)
         return  x
 
+    def reg_loss(self):
+        l = tf.reduce_sum(self.convolution.losses)
+
+        return l
 
 
 class ConvolutionUpsample3D(tf.keras.models.Model):
@@ -61,7 +65,7 @@ class ConvolutionUpsample3D(tf.keras.models.Model):
         n_filters,
         kernel  = (1,2,2),
         strides = (1,2,2),
-        activation = tf.nn.relu,
+        activation = tf.nn.leaky_relu,
         params):
 
         tf.keras.models.Model.__init__(self)
@@ -78,7 +82,7 @@ class ConvolutionUpsample3D(tf.keras.models.Model):
             strides             = strides,
             padding             = 'same',
             activation          = None,
-            use_bias            = params.use_bias,
+            use_bias            = params.bias,
             data_format         = params.data_format,
             kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
@@ -108,6 +112,10 @@ class ConvolutionUpsample3D(tf.keras.models.Model):
             x = self.norm(x)
         return self.activation(x)
 
+    def reg_loss(self):
+        l = tf.reduce_sum(self.convolution.losses)
+
+        return l
 
 class ResidualBlock3D(tf.keras.models.Model):
 
@@ -125,7 +133,7 @@ class ResidualBlock3D(tf.keras.models.Model):
         Keyword Arguments:
             strides {tuple} -- [description] (default: {(1,1)})
             batch_norm {bool} -- [description] (default: {True})
-            activation {[type]} -- [description] (default: {tf.nn.relu})
+            activation {[type]} -- [description] (default: {tf.nn.leaky_relu})
             name {str} -- [description] (default: {""})
             data_format {str} -- [description] (default: {"channels_first"})
             use_bias {bool} -- [description] (default: {False})
@@ -160,9 +168,12 @@ class ResidualBlock3D(tf.keras.models.Model):
 
         x = y + x
 
-        return tf.nn.relu(x)
+        return tf.nn.leaky_relu(x)
 
+    def reg_loss(self):
+        l = self.convolution_1.reg_loss() + self.convolution_2.reg_loss()
 
+        return l
 
 
 class BlockSeries3D(tf.keras.models.Model):
@@ -205,6 +216,10 @@ class BlockSeries3D(tf.keras.models.Model):
 
         return x
 
+    def reg_loss(self):
+        l = tf.reduce_sum([b.reg_loss() for b in self.blocks])
+
+        return l
 
 class DeepestBlock3D(tf.keras.models.Model):
 
@@ -257,6 +272,10 @@ class DeepestBlock3D(tf.keras.models.Model):
         return x
 
 
+    def reg_loss(self):
+
+        l = self.bottleneck.reg_loss() + self.blocks.reg_loss() + self.unbottleneck.reg_loss()
+        return l
 
 class NoConnection3D(tf.keras.models.Model):
 
@@ -265,6 +284,8 @@ class NoConnection3D(tf.keras.models.Model):
 
     def call(self, x, residual, training):
         return x
+ 
+    def reg_loss(self): return 0.0
 
 class SumConnection3D(tf.keras.models.Model):
 
@@ -273,6 +294,8 @@ class SumConnection3D(tf.keras.models.Model):
 
     def call(self, x, residual, training):
         return x + residual
+
+    def reg_loss(self): return 0.0
 
 class ConcatConnection3D(tf.keras.models.Model):
 
@@ -298,6 +321,8 @@ class ConcatConnection3D(tf.keras.models.Model):
         x = self.bottleneck(x, training)
         return x
 
+    def reg_loss(self): 
+        return self.bottleneck.reg_loss()
 
 class MaxPooling3D(tf.keras.models.Model):
 
@@ -320,6 +345,7 @@ class MaxPooling3D(tf.keras.models.Model):
 
         return self.bottleneck(x, training)
 
+    def reg_loss(self): return 0.0
 
 
 class InterpolationUpsample3D(tf.keras.models.Model):
@@ -344,6 +370,9 @@ class InterpolationUpsample3D(tf.keras.models.Model):
         x = self.up(x)
         return self.bottleneck(x, training)
 
+
+    def reg_loss(self): 
+        return self.bottleneck.reg_loss()
 
 
 class UNetCore3D(tf.keras.models.Model):
@@ -493,6 +522,20 @@ class UNetCore3D(tf.keras.models.Model):
         return x
 
 
+
+    def reg_loss(self): 
+        
+        l = self.main_module.reg_loss()
+
+        if self._depth_of_network != 0:
+            l += self.down_blocks.reg_loss()
+            l += self.downsample.reg_loss()
+            l += self.upsample.reg_loss()
+            l += self.up_blocks.reg_loss()
+            l += self.connection.reg_loss()
+
+        return l
+
 class UResNet3D(tf.keras.models.Model):
 
     def __init__(self, params):
@@ -508,7 +551,7 @@ class UResNet3D(tf.keras.models.Model):
         self.initial_convolution = Block3D(
             n_filters   = params.n_initial_filters,
             kernel      = [1,5,5],
-            activation  = tf.nn.relu,
+            activation  = tf.nn.leaky_relu,
             params      = params)
 
         n_filters = params.n_initial_filters
@@ -517,7 +560,7 @@ class UResNet3D(tf.keras.models.Model):
         n_filters_next = 2 * params.n_initial_filters
 
         self.net_core = UNetCore3D(
-            depth                    = params.network_depth,
+            depth                    = params.depth,
             in_filters               = params.n_initial_filters,
             out_filters              = n_filters_next,
             params                   = params)
@@ -540,11 +583,20 @@ class UResNet3D(tf.keras.models.Model):
             kernel_size         = [1,1,1],
             strides             = [1,1,1],
             activation          = None,
-            use_bias            = params.use_bias,
+            use_bias            = params.bias,
             data_format         = params.data_format,
             kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
+        
+    @tf.function
+    def reg_loss(self):
+        l = tf.reduce_sum(self.initial_convolution.losses)
+        l += self.net_core.reg_loss()
+        if self.final_blocks:
+            l += self.final_layer.reg_loss()
+        l += tf.reduce_sum(self.bottleneck.losses)
 
+        return tf.sqrt(l)
 
     def call(self, input_tensor, training):
 

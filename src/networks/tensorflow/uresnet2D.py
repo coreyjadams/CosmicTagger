@@ -51,8 +51,15 @@ class Block(tf.keras.layers.Layer):
             x = self.norm(x)
         if self.activation is not None:
             x = self.activation(x)
+        
+        self.reg_loss()
         return  x
 
+
+    def reg_loss(self):
+        l = tf.reduce_sum(self.convolution.losses)
+
+        return l
 
 class ConvolutionUpsample(tf.keras.layers.Layer):
 
@@ -106,6 +113,13 @@ class ConvolutionUpsample(tf.keras.layers.Layer):
             x = self.norm(x)
         return self.activation(x)
 
+
+    def reg_loss(self):
+        l = tf.reduce_sum(self.convolution.losses)
+
+        return l
+
+
 class ResidualBlock(tf.keras.layers.Layer):
 
     def __init__(self, *,
@@ -141,6 +155,11 @@ class ResidualBlock(tf.keras.layers.Layer):
 
         return tf.nn.leaky_relu(x)
 
+
+    def reg_loss(self):
+        l = self.convolution_1.reg_loss() + self.convolution_2.reg_loss()
+
+        return l
 
 class BlockSeries(tf.keras.layers.Layer):
 
@@ -185,6 +204,11 @@ class BlockSeries(tf.keras.layers.Layer):
 
         return x
 
+
+    def reg_loss(self):
+        l = tf.reduce_sum([b.reg_loss() for b in self.blocks])
+
+        return l
 
 class DeepestBlock(tf.keras.layers.Layer):
 
@@ -261,6 +285,11 @@ class DeepestBlock(tf.keras.layers.Layer):
         return x
 
 
+    def reg_loss(self):
+
+        l = self.bottleneck.reg_loss() + self.blocks.reg_loss() + self.unbottleneck.reg_loss()
+        return l
+
 class NoConnection(tf.keras.layers.Layer):
 
     def __init__(self):
@@ -269,6 +298,8 @@ class NoConnection(tf.keras.layers.Layer):
     def call(self, x, residual, training):
         return x
 
+    def reg_loss(self): return 0.0
+
 class SumConnection(tf.keras.layers.Layer):
 
     def __init__(self):
@@ -276,6 +307,8 @@ class SumConnection(tf.keras.layers.Layer):
 
     def call(self, x, residual, training):
         return x + residual
+
+    def reg_loss(self): return 0.0
 
 class ConcatConnection(tf.keras.layers.Layer):
 
@@ -301,6 +334,8 @@ class ConcatConnection(tf.keras.layers.Layer):
         x = self.bottleneck(x, training)
         return x
 
+    def reg_loss(self): 
+        return self.bottleneck.reg_loss()
 
 class MaxPooling(tf.keras.models.Model):
 
@@ -322,6 +357,8 @@ class MaxPooling(tf.keras.models.Model):
         x = self.pool(x)
 
         return self.bottleneck(x, training)
+
+    def reg_loss(self): return 0.0
 
 class InterpolationUpsample(tf.keras.models.Model):
 
@@ -345,6 +382,9 @@ class InterpolationUpsample(tf.keras.models.Model):
     def call(self, x, training):
         x = self.up(x)
         return self.bottleneck(x, training)
+    
+    def reg_loss(self): 
+        return self.bottleneck.reg_loss()
 
 class UNetCore(tf.keras.models.Model):
 
@@ -488,6 +528,18 @@ class UNetCore(tf.keras.models.Model):
 
         return x
 
+    def reg_loss(self): 
+        
+        l = self.main_module.reg_loss()
+
+        if self._depth_of_network != 0:
+            l += self.down_blocks.reg_loss()
+            l += self.downsample.reg_loss()
+            l += self.upsample.reg_loss()
+            l += self.up_blocks.reg_loss()
+            l += self.connection.reg_loss()
+
+        return l
 
 
 
@@ -514,7 +566,7 @@ class UResNet(tf.keras.models.Model):
         n_filters_next = 2 * n_filters
 
         self.net_core = UNetCore(
-            depth       = params.network_depth,
+            depth       = params.depth,
             in_filters  = params.n_initial_filters,
             out_filters = n_filters_next,
             params      = params)
@@ -544,6 +596,17 @@ class UResNet(tf.keras.models.Model):
             self.call = tf.function(self.call_internal)
         else:
             self.call = self.call_internal
+
+    @tf.function
+    def reg_loss(self):
+        l = tf.reduce_sum(self.initial_convolution.losses)
+        l += self.net_core.reg_loss()
+        if self.final_blocks:
+            l += self.final_layer.reg_loss()
+        l += tf.reduce_sum(self.bottleneck.losses)
+
+        return tf.sqrt(l)
+
 
     def call_internal(self, input_tensor, training):
 

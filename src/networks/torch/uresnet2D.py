@@ -99,37 +99,10 @@ class ResidualBlock(nn.Module):
 
 
         out += residual
-        out = self.leaky_relu(out)
+        out = torch.nn.functional.leaky_relu(out)
 
         return out
 
-
-# class ConvolutionDownsample(nn.Module):
-
-#     def __init__(self, *, inplanes, outplanes, params):
-
-#         nn.Module.__init__(self)
-
-#         self.conv = nn.Conv2d(
-#             in_channels  = inplanes,
-#             out_channels = outplanes,
-#             kernel_size  = [2, 2],
-#             stride       = [2, 2],
-#             padding      = [0, 0],
-#             bias         = params.bias)
-
-#         self._do_normalization = params.batch_norm
-#         if self._do_normalization:
-#             self.bn   = nn.BatchNorm2d(outplanes)
-#         self.relu = nn.LeakyReLU(inplace=True)
-
-#     def forward(self, x):
-#         out = self.conv(x)
-
-#         if self._do_normalization:
-#             out = self.bn(out)
-#         out = self.relu(out)
-#         return out
 
 
 class ConvolutionUpsample(nn.Module):
@@ -529,7 +502,7 @@ class UResNet(torch.nn.Module):
         n_filters = params.n_initial_filters
 
         self.net_core = UNetCore(
-            depth    = params.network_depth,
+            depth    = params.depth,
             inplanes = params.n_initial_filters,
             params   = params )
 

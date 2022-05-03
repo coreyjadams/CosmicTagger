@@ -50,7 +50,7 @@ class Block3D(nn.Module):
             kernel_size  = kernel,
             stride       = stride,
             padding      = padding,
-            bias         = params.use_bias)
+            bias         = params.bias)
 
 
         if params.normalization == Norm.batch:
@@ -63,7 +63,7 @@ class Block3D(nn.Module):
             self._do_normalization = False
 
 
-        self.activation = torcnn.ReLU(inplace=True)
+        self.activation = torch.nn.Leaky_Relu(inplace=True)
 
     def forward(self, x):
         out = self.conv(x)
@@ -133,7 +133,7 @@ class ResidualBlock3D(nn.Module):
             kernel_size  = kernel,
             stride       = stride,
             padding      = padding,
-            bias         = params.use_bias)
+            bias         = params.bias)
 
         self.do_batch_norm = params.batch_norm
         if self.do_batch_norm:
@@ -147,7 +147,7 @@ class ResidualBlock3D(nn.Module):
             kernel_size  = kernel,
             stride       = stride,
             padding      = padding,
-            bias         = params.use_bias)
+            bias         = params.bias)
 
         if self.do_batch_norm:
             self.bn2 = nn.BatchNorm3d(outplanes)
@@ -182,7 +182,7 @@ class ConvolutionDownsample3D(nn.Module):
             kernel_size  = [1, 2, 2],
             stride       = [1, 2, 2],
             padding      = [0, 0, 0],
-            bias         = params.use_bias)
+            bias         = params.bias)
 
         self.do_batch_norm = params.batch_norm
         if self.do_batch_norm:
@@ -208,7 +208,7 @@ class ConvolutionUpsample3D(nn.Module):
             kernel_size  = [1, 2, 2],
             stride       = [1, 2, 2],
             padding      = [0, 0, 0],
-            bias         = params.use_bias)
+            bias         = params.bias)
 
         self.do_batch_norm = params.batch_norm
         if self.do_batch_norm:
@@ -508,7 +508,7 @@ class UResNet3D(torch.nn.Module):
         # Next, build out the convolution steps:
 
         self.net_core = UNetCore3D(
-            depth    = params.network_depth,
+            depth    = params.depth,
             inplanes = params.n_initial_filters,
             params   = params)
 
@@ -530,7 +530,7 @@ class UResNet3D(torch.nn.Module):
             kernel_size  = 1,
             stride       = 1,
             padding      = 0,
-            bias         = params.use_bias)
+            bias         = params.bias)
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
 
