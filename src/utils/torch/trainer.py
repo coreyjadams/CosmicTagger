@@ -64,7 +64,7 @@ class torch_trainer(trainercore):
 
         if self.args.network.conv_mode == ConvMode.conv_2D and not self.args.framework.sparse:
             from src.networks.torch.uresnet2D import UResNet
-            self._net = UResNet(self.args.network)
+            self._raw_net = UResNet(self.args.network)
 
         else:
             if self.args.framework.sparse and self.args.mode.name != ModeKind.iotest:
@@ -72,19 +72,24 @@ class torch_trainer(trainercore):
             else:
                 from src.networks.torch.uresnet3D       import UResNet3D
 
-            self._net = UResNet3D(self.args.network, self.larcv_fetcher.image_size())
+            self._raw_net = UResNet3D(self.args.network, self.larcv_fetcher.image_size())
 
 
 
 
         if self.is_training():
-            self._net.train(True)
+             self._raw_net.train(True)
 
 
 
         self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
         if self.is_training():
             self._log_keys.append("loss")
+
+        self._raw_net.train()
+        # Foregoing any fusions as to not disturb the existing ingestion pipeline
+        self._raw_net.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
+        self._net = torch.quantization.prepare_qat(self._raw_net)
 
     def initialize(self, io_only=False):
 
@@ -651,15 +656,19 @@ class torch_trainer(trainercore):
         return minibatch_data
 
 
-    def forward_pass(self, minibatch_data):
+    def forward_pass(self, minibatch_data, net=None):
 
 
         with self.default_device_context():
             minibatch_data = self.to_torch(minibatch_data)
+            if self.args['run']['img_transform']:
+                minibatch_data['image'] =  torch.log(minibatch_data['image'] + 1)
             labels_image = minibatch_data['label']
             # Run a forward pass of the model on the input image:
-            logits_image = self._net(minibatch_data['image'])
-
+            if net is None:
+                logits_image = self._net(minibatch_data['image'])
+            else:
+                logits_image = net(minibatch_data['image'])
 
             labels_image = labels_image.long()
             labels_image = torch.chunk(labels_image, chunks=3, dim=1)
@@ -732,8 +741,6 @@ class torch_trainer(trainercore):
                         self.scaler.scale(loss).backward()
                     else:
                         loss.backward()
-
-
 
 
                     # Compute any necessary metrics:
@@ -817,6 +824,7 @@ class torch_trainer(trainercore):
         if self._global_step != 0 and self._global_step % self.args.run.aux_iterations == 0:
 
             self._net.eval()
+            net_int8 = torch.quantization.convert(self._net)
             # Fetch the next batch of data with larcv
             # (Make sure to pull from the validation set)
             io_start_time = datetime.datetime.now()
@@ -826,9 +834,9 @@ class torch_trainer(trainercore):
             # if mixed precision, and cuda, use autocast:
             if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                 with torch.cuda.amp.autocast():
-                    logits_image, labels_image = self.forward_pass(minibatch_data)
+                    logits_image, labels_image = self.forward_pass(minibatch_data, net=net_int8)
             else:
-                logits_image, labels_image = self.forward_pass(minibatch_data)
+                logits_image, labels_image = self.forward_pass(minibatch_data, net=net_int8)
 
             # Compute the loss based on the logits
             loss = self.loss_calculator(labels_image, logits_image)

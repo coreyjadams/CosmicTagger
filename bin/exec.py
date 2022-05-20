@@ -100,6 +100,7 @@ class exec(object):
         self.make_trainer()
 
         self.trainer.initialize()
+        self.trainer._net.train()
         self.trainer.batch_process()
 
 
