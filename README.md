@@ -98,6 +98,8 @@ run:
 
 ## Datasets
 
+Data may be downloaded from Globus  [here](https://app.globus.org/file-manager?origin_id=d02b81ca-6d77-4e41-a4c5-6161cf5c3bcb&origin_path=%2F).
+
 The data for this network is in larcv3 format (https://github.com/DeepLearnPhysics/larcv3).  Currently, data is available in full resolution (HxW == 1280x2048) of 3 images per training sample.  This image size is large, and the network is large, so to accomodate older hardware or smaller GPUs this can be run with a reduced image size.  The datasets are kept at full resolution but a downsampling operation is applied prior to feeding images and labels to the network.
 
 The UNet design is symmetric and does downsampling/upsampling by factors of 2.  So, in order to preserve the proper sizes during the upsampling sets, it's important that the smallest resolution image reached by the network does not contain a dimension with an odd number of pixels.  Concretely, this means that the sum of `network_depth` and `downsample_images` must be less than 8, since 1280 pixels / 2^8 = 5. 
