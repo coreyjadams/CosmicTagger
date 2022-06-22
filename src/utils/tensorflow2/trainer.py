@@ -442,7 +442,6 @@ class tf_trainer(trainercore):
 
     # @tf.function
     def get_gradients(self, loss, tape, trainable_weights):
-
         return tape.gradient(loss, self._net.trainable_weights)
 
     @tf.function
@@ -475,14 +474,14 @@ class tf_trainer(trainercore):
 
             # Fetch the next batch of data with larcv
             minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
-            
+
             image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
             labels, logits, prediction = self.forward_pass(image, label, training=False)
 
-            loss, _ = self.loss_calculator(labels, logits)
+            loss, current_reg_loss = self.loss_calculator(labels, logits)
 
-            metrics = self._compute_metrics(logits, prediction, labels, loss)
+            metrics = self._compute_metrics(logits, prediction, labels, loss, current_reg_loss)
 
 
             # Report metrics on the terminal:
@@ -523,7 +522,6 @@ class tf_trainer(trainercore):
                 gradients = self._opt.get_unscaled_gradients(scaled_gradients)
             else:
                 gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
-
         return logits, labels, prediction, loss - reg_loss, gradients, reg_loss
 
     def train_step(self):
@@ -542,7 +540,7 @@ class tf_trainer(trainercore):
             io_start_time = datetime.datetime.now()
             with self.timing_context("io"):
                 minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
-            
+
             image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
             io_end_time = datetime.datetime.now()
@@ -562,7 +560,6 @@ class tf_trainer(trainercore):
                 gradients = internal_gradients
             else:
                 gradients += internal_gradients
-
 
             # Compute any necessary metrics:
             with self.timing_context("metrics"):

@@ -4,6 +4,7 @@ import time
 import tempfile
 import copy
 import contextlib
+import pickle
 
 from collections import OrderedDict
 
@@ -285,14 +286,26 @@ class trainercore(object):
 
         top_dir = self.args.output_dir + "/profiles/"
 
-        if self._rank is None:
-            os.makedirs(top_dir)
+        if self._rank is None or self._rank == 0:
+            os.makedirs(top_dir, exist_ok=True)
             name = top_dir + "profiling_info_rank_0"
         else:
             name = top_dir + f"profiling_info_rank{self._rank}"
 
+        # This barrier enforces the root rank has made the folder before
+        # anyone tries to write.
+        self.barrier()
+
+        # If the file already exists, remove it:
+
+        # Save the arguments too:
+        if self._rank is None or self._rank == 0:
+            with open(top_dir + "args.pkl", "wb") as f:
+                pickle.dump(self.args, f, protocol=pickle.HIGHEST_PROTOCOL)
+
         numpy.save(name, self.profiling_array)
 
+    def barrier(self): return
 
     @contextlib.contextmanager
     def timing_context(self, key):

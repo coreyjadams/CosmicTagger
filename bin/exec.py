@@ -43,6 +43,13 @@ class exec(object):
 
         self.validate_arguments()
 
+        # Print the command line args to the log file:
+        logger = logging.getLogger()
+        logger.info("Dumping launch arguments.")
+        logger.info(sys.argv)
+
+        print(self.args)
+
         if config.mode.name == ModeKind.train:
             self.train()
         if config.mode.name == ModeKind.iotest:
