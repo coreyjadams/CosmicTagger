@@ -56,7 +56,6 @@ class torch_trainer(trainercore):
     '''
     def __init__(self,args):
         trainercore.__init__(self, args)
-        self._rank = None
 
 
     def init_network(self):
@@ -698,7 +697,8 @@ class torch_trainer(trainercore):
 
                 # Fetch the next batch of data with larcv
                 io_start_time = datetime.datetime.now()
-                minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
+                with self.timing_context("io"):
+                    minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
                 io_end_time = datetime.datetime.now()
                 io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
@@ -715,36 +715,39 @@ class torch_trainer(trainercore):
                 with autograd_prof as prof:
 
                     # if mixed precision, and cuda, use autocast:
-                    if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
-                        with torch.cuda.amp.autocast():
+                    with self.timing_context("forward"):
+                        if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
+                            with torch.cuda.amp.autocast():
+                                logits_image, labels_image = self.forward_pass(minibatch_data)
+                        else:
                             logits_image, labels_image = self.forward_pass(minibatch_data)
-                    else:
-                        logits_image, labels_image = self.forward_pass(minibatch_data)
 
                     verbose = False
 
                     # Compute the loss based on the logits
-
-                    loss = self.loss_calculator(labels_image, logits_image)
+                    with self.timing_context("loss"):
+                        loss = self.loss_calculator(labels_image, logits_image)
 
 
                     # Compute the gradients for the network parameters:
-                    if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
-                        self.scaler.scale(loss).backward()
-                    else:
-                        loss.backward()
+                    with self.timing_context("backward"):
+                        if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
+                            self.scaler.scale(loss).backward()
+                        else:
+                            loss.backward()
 
 
 
 
                     # Compute any necessary metrics:
-                    interior_metrics = self._compute_metrics(logits_image, labels_image, loss)
+                    with self.timing_context("metrics"):
+                        interior_metrics = self._compute_metrics(logits_image, labels_image, loss)
 
-                    for key in interior_metrics:
-                        if key in metrics:
-                            metrics[key] += interior_metrics[key]
-                        else:
-                            metrics[key] = interior_metrics[key]
+                        for key in interior_metrics:
+                            if key in metrics:
+                                metrics[key] += interior_metrics[key]
+                            else:
+                                metrics[key] = interior_metrics[key]
 
                 # save profile data per step
                 if self.args.run.profile:
@@ -770,29 +773,31 @@ class torch_trainer(trainercore):
             step_start_time = datetime.datetime.now()
 
 
-            # Apply the parameter update:
-            if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
-                self.scaler.step(self._opt)
-                self.scaler.update()
-            else:
-                self._opt.step()
+            with self.timing_context("optimizer"):
+                # Apply the parameter update:
+                if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
+                    self.scaler.step(self._opt)
+                    self.scaler.update()
+                else:
+                    self._opt.step()
 
-            self.lr_scheduler.step()
+                self.lr_scheduler.step()
 
             if verbose: logger.debug("Updated Weights")
             global_end_time = datetime.datetime.now()
 
             metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
 
+            with self.timing_context("log"):
+                self.log(metrics, saver="train")
 
-            self.log(metrics, saver="train")
+                if verbose: logger.debug("Completed Log")
 
-            if verbose: logger.debug("Completed Log")
-
-            self.summary(metrics, saver="train")
-            self.summary_images(logits_image, labels_image, saver="train")
-            # self.graph_summary()
-            if verbose: logger.debug("Summarized")
+            with self.timing_context("summary"):
+                self.summary(metrics, saver="train")
+                self.summary_images(logits_image, labels_image, saver="train")
+                # self.graph_summary()
+                if verbose: logger.debug("Summarized")
 
 
             # Compute global step per second:
@@ -821,7 +826,8 @@ class torch_trainer(trainercore):
             # Fetch the next batch of data with larcv
             # (Make sure to pull from the validation set)
             io_start_time = datetime.datetime.now()
-            minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
+            with self.timing_context("io"):
+                minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
             io_end_time = datetime.datetime.now()
 
             # if mixed precision, and cuda, use autocast:
@@ -836,7 +842,6 @@ class torch_trainer(trainercore):
 
             # Compute any necessary metrics:
             metrics = self._compute_metrics(logits_image, labels_image, loss)
-
 
             self.log(metrics, saver="test")
             self.summary(metrics, saver="test")

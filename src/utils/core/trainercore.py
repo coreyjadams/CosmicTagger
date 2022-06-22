@@ -3,6 +3,7 @@ import sys
 import time
 import tempfile
 import copy
+import contextlib
 
 from collections import OrderedDict
 
@@ -36,6 +37,8 @@ class trainercore(object):
         self._iteration    = 0
         self._global_step  = 0
         self.args          = args
+        self._rank         = None
+
         if args.framework.name == "torch":
             sparse = args.framework.sparse
         else:
@@ -53,6 +56,30 @@ class trainercore(object):
         if args.data.data_format == DataFormatKind.channels_first: self._channels_dim = 1
         if args.data.data_format == DataFormatKind.channels_last : self._channels_dim = -1
 
+        # Define a datatype for a profiling array.
+        # It is going to be mostly 64bit timestamps for a number of points
+        self.profiling_dtype = numpy.dtype([
+            ("i",           numpy.int32),      # Filled in batch_process
+            ("start",       "datetime64[us]"),  # Filled in batch_process
+            ("iteration",   "timedelta64[us]"), # Filled in batch_process
+            ("train",       "timedelta64[us]"), # Filled in batch_process
+            ("val",         "timedelta64[us]"), # Filled in batch_process
+            ("io",          "timedelta64[us]"), # Filled in train_step + val_step in both TF/Torch
+            ("forward",     "timedelta64[us]"),
+            ("backward",    "timedelta64[us]"),
+            ("checkpoint",  "timedelta64[us]"), # Filled in batch_process
+            ("loss",        "timedelta64[us]"),
+            ("summary",     "timedelta64[us]"),
+            ("log",         "timedelta64[us]"),
+            ("optimizer",   "timedelta64[us]"),
+            ("metrics",     "timedelta64[us]"),
+        ])
+
+        # Create the baseline array:
+        self.profiling_array = numpy.zeros((args.run.iterations,), dtype=self.profiling_dtype)
+
+    def now(self):
+        return numpy.datetime64(datetime.datetime.now())
 
     def is_training(self):
         return self.args.mode.name == ModeKind.train
@@ -254,6 +281,26 @@ class trainercore(object):
     def inference_report(self):
         pass
 
+    def write_profiling_info(self):
+
+        top_dir = self.args.output_dir + "/profiles/"
+
+        if self._rank is None:
+            os.makedirs(top_dir)
+            name = top_dir + "profiling_info_rank_0"
+        else:
+            name = top_dir + f"profiling_info_rank{self._rank}"
+
+        numpy.save(name, self.profiling_array)
+
+
+    @contextlib.contextmanager
+    def timing_context(self, key):
+        start = self.now()
+        yield
+        self.profiling_array[self.profiling_index][key] = self.now() - start
+
+
     def batch_process(self):
 
 
@@ -265,29 +312,48 @@ class trainercore(object):
 
         # This is the 'master' function, so it controls a lot
 
+        self.profiling_index = 0
+
         # Run iterations
         for self._iteration in range(self.args.run.iterations):
-            iteration_start = time.time()
-            if self.is_training() and self._iteration >= self.args.run.iterations:
 
-                logger.info('Finished training (iteration %d)' % self._iteration)
-                self.checkpoint()
-                break
+            # Resize the profiling array if needed:
+            if self.profiling_index > len(self.profiling_array) - 1:
+                # Add 500 more rows:
+                self.profiling_array.resize((self.profiling_index + 500))
+
+            self.profiling_array[self.profiling_index]["i"] = self._iteration
+            self.profiling_array[self.profiling_index]["start"] = self.now()
+
+            with self.timing_context("iteration"):
+                iteration_start = time.time()
+                if self.is_training() and self._iteration >= self.args.run.iterations:
+
+                    logger.info('Finished training (iteration %d)' % self._iteration)
+                    self.checkpoint()
+                    break
 
 
-            if self.is_training():
-                self.val_step()
-                self.train_step()
-                self.checkpoint()
-            else:
-                self.ana_step()
+                if self.is_training():
+                    with self.timing_context("val"):
+                        self.val_step()
+                    with self.timing_context("train"):
+                        self.train_step()
+                    with self.timing_context("checkpoint"):
+                        self.checkpoint()
+                else:
+                    self.ana_step()
 
-            if post_one_time is None:
-                post_one_time = time.time()
-            elif post_two_time is None:
-                post_two_time = time.time()
-            times.append(time.time() - iteration_start)
+                if post_one_time is None:
+                    post_one_time = time.time()
+                elif post_two_time is None:
+                    post_two_time = time.time()
+                times.append(time.time() - iteration_start)
+            self.profiling_index += 1
+
         self.close_savers()
+
+        self.write_profiling_info()
 
         end = time.time()
 
