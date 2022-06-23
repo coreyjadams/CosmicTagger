@@ -23,6 +23,7 @@ class Train(Mode):
     summary_iteration:      int = 1
     logging_iteration:      int = 1
     optimizer:        Optimizer = Optimizer()
+    quantization_aware:    bool = False
 
 @dataclass
 class Inference(Mode):

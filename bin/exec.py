@@ -251,7 +251,13 @@ class exec(object):
                 logger.warning("Torch requires channels_first, switching automatically")
                 self.args.data.data_format = DataFormatKind.channels_first
 
+        elif self.args.framework.name == "tensorflow":
+            if self.args.mode.name == ModeKind.train:
+                if self.args.mode.quantization_aware:
+                    logger.error("Quantization aware training not implemented in tensorflow.")
+
         self.args.network.data_format = self.args.data.data_format.name
+
 
 
 
