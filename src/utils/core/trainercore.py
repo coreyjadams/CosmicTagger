@@ -290,10 +290,12 @@ class trainercore(object):
             os.makedirs(top_dir, exist_ok=True)
             name = top_dir + "profiling_info_rank_0"
         else:
-            name = top_dir + f"profiling_info_rank{self._rank}"
+            name = top_dir + f"profiling_info_rank_{self._rank}"
 
         # This barrier enforces the root rank has made the folder before
         # anyone tries to write.
+        logger.info("Saving run profile information.")
+
         self.barrier()
 
         # If the file already exists, remove it:

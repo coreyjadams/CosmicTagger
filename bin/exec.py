@@ -48,7 +48,6 @@ class exec(object):
         logger.info("Dumping launch arguments.")
         logger.info(sys.argv)
 
-        print(self.args)
 
         if config.mode.name == ModeKind.train:
             self.train()
