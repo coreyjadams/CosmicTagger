@@ -86,10 +86,12 @@ class torch_trainer(trainercore):
         if self.is_training():
             self._log_keys.append("loss")
 
-        self._raw_net.train()
         # Foregoing any fusions as to not disturb the existing ingestion pipeline
-        self._raw_net.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
-        self._net = torch.quantization.prepare_qat(self._raw_net)
+        if self.is_training() and self.args.mode.quantization_aware:
+            self._raw_net.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
+            self._net = torch.quantization.prepare_qat(self._raw_net)
+        else:
+            self._net = self._raw_net
 
     def initialize(self, io_only=False):
 
@@ -632,6 +634,10 @@ class torch_trainer(trainercore):
                 if self.args.framework.sparse:
                     # if key == 'weight': continue
                     if key == 'image':
+                        # Use the image transform?
+                        if self.args.data.img_transform:
+                            # It's numpy data here:
+                            minibatch_data[key][1] =  numpy.log(minibatch_data[key][1] + 1)
                         minibatch_data[key] = (
                                 torch.tensor(minibatch_data[key][0], device=device).long(),
                                 torch.tensor(minibatch_data[key][1], device=device),
@@ -642,6 +648,9 @@ class torch_trainer(trainercore):
                 else:
                     # minibatch_data[key] = torch.tensor(minibatch_data[key])
                     minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
+
+                    if key == 'image' and self.args.data.img_transform:
+                        minibatch_data[key] =  torch.log(minibatch_data['image'] + 1)
             if self.args.data.synthetic:
                 minibatch_data['image'] = minibatch_data['image'].float()
                 minibatch_data['label'] = minibatch_data['label']
@@ -661,8 +670,7 @@ class torch_trainer(trainercore):
 
         with self.default_device_context():
             minibatch_data = self.to_torch(minibatch_data)
-            if self.args['run']['img_transform']:
-                minibatch_data['image'] =  torch.log(minibatch_data['image'] + 1)
+
             labels_image = minibatch_data['label']
             # Run a forward pass of the model on the input image:
             if net is None:
@@ -816,7 +824,7 @@ class torch_trainer(trainercore):
 
         if self.args.data.synthetic: return
         # Second, validation can not occur without a validation dataloader.
-        if self.args.data.aux_file is None: return
+        if self.args.data.aux_file == "": return
 
         # perform a validation step
         # Validation steps can optionally accumulate over several minibatches, to
@@ -824,7 +832,11 @@ class torch_trainer(trainercore):
         if self._global_step != 0 and self._global_step % self.args.run.aux_iterations == 0:
 
             self._net.eval()
-            net_int8 = torch.quantization.convert(self._net)
+            if self.args.run.compute_mode == ComputeMode.CPU:
+                # Quantization not supported on CUDA
+                val_net = torch.quantization.convert(self._net)
+            else:
+                val_net = self._net
             # Fetch the next batch of data with larcv
             # (Make sure to pull from the validation set)
             io_start_time = datetime.datetime.now()
@@ -834,9 +846,9 @@ class torch_trainer(trainercore):
             # if mixed precision, and cuda, use autocast:
             if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                 with torch.cuda.amp.autocast():
-                    logits_image, labels_image = self.forward_pass(minibatch_data, net=net_int8)
+                    logits_image, labels_image = self.forward_pass(minibatch_data, net=val_net)
             else:
-                logits_image, labels_image = self.forward_pass(minibatch_data, net=net_int8)
+                logits_image, labels_image = self.forward_pass(minibatch_data, net=val_net)
 
             # Compute the loss based on the logits
             loss = self.loss_calculator(labels_image, logits_image)

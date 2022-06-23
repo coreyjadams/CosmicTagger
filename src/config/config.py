@@ -40,7 +40,6 @@ class Run:
     id:                 str         = MISSING
     precision:          Precision   = Precision.float32
     profile:            bool        = False
-    img_transform:      bool        = False
 
 cs = ConfigStore.instance()
 
