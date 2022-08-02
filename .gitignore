@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+
 # Cobalt files:
 *.output
 *.error
@@ -18,6 +19,7 @@ tests/.hydra
 *.so
 
 log/
+output/
 
 # Distribution / packaging
 .Python
