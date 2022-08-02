@@ -6,3 +6,4 @@ defaults:
 
 run:
   distributed: False
+  compute_mode: CPU
