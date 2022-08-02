@@ -1,0 +1,8 @@
+defaults:
+  - base_config
+  - override network: uresnet3d
+  - override framework: torch
+  - _self_
+
+run:
+  distributed: False

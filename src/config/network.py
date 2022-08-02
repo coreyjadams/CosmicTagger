@@ -86,12 +86,18 @@ class Polaris(Network):
     residual:             bool         = False
     connections:          Connection   = Connection.sum
 
+@dataclass
+class UResNet3D(Network):
+    name:                 str          = "uresnet3d"
+    conv_mode:            ConvMode     = ConvMode.conv_3D
 
 
 
 cs = ConfigStore.instance()
 # cs.store(name="network", node=Network)
-cs.store(group="network", name="uresnet", node=UResNet)
-cs.store(group="network", name="a21",     node=A21)
-cs.store(group="network", name="scc21",   node=SCC21)
-cs.store(group="network", name="polaris", node=Polaris)
+cs.store(group="network", name="uresnet",   node=UResNet)
+cs.store(group="network", name="a21",       node=A21)
+cs.store(group="network", name="scc21",     node=SCC21)
+cs.store(group="network", name="polaris",   node=Polaris)
+cs.store(group="network", name="uresnet3d", node=UResNet3D)
+
