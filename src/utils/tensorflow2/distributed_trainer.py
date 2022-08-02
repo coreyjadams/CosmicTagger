@@ -68,6 +68,9 @@ class distributed_trainer(tf_trainer):
             self._main_writer = None
             self._val_writer = None
 
+    def barrier(self):
+        MPI.COMM_WORLD.Barrier()
+
 
     # def get_gradients(self, loss, tape, trainable_variables):
 
@@ -164,10 +167,10 @@ class distributed_trainer(tf_trainer):
         else:
             tf_trainer.log(self, metrics, kind, step)
 
-    def _compute_metrics(self, logits, prediction, labels, loss):
+    def _compute_metrics(self, logits, prediction, labels, loss, reg_loss):
 
 
-        metrics = tf_trainer._compute_metrics(self, logits, prediction, labels, loss)
+        metrics = tf_trainer._compute_metrics(self, logits, prediction, labels, loss, reg_loss)
 
 
         reduced_metrics = {}

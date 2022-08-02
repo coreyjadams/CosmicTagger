@@ -51,7 +51,7 @@ class Block(tf.keras.layers.Layer):
             x = self.norm(x)
         if self.activation is not None:
             x = self.activation(x)
-        
+
         self.reg_loss()
         return  x
 
@@ -334,7 +334,7 @@ class ConcatConnection(tf.keras.layers.Layer):
         x = self.bottleneck(x, training)
         return x
 
-    def reg_loss(self): 
+    def reg_loss(self):
         return self.bottleneck.reg_loss()
 
 class MaxPooling(tf.keras.models.Model):
@@ -382,8 +382,8 @@ class InterpolationUpsample(tf.keras.models.Model):
     def call(self, x, training):
         x = self.up(x)
         return self.bottleneck(x, training)
-    
-    def reg_loss(self): 
+
+    def reg_loss(self):
         return self.bottleneck.reg_loss()
 
 class UNetCore(tf.keras.models.Model):
@@ -528,8 +528,8 @@ class UNetCore(tf.keras.models.Model):
 
         return x
 
-    def reg_loss(self): 
-        
+    def reg_loss(self):
+
         l = self.main_module.reg_loss()
 
         if self._depth_of_network != 0:
@@ -596,6 +596,7 @@ class UResNet(tf.keras.models.Model):
             self.call = tf.function(self.call_internal)
         else:
             self.call = self.call_internal
+        self.weight_decay = params.weight_decay
 
     @tf.function
     def reg_loss(self):
@@ -605,7 +606,7 @@ class UResNet(tf.keras.models.Model):
             l += self.final_layer.reg_loss()
         l += tf.reduce_sum(self.bottleneck.losses)
 
-        return tf.sqrt(l)
+        return self.weight_decay * tf.sqrt(l)
 
 
     def call_internal(self, input_tensor, training):

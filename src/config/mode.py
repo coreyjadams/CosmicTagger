@@ -14,7 +14,7 @@ class ModeKind(Enum):
 @dataclass
 class Mode:
     name:          ModeKind = ModeKind.train
-    no_summary_images: bool = False
+    no_summary_images: bool = True
     weights_location:  str  = ""
 
 @dataclass
