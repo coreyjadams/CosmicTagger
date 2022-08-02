@@ -284,7 +284,7 @@ class NoConnection3D(tf.keras.models.Model):
 
     def call(self, x, residual, training):
         return x
- 
+
     def reg_loss(self): return 0.0
 
 class SumConnection3D(tf.keras.models.Model):
@@ -321,7 +321,7 @@ class ConcatConnection3D(tf.keras.models.Model):
         x = self.bottleneck(x, training)
         return x
 
-    def reg_loss(self): 
+    def reg_loss(self):
         return self.bottleneck.reg_loss()
 
 class MaxPooling3D(tf.keras.models.Model):
@@ -371,7 +371,7 @@ class InterpolationUpsample3D(tf.keras.models.Model):
         return self.bottleneck(x, training)
 
 
-    def reg_loss(self): 
+    def reg_loss(self):
         return self.bottleneck.reg_loss()
 
 
@@ -523,8 +523,8 @@ class UNetCore3D(tf.keras.models.Model):
 
 
 
-    def reg_loss(self): 
-        
+    def reg_loss(self):
+
         l = self.main_module.reg_loss()
 
         if self._depth_of_network != 0:
@@ -587,7 +587,8 @@ class UResNet3D(tf.keras.models.Model):
             data_format         = params.data_format,
             kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
-        
+        self.weight_decay = params.weight_decay
+
     @tf.function
     def reg_loss(self):
         l = tf.reduce_sum(self.initial_convolution.losses)
@@ -596,7 +597,7 @@ class UResNet3D(tf.keras.models.Model):
             l += self.final_layer.reg_loss()
         l += tf.reduce_sum(self.bottleneck.losses)
 
-        return tf.sqrt(l)
+        return self.weight_decay * tf.sqrt(l)
 
     def call(self, input_tensor, training):
 

@@ -170,6 +170,9 @@ class distributed_trainer(torch_trainer):
             return contextlib.nullcontext
             # device = torch.device('cpu')
 
+    def barrier(self):
+        MPI.COMM_WORLD.Barrier()
+
     def default_device(self):
 
         if self.args.run.compute_mode == ComputeMode.GPU:

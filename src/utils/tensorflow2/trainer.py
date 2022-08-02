@@ -38,7 +38,6 @@ class tf_trainer(trainercore):
 
     def __init__(self, args):
         trainercore.__init__(self, args)
-        self._rank = None
 
     def local_batch_size(self):
         return self.args.run.minibatch_size
@@ -443,7 +442,6 @@ class tf_trainer(trainercore):
 
     # @tf.function
     def get_gradients(self, loss, tape, trainable_weights):
-
         return tape.gradient(loss, self._net.trainable_weights)
 
     @tf.function
@@ -476,13 +474,14 @@ class tf_trainer(trainercore):
 
             # Fetch the next batch of data with larcv
             minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
+
             image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
             labels, logits, prediction = self.forward_pass(image, label, training=False)
 
-            loss, _ = self.loss_calculator(labels, logits)
+            loss, current_reg_loss = self.loss_calculator(labels, logits)
 
-            metrics = self._compute_metrics(logits, prediction, labels, loss)
+            metrics = self._compute_metrics(logits, prediction, labels, loss, current_reg_loss)
 
 
             # Report metrics on the terminal:
@@ -495,31 +494,34 @@ class tf_trainer(trainercore):
         return
 
 
-    @tf.function
+    # @tf.function
     def gradient_step(self, image, label):
 
         with self.tape:
-            labels, logits, prediction = self.forward_pass(image, label, training=True)
+            with self.timing_context("forward"):
+                labels, logits, prediction = self.forward_pass(image, label, training=True)
 
-            # The loss function has to be in full precision or automatic mixed.
-            # bfloat16 is not supported
-            if self.args.run.precision == Precision.bfloat16:
-                logits = [ tf.cast(l, dtype=tf.float32) for  l in logits ]
+            with self.timing_context("loss"):
 
-            loss, reg_loss = self.loss_calculator(labels, logits)
-        #
-            loss = loss + reg_loss
+                # The loss function has to be in full precision or automatic mixed.
+                # bfloat16 is not supported
+                if self.args.run.precision == Precision.bfloat16:
+                    logits = [ tf.cast(l, dtype=tf.float32) for  l in logits ]
 
-            if self.args.run.precision == Precision.mixed:
-                scaled_loss = self._opt.get_scaled_loss(loss)
+                loss, reg_loss = self.loss_calculator(labels, logits)
+            #
+                loss = loss + reg_loss
+
+                if self.args.run.precision == Precision.mixed:
+                    scaled_loss = self._opt.get_scaled_loss(loss)
 
         # Do the backwards pass for gradients:
-        if self.args.run.precision == Precision.mixed:
-            scaled_gradients = self.get_gradients(scaled_loss, self.tape, self._net.trainable_weights)
-            gradients = self._opt.get_unscaled_gradients(scaled_gradients)
-        else:
-            gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
-
+        with self.timing_context("backward"):
+            if self.args.run.precision == Precision.mixed:
+                scaled_gradients = self.get_gradients(scaled_loss, self.tape, self._net.trainable_weights)
+                gradients = self._opt.get_unscaled_gradients(scaled_gradients)
+            else:
+                gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
         return logits, labels, prediction, loss - reg_loss, gradients, reg_loss
 
     def train_step(self):
@@ -536,7 +538,9 @@ class tf_trainer(trainercore):
 
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
-            minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
+            with self.timing_context("io"):
+                minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
+
             image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
             io_end_time = datetime.datetime.now()
@@ -557,15 +561,15 @@ class tf_trainer(trainercore):
             else:
                 gradients += internal_gradients
 
-
             # Compute any necessary metrics:
-            interior_metrics = self._compute_metrics(logits, prediction, labels, loss, reg_loss)
+            with self.timing_context("metrics"):
+                interior_metrics = self._compute_metrics(logits, prediction, labels, loss, reg_loss)
 
-            for key in interior_metrics:
-                if key in metrics:
-                    metrics[key] += interior_metrics[key]
-                else:
-                    metrics[key] = interior_metrics[key]
+                for key in interior_metrics:
+                    if key in metrics:
+                        metrics[key] += interior_metrics[key]
+                    else:
+                        metrics[key] = interior_metrics[key]
 
         # Normalize the metrics:
         for key in metrics:
@@ -586,7 +590,8 @@ class tf_trainer(trainercore):
         if gradient_accumulation != 1:
             gradients = [ g / gradient_accumulation for g in gradients ]
 
-        self.apply_gradients(gradients)
+        with self.timing_context("optimizer"):
+            self.apply_gradients(gradients)
 
 
         # Add the global step / second to the tensorboard log:
@@ -598,12 +603,13 @@ class tf_trainer(trainercore):
             metrics['images_per_second'] = 0.0
 
 
+        with self.timing_context("summary"):
+            self.summary(metrics)
+            self.summary_images(labels, prediction)
 
-        self.summary(metrics)
-        self.summary_images(labels, prediction)
-
-        # Report metrics on the terminal:
-        self.log(metrics, kind="Train", step=int(self.current_step().numpy()))
+        with self.timing_context("log"):
+            # Report metrics on the terminal:
+            self.log(metrics, kind="Train", step=int(self.current_step().numpy()))
 
 
         global_end_time = datetime.datetime.now()
