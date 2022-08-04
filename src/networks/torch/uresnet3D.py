@@ -24,13 +24,13 @@ from src.config.network import Connection, GrowthRate, DownSampling, UpSampling,
 
 class Block3D(nn.Module):
 
-    def __init__(self, *, 
-            inplanes, 
-            outplanes, 
-            kernel     = [3,3], 
-            padding    = [1,1], 
+    def __init__(self, *,
+            inplanes,
+            outplanes,
+            kernel     = [3,3],
+            padding    = [1,1],
             strides    = [1,1],
-            n_planes   = 1, 
+            n_planes   = 1,
             activation = nn.functional.leaky_relu,
             params):
         nn.Module.__init__(self)
@@ -110,7 +110,7 @@ class ResidualBlock3D(nn.Module):
 
         out = self.convolution_1(x)
 
-        out = self.convolution_1(out)
+        out = self.convolution_2(out)
 
 
         out += residual
@@ -132,15 +132,22 @@ class ConvolutionDownsample3D(nn.Module):
             padding      = [0, 0, 0],
             bias         = params.bias)
 
-        self.do_batch_norm = params.batch_norm
-        if self.do_batch_norm:
-            self.bn   = nn.BatchNorm3d(outplanes)
+
+        if params.normalization == Norm.batch:
+            self._do_normalization = True
+            self.norm = nn.BatchNorm3d(outplanes)
+        elif params.normalization == Norm.layer:
+            self._do_normalization = True
+            self.norm = nn.LayerNorm(outplanes)
+        else:
+            self._do_normalization = False
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
         out = self.conv(x)
-        if self.do_batch_norm:
-            out = self.bn(out)
+        if self._do_normalization:
+            out = self.norm(out)
+
         out = self.relu(out)
         return out
 
@@ -158,16 +165,22 @@ class ConvolutionUpsample3D(nn.Module):
             padding      = [0, 0, 0],
             bias         = params.bias)
 
-        self.do_batch_norm = params.batch_norm
-        if self.do_batch_norm:
-            self.bn   = nn.BatchNorm3d(outplanes)
+
+        if params.normalization == Norm.batch:
+            self._do_normalization = True
+            self.norm = nn.BatchNorm3d(outplanes)
+        elif params.normalization == Norm.layer:
+            self._do_normalization = True
+            self.norm = nn.LayerNorm(outplanes)
+        else:
+            self._do_normalization = False
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
 
         out = self.conv(x)
-        if self.do_batch_norm:
-            out = self.bn(out)
+        if self._do_normalization:
+            out = self.norm(out)
         out = self.relu(out)
         return out
 
@@ -425,9 +438,6 @@ class UNetCore3D(nn.Module):
 
         return x
 
-class objectview(object):
-    def __init__(self, d):
-        self.__dict__ = d
 
 
 class UResNet3D(torch.nn.Module):
@@ -436,13 +446,6 @@ class UResNet3D(torch.nn.Module):
 
 
         torch.nn.Module.__init__(self)
-
-
-
-        torch.nn.Module.__init__(self)
-
-
-
 
         self.initial_convolution = Block3D(
             inplanes    = 1,

@@ -24,12 +24,12 @@ from src.config.network import Connection, GrowthRate, DownSampling, UpSampling,
 
 class Block(nn.Module):
 
-    def __init__(self, *, 
-            inplanes, 
-            outplanes, 
-            kernel     = [3,3], 
+    def __init__(self, *,
+            inplanes,
+            outplanes,
+            kernel     = [3,3],
             strides    = [1,1],
-            padding    = [1,1], 
+            padding    = [1,1],
             activation = nn.functional.leaky_relu,
             params):
         nn.Module.__init__(self)
@@ -95,7 +95,7 @@ class ResidualBlock(nn.Module):
 
         out = self.convolution_1(x)
 
-        out = self.convolution_1(out)
+        out = self.convolution_2(out)
 
 
         out += residual
