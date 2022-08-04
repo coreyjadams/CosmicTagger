@@ -6,4 +6,4 @@ defaults:
 
 run:
   distributed: False
-  compute_mode: CPU
+  compute_mode: GPU
