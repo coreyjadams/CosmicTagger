@@ -20,7 +20,7 @@ and merges across the downsampled layers either before or after the convolutions
 It then performs an upsampling step, and returns the upsampled tensor.
 
 '''
-from src.config.network import Connection, GrowthRate, DownSampling, UpSampling
+from src.config.network import Connection, GrowthRate, DownSampling, UpSampling, Norm
 
 class SparseBlock(nn.Module):
 
@@ -34,19 +34,18 @@ class SparseBlock(nn.Module):
             filter_size=[nplanes,3,3],
             bias=params.bias)
 
-        self.do_batch_norm = False
-        if params.batch_norm:
-            self.do_batch_norm = True
-            self.bn1 = scn.BatchNormReLU(outplanes)
-        self.relu = scn.ReLU()
+        if params.normalization == Norm.batch:
+            self._do_normalization = True
+            self.relu = scn.BatchNormLeakyReLU(outplanes)
+        elif params.normalization == Norm.layer:
+            raise Exception("Layer norm not supported in SCN")
+        else:
+            self.relu = scn.LeakyReLU()
 
     def forward(self, x):
 
         out = self.conv1(x)
-        if self.do_batch_norm:
-            out = self.bn1(out)
-        else:
-            out = self.relu(out)
+        out = self.relu(out)
 
         return out
 
@@ -64,10 +63,13 @@ class SparseResidualBlock(nn.Module):
             filter_size = [nplanes,3,3],
             bias        = params.bias)
 
-        self.do_batch_norm = False
-        if params.batch_norm:
-            self.do_batch_norm = True
-            self.bn1 = scn.BatchNormReLU(outplanes)
+        if params.normalization == Norm.batch:
+            self._do_normalization = True
+            self.relu1 = scn.BatchNormLeakyReLU(outplanes)
+        elif params.normalization == Norm.layer:
+            raise Exception("Layer norm not supported in SCN")
+        else:
+            self.relu1 = scn.LeakyReLU()
 
         self.conv2 = scn.SubmanifoldConvolution(dimension=3,
             nIn         = outplanes,
@@ -75,11 +77,13 @@ class SparseResidualBlock(nn.Module):
             filter_size = [nplanes,3,3],
             bias        = False)
 
-        if params.batch_norm:
-            self.bn2 = scn.BatchNormalization(outplanes)
+        if params.normalization == Norm.batch:
+            self._do_normalization = True
+            self.norm2 = scn.BatchNormalization(outplanes)
+
 
         self.residual = scn.Identity()
-        self.relu = scn.ReLU()
+        self.relu2 = scn.LeakyReLU()
 
         self.add = scn.AddTable()
 
@@ -88,20 +92,17 @@ class SparseResidualBlock(nn.Module):
         residual = self.residual(x)
 
         out = self.conv1(x)
-        if self.do_batch_norm:
-            out = self.bn1(out)
-        else:
-            out = self.relu(out)
+        out = self.relu1(out)
         out = self.conv2(out)
 
-        if self.do_batch_norm:
-            out = self.bn2(out)
+        if self._do_normalization:
+            out = self.norm2(out)
 
         # The addition of sparse tensors is not straightforward, since
 
         out = self.add([out, residual])
 
-        out = self.relu(out)
+        out = self.relu2(out)
 
         return out
 
@@ -120,17 +121,16 @@ class SparseConvolutionDownsample(nn.Module):
             filter_stride   = [1,2,2],
             bias            = params.bias
         )
-        self.do_batch_norm = False
-        if params.batch_norm:
-            self.do_batch_norm = True
-            self.bn   = scn.BatchNormalization(outplanes)
-        self.relu = scn.ReLU()
+
+        if params.normalization == Norm.batch:
+            self.relu = scn.BatchNormLeakyReLU(outplanes)
+        elif params.normalization == Norm.layer:
+            raise Exception("Layer norm not supported in SCN")
+        else:
+            self.relu = scn.LeakyReLU()
 
     def forward(self, x):
         out = self.conv(x)
-
-        if self.do_batch_norm:
-            out = self.bn(out)
 
         out = self.relu(out)
         return out
@@ -148,16 +148,16 @@ class SparseConvolutionUpsample(nn.Module):
             filter_stride   = [1,2,2],
             bias            = params.bias
         )
-        self.do_batch_norm = False
-        if params.batch_norm:
-            self.do_batch_norm = True
-            self.bn   = scn.BatchNormalization(outplanes)
-        self.relu = scn.ReLU()
+
+        if params.normalization == Norm.batch:
+            self.relu = scn.BatchNormLeakyReLU(outplanes)
+        elif params.normalization == Norm.layer:
+            raise Exception("Layer norm not supported in SCN")
+        else:
+            self.relu = scn.LeakyReLU()
 
     def forward(self, x):
         out = self.conv(x)
-        if self.do_batch_norm:
-            out = self.bn(out)
         out = self.relu(out)
         return out
 
@@ -465,8 +465,9 @@ class UResNet3D(torch.nn.Module):
 
         x = self.bottleneck(x)
 
+
         # Shift all pixels down in the "background category:"
-        x.features -= self.empty_voxel
+        # x.features -= self.empty_voxel
 
         # Convert the images to dense layout:
         x = self._s_to_d(x)
@@ -479,7 +480,7 @@ class UResNet3D(torch.nn.Module):
 
         # Replace all of the locations that are 0 from spare to SparseToDense
         # With a very high background score:
-        x = [ _x + self.empty_image for _x in x ]
+        # x = [ _x + self.empty_image for _x in x ]
 
 
 
