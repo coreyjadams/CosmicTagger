@@ -426,15 +426,15 @@ class UResNet3D(torch.nn.Module):
         #         nn.init.constant_(m.bias, 0)
 
         # Use this tensor to shift the background label predictions for empty locations
-        self.empty_voxel = torch.tensor([100., 0,0])
-        self.empty_image = torch.zeros(size=[3,spatial_size[0], spatial_size[1]])
-        self.empty_image[0,:,:] = 100
+        # self.empty_voxel = torch.tensor([100., 0,0])
+        # self.empty_image = torch.zeros(size=[3,spatial_size[0], spatial_size[1]])
+        # self.empty_image[0,:,:] = 100
 
     def cuda(self, *args):
         torch.nn.Module.cuda(self, *args)
-
-        self.empty_voxel = self.empty_voxel.cuda()
-        self.empty_image = self.empty_image.cuda()
+        #
+        # self.empty_voxel = self.empty_voxel.cuda()
+        # self.empty_image = self.empty_image.cuda()
 
     def convert_to_scn(self, _input):
 

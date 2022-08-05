@@ -200,6 +200,8 @@ class torch_trainer(trainercore):
         else:
             self._opt = torch.optim.Adam(self._net.parameters(), 1.0)
 
+        # For a regression in pytowrch 1.12.0:
+        self._opt.param_groups[0]["capturable"] = False
 
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 

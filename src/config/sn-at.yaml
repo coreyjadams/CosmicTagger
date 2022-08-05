@@ -4,6 +4,12 @@ defaults:
   - override framework: torch
   - _self_
 
+data:
+  downsample: 0
+
 run:
-  distributed: False
+  distributed: True
   compute_mode: GPU
+
+network:
+  depth: 7
