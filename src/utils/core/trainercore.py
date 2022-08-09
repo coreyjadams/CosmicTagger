@@ -120,7 +120,7 @@ class trainercore(object):
         self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
             "train", f, self.args.run.minibatch_size, color)
 
-        if self.args.data.aux_file != "":
+        if not self.args.data.synthetic and self.args.data.aux_file != "":
             if self.is_training():
                 # Fetching data for on the fly testing:
                 self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
