@@ -10,6 +10,10 @@ __pycache__/
 *.cobaltlog
 *.qsub
 
+# PBS files:
+*.sh.o*
+*.sh.e*
+
 # Hydra files
 .hydra/
 src/.hydra

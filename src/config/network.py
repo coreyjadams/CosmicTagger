@@ -33,7 +33,7 @@ class Norm(Enum):
     batch = 1
     layer = 2
 
-@dataclass 
+@dataclass
 class Network:
     name:                 str          = "default"
     bias:                 bool         = True
@@ -60,7 +60,7 @@ class UResNet(Network):
     name:                 str          = "uresnet"
     normalization:        Norm         = Norm.layer
 
-@dataclass 
+@dataclass
 class A21(Network):
     name:                 str          = "A21"
     n_initial_filters:    int          = 8
@@ -81,7 +81,7 @@ class Polaris(Network):
     bias:                 bool         = True
     blocks_deepest_layer: int          = 2
     blocks_final:         int          = 2
-    network_depth:        int          = 7
+    depth:                int          = 7
     bottleneck_deepest:   int          = 96
     residual:             bool         = False
     connections:          Connection   = Connection.sum
@@ -100,4 +100,3 @@ cs.store(group="network", name="a21",       node=A21)
 cs.store(group="network", name="scc21",     node=SCC21)
 cs.store(group="network", name="polaris",   node=Polaris)
 cs.store(group="network", name="uresnet3d", node=UResNet3D)
-

@@ -18,7 +18,7 @@ NDEPTH=8
 
 let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 
-LOCAL_BATCH_SIZE=2
+LOCAL_BATCH_SIZE=1
 let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
 echo $GLOBAL_BATCH_SIZE
@@ -35,8 +35,10 @@ module load cray-hdf5/1.12.1.3
 mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --depth=${NDEPTH} --cpu-bind=depth \
 python bin/exec.py \
 --config-name sn-at \
-run.id=polaris_sn-at_${GLOBAL_BATCH_SIZE} \
+run.id=polaris_sn-at_${GLOBAL_BATCH_SIZE}-light \
 run.distributed=True \
 run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 data.data_directory=${DATA_DIR} \
-run.iterations=4000
+run.precision=mixed \
+mode.optimizer.loss_balance_scheme=light \
+run.iterations=5000
