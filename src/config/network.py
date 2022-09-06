@@ -58,7 +58,7 @@ class Network:
 @dataclass
 class UResNet(Network):
     name:                 str          = "uresnet"
-    normalization:        Norm         = Norm.layer
+    normalization:        Norm         = Norm.batch
 
 @dataclass
 class A21(Network):
