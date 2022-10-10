@@ -599,6 +599,7 @@ class UResNet3D(tf.keras.models.Model):
 
         return self.weight_decay * tf.sqrt(l)
 
+    @tf.function
     def call(self, input_tensor, training):
 
 

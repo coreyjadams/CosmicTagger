@@ -16,6 +16,7 @@ for i, p in enumerate(sys.path):
 
 import horovod.tensorflow as hvd
 hvd.init()
+from mpi4py import MPI
 
 # from horovod.tensorflow.keras import DistributedOptimizer
 

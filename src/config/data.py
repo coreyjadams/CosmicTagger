@@ -17,9 +17,9 @@ class Data:
 @dataclass
 class Real(Data):
     synthetic:      bool = False
-    data_directory: str  = "/grand/projects/datascience/cadams/datasets/SBND/"
-    file:           str  = "cosmic_tagging_train.h5"
-    aux_file:       str  = "cosmic_tagging_val.h5"
+    data_directory: str  = "/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/"
+    file:           str  = "cosmic_tagging_2_train.h5"
+    aux_file:       str  = "cosmic_tagging_2_val.h5"
     img_transform:  bool = False
 
 

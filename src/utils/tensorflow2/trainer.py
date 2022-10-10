@@ -107,7 +107,7 @@ class tf_trainer(trainercore):
                 self.args.mode.optimizer.loss_balance_scheme, self._channels_dim)
 
 
-        self._log_keys = ["loss", "Average/Non_Bkg_Accuracy", "Average/mIoU"]
+        self._log_keys = ["loss/loss", "Average/Non_Bkg_Accuracy", "Average/mIoU"]
 
         end = time.time()
         return end - start
@@ -510,7 +510,7 @@ class tf_trainer(trainercore):
 
                 loss, reg_loss = self.loss_calculator(labels, logits)
             #
-                loss = loss + reg_loss
+                # loss = loss + reg_loss
 
                 if self.args.run.precision == Precision.mixed:
                     scaled_loss = self._opt.get_scaled_loss(loss)
@@ -522,7 +522,8 @@ class tf_trainer(trainercore):
                 gradients = self._opt.get_unscaled_gradients(scaled_gradients)
             else:
                 gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
-        return logits, labels, prediction, loss - reg_loss, gradients, reg_loss
+        return logits, labels, prediction, loss, gradients, reg_loss
+        # return logits, labels, prediction, loss - reg_loss, gradients, reg_loss
 
     def train_step(self):
 

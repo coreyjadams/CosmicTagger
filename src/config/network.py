@@ -47,7 +47,7 @@ class Network:
     bottleneck_deepest:   int          = 256
     residual:             bool         = True
     block_concat:         bool         = False
-    weight_decay:         float        = 0.1
+    weight_decay:         float        = 0.01
     connections:          Connection   = Connection.concat
     conv_mode:            ConvMode     = ConvMode.conv_2D
     growth_rate:          GrowthRate   = GrowthRate.additive

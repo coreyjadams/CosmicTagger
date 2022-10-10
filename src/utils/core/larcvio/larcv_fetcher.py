@@ -12,7 +12,7 @@ logger = logging.getLogger("cosmictagger")
 
 class larcv_fetcher(object):
 
-    FULL_RESOLUTION_H = 1280
+    FULL_RESOLUTION_H = 1408
     FULL_RESOLUTION_W = 2048
 
     def __init__(self, mode, distributed, downsample, dataformat, synthetic, sparse, seed=None):
@@ -35,7 +35,8 @@ class larcv_fetcher(object):
                 self._larcv_interface.no_warnings()
             elif mode == "train" or mode == "iotest":
                 self._larcv_interface = queueloader.queue_interface(
-                    random_access_mode="random_blocks", seed=seed)
+                    random_access_mode="serial_access", seed=0)
+                    # random_access_mode="random_blocks", seed=seed)
                 self._larcv_interface.no_warnings()
             else:
                 # Must be synthetic

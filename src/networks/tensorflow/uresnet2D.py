@@ -592,10 +592,7 @@ class UResNet(tf.keras.models.Model):
             kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
         )
 
-        if tf.__version__.startswith("2"):
-            self.call = tf.function(self.call_internal)
-        else:
-            self.call = self.call_internal
+
         self.weight_decay = params.weight_decay
 
     @tf.function
@@ -608,8 +605,8 @@ class UResNet(tf.keras.models.Model):
 
         return self.weight_decay * tf.sqrt(l)
 
-
-    def call_internal(self, input_tensor, training):
+    @tf.function
+    def call(self, input_tensor, training):
 
 
         batch_size = input_tensor.get_shape()[0]
