@@ -142,11 +142,30 @@ class larcv_fetcher(object):
                 Channels  = [0,1,2]
             )
 
+            # Event-wide labels:
+            cb.add_batch_filler(
+                datatype = "particle",
+                producer = "sbndneutrino",
+                name     = name+"particle"
+            )
+
+
+            # Vertex locations as BBoxes:
+            cb.add_batch_filler(
+                datatype = "bbox2d",
+                producer = "bbox_neutrino",
+                name     = name + "vertex",
+                MaxBoxes = 1,
+                Channels = [0,1,2]
+            )
+
 
             # Build up the data_keys:
             data_keys = {
                 'image': name + 'data',
-                'label': name + 'label'
+                'label': name + 'label',
+                'particle': name + 'particle',
+                'vertex': name + 'vertex'
                 }
 
 
@@ -185,7 +204,6 @@ class larcv_fetcher(object):
 
     def fetch_next_batch(self, name, force_pop=False):
 
-
         if not self.synthetic:
             metadata=True
 
@@ -197,6 +215,7 @@ class larcv_fetcher(object):
             minibatch_data = self._larcv_interface.fetch_minibatch_data(name,
                 pop=pop,fetch_meta_data=metadata)
             minibatch_dims = self._larcv_interface.fetch_minibatch_dims(name)
+
 
             # If the returned data is None, return none and don't load more:
             if minibatch_data is None:
@@ -211,6 +230,22 @@ class larcv_fetcher(object):
                     continue
                 minibatch_data[key] = numpy.reshape(minibatch_data[key], minibatch_dims[key])
 
+            n_neutrino_pixels = numpy.sum(minibatch_data['label'] == 2, axis=(1,2,3))
+
+
+            minibatch_data['event_label'] = data_transforms.event_label(
+                minibatch_data['particle'][:,0],
+                n_neutrino_pixels,
+            )
+
+            # Vertex comes out with shape [batch_size, channels, max_boxes, 2*ndim (so 4, in this case)]
+
+            vertex_channels_first = minibatch_data['vertex'][:,:,0,0:2]
+
+            if self.dataformat != "channels_first":
+                minibatch_data['vertex'] = numpy.transpose(vertex_channels_first,(0,2,1))
+            else:
+                minibatch_data['vertex'] = vertex_channels_first
 
             if not self.sparse:
                 minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(
@@ -226,7 +261,6 @@ class larcv_fetcher(object):
                 minibatch_data['label'],
                 dense_shape =self.image_shape,
                 dataformat  =self.dataformat)
-
 
 
         else:

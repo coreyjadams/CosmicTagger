@@ -18,6 +18,37 @@ where N_features is 2 or 3 depending on whether or not values are included
 
 '''
 
+def event_label(neutrino_particles, n_neutrino_pixels, neutrino_threshold=10):
+
+    # Select electron neutrinos:
+    nu_e  = numpy.abs(neutrino_particles['_pdg'] == 12)
+    nu_mu = numpy.abs(neutrino_particles['_pdg'] == 14)
+
+    # Neutral Current or Charged Current?
+    nc = neutrino_particles["_current_type"] == 1
+
+    n_events = neutrino_particles.shape[0]
+
+    labels = numpy.zeros(n_events, dtype="int32")
+
+    cosmic_labels = n_neutrino_pixels < neutrino_threshold
+
+    labels[nu_e] = 0
+    labels[nu_mu] = 1
+    labels[nc] = 2
+    labels[cosmic_labels] = 3
+
+    return labels
+
+            # minibatch_data['vertex2d'] = data_transforms.vertex_projection(
+            #     minibatch_data['particle'][:,0]
+            # )
+
+            # minibatch_data['event_label'] = data_transforms.event_label(
+            #     minibatch_data['particle'][:,0]
+            # )
+
+
 def larcvsparse_to_dense_2d(input_array, dense_shape, dataformat):
 
     batch_size = input_array.shape[0]
