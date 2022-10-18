@@ -87,9 +87,18 @@ class AccuracyCalculator(object):
 
         return accuracy
 
+    def event_accuracy(self, label, logits):
 
-    def __call__(self, labels_dict, network_dict):
+    	selected_class = torch.argmax(logits, axis=-1)
+
+    	event_accuracy = selected_class == label
+
+    	return {"Average/EventLabel" : torch.mean(event_accuracy.float())}
+
+    def __call__(self, network_dict, labels_dict):
 
     	accuracy = self.segmentation_accuracy(labels_dict["segmentation"], network_dict["segmentation"])
+
+    	accuracy.update(self.event_accuracy(labels_dict["event_label"], network_dict["event_label"]))
 
     	return accuracy

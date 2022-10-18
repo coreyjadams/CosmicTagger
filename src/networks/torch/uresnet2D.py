@@ -488,7 +488,6 @@ class UResNet(torch.nn.Module):
 
     def __init__(self, params, image_size):
 
-        print(params)
         torch.nn.Module.__init__(self)
 
 

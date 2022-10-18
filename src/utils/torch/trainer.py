@@ -81,7 +81,7 @@ class torch_trainer(trainercore):
 
 
 
-        self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
+        self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU', 'Average/EventLabel']
         if self.is_training():
             self._log_keys.append("loss")
 
