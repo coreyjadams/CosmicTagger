@@ -76,9 +76,9 @@ class tf_trainer(trainercore):
         from src.config import ConvMode
         # Build the network object, forward pass only:
         if self.args.network.conv_mode == ConvMode.conv_2D:
-            self._net = uresnet2D.UResNet(self.args.network)
+            self._net = uresnet2D.UResNet(self.args.network, self.larcv_fetcher.image_size())
         else:
-            self._net = uresnet3D.UResNet3D(self.args.network)
+            self._net = uresnet3D.UResNet3D(self.args.network, self.larcv_fetcher.image_size())
 
         self._net.trainable = True
 
@@ -705,90 +705,6 @@ class tf_trainer(trainercore):
         self.summary_images(labels, prediction)
         self._global_step.assign_add(1)
 
-
-        # # If there is an aux file, for ana that means an output file.
-        # # Call the larcv interface to write data:
-        # if self.args.aux_file is not None:
-        #
-        #     # For writing output, we get the non-zero locations from the labels.
-        #     # Then, we get the neutrino and cosmic scores for those locations in the logits,
-        #     # After applying a softmax.
-        #
-        #     # To do this, we just need to capture the following objects:
-        #     # - the dense shape
-        #     # - the location of all non-zero pixels, flattened
-        #     # - the softmax score for all non-zero pixels, flattened.
-        #
-        #
-        #     # Compute the softmax over all images in the batch:
-        #     softmax = ops['softmax']
-        #     for b_index in range(self.args.run.minibatch_size):
-        #
-        #         # We want to make sure we get the locations from the non-zero input pixels:
-        #         images = numpy.split(minibatch_data['image'][b_index,:,:,:], 3, axis=self._channels_dim)
-        #
-        #         # Reshape images here to remove the empty index:
-        #         images = [image.squeeze() for image in images]
-        #
-        #         # Locations is a list of a tuple of coordinates for each image
-        #         locations = [numpy.where(image != 0) for image in images]
-        #
-        #         # Shape is a list of shapes for each image:
-        #         shape = [ image.shape for image in images ]
-        #
-        #         # Batch softmax is a list of the softmax tensor on each plane
-        #         batch_softmax = [s[b_index] for s in softmax]
-        #
-        #
-        #         # To get the neutrino scores, we want to access the softmax at the neutrino index
-        #         # And slice over just the non-zero locations:
-        #         if self._channels_dim == 1:
-        #             neutrino_scores = [ b[self.NEUTRINO_INDEX][locations[plane]]
-        #                 for plane, b in enumerate(batch_softmax) ]
-        #             cosmic_scores   = [ b[self.COSMIC_INDEX][locations[plane]]
-        #                 for plane, b in enumerate(batch_softmax) ]
-        #         else:
-        #             neutrino_scores = [ b[locations[plane]][:,self.NEUTRINO_INDEX]
-        #                 for plane, b in enumerate(batch_softmax) ]
-        #             cosmic_scores   = [ b[locations[plane]][:,self.COSMIC_INDEX]
-        #                 for plane, b in enumerate(batch_softmax) ]
-        #
-        #         # Lastly, flatten the locations.
-        #         # For the unraveled index, there is a complication that torch stores images
-        #         # with [H,W] and larcv3 stores images with [W, H] by default.
-        #         # To solve this -
-        #         # Reverse the shape:
-        #         shape = [ s[::-1] for s in shape ]
-        #         # Go through the locations in reverse:
-        #         locations = [ numpy.ravel_multi_index(l[::-1], s) for l, s in zip(locations, shape) ]
-        #
-        #         # Now, package up the objects to send to the file writer:
-        #         neutrino_data = []
-        #         cosmic_data = []
-        #         for plane in range(3):
-        #             neutrino_data.append({
-        #                 'values' : neutrino_scores[plane],
-        #                 'index'  : locations[plane],
-        #                 'shape'  : shape[plane]
-        #             })
-        #             cosmic_data.append({
-        #                 'values' : cosmic_scores[plane],
-        #                 'index'  : locations[plane],
-        #                 'shape'  : shape[plane]
-        #             })
-        #
-        #
-        #         # Write the data through the writer:
-        #         self.larcv_fetcher.write(cosmic_data,
-        #             producer = "cosmic_prediction",
-        #             entry    = minibatch_data['entries'][b_index],
-        #             event_id = minibatch_data['event_ids'][b_index])
-        #
-        #         self.larcv_fetcher.write(neutrino_data,
-        #             producer = "neutrino_prediction",
-        #             entry    = minibatch_data['entries'][b_index],
-        #             event_id = minibatch_data['event_ids'][b_index])
-        #
 
 
         global_end_time = datetime.datetime.now()

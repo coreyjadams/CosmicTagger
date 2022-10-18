@@ -29,8 +29,7 @@ class trainercore(object):
     a NotImplemented error.
 
     '''
-    NEUTRINO_INDEX = 2
-    COSMIC_INDEX   = 1
+
 
 
     def __init__(self, args):
@@ -53,14 +52,13 @@ class trainercore(object):
             synthetic   = args.data.synthetic,
             sparse      = sparse )
 
-
         if args.data.data_format == DataFormatKind.channels_first: self._channels_dim = 1
         if args.data.data_format == DataFormatKind.channels_last : self._channels_dim = -1
 
         # Define a datatype for a profiling array.
         # It is going to be mostly 64bit timestamps for a number of points
         self.profiling_dtype = numpy.dtype([
-            ("i",           numpy.int32),      # Filled in batch_process
+            ("i",           numpy.int32),       # Filled in batch_process
             ("start",       "datetime64[us]"),  # Filled in batch_process
             ("iteration",   "timedelta64[us]"), # Filled in batch_process
             ("train",       "timedelta64[us]"), # Filled in batch_process

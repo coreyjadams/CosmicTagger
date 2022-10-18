@@ -5,7 +5,7 @@ from src.config import LossBalanceScheme
 
 class LossCalculator(torch.nn.Module):
 
-    def __init__(self, balance_type=None):
+    def __init__(self, params):
 
         torch.nn.Module.__init__(self)
 
@@ -13,13 +13,21 @@ class LossCalculator(torch.nn.Module):
         # if balance_type not in ["focal", "light", "even", "none"] and balance_type is not None:
         #     raise Exception("Unsupported loss balancing recieved: ", balance_type)
 
-        self.balance_type = balance_type
+        self.balance_type = params.loss_balance_scheme
 
-        if balance_type != "none":
+        if self.balance_type != "none":
             self._criterion = torch.nn.CrossEntropyLoss(reduction='none')
         else:
             self._criterion = torch.nn.CrossEntropyLoss(reduction='mean')
 
+        self.weight_dict = {
+            "segmentation" : params.seg_weight,
+            "event_label"  : params.event_id_weight,
+            "vertex"       : params.vertex_weight,
+        }
+
+
+        self.event_label_criterion = torch.nn.CrossEntropyLoss(reduction="mean")
 
     def label_counts(self, label_plane):
         # helper function to compute number of each type of label
@@ -33,7 +41,29 @@ class LossCalculator(torch.nn.Module):
 
         return counts
 
-    def forward(self, labels, logits):
+    def forward(self, labels_dict, network_dict):
+
+        seg_loss   = self.segmentation_loss(labels_dict["segmentation"], network_dict["segmentation"])
+
+        event_loss = self.event_loss(labels_dict["event_label"], network_dict["event_label"])
+        
+        vtx_loss   = self.vertex_loss(labels_dict["vertex"], network_dict["vertex"])
+
+        return  \
+            self.weight_dict["segmentation"] * seg_loss + \
+            self.weight_dict["event_label"]  * event_loss + \
+            self.weight_dict["vertex"]       * vtx_loss
+
+    def vertex_loss(self, labels, logits):
+        return 0.0
+
+    def event_loss(self, labels, logits):
+
+        event_label_loss = self.event_label_criterion(logits, labels.long())
+        return event_label_loss
+
+    def segmentation_loss(self, labels, logits):
+
 
         # This function receives the inputs labels and logits and returns a loss.\
         # If there is balancing scheme specified, weights are computed on the fly

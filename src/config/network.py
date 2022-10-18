@@ -42,7 +42,7 @@ class Network:
     blocks_per_layer:     int          = 2
     blocks_deepest_layer: int          = 5
     blocks_final:         int          = 5
-    depth:                int          = 6
+    depth:                int          = 5
     filter_size_deepest:  int          = 5
     bottleneck_deepest:   int          = 256
     residual:             bool         = True
@@ -54,6 +54,10 @@ class Network:
     downsampling:         DownSampling = DownSampling.max_pooling
     upsampling:           UpSampling   = UpSampling.interpolation
     data_format:          str          = MISSING
+    classification:       bool         = True
+    vertex_id:            bool         = True
+    vertex_depth:         int          = 4
+
 
 @dataclass
 class UResNet(Network):

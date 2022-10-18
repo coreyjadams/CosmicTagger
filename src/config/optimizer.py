@@ -24,7 +24,11 @@ class Optimizer:
     loss_balance_scheme:   LossBalanceScheme = LossBalanceScheme.focal
     name:                  OptimizerKind     = OptimizerKind.adam
     gradient_accumulation: int               = 1
-    
+    train_event_id:        bool              = True
+    train_vertex:          bool              = False
+    event_id_weight:       float             = 1.0
+    vertex_weight:         float             = 1.0
+    seg_weight:            float             = 0.0
 
 cs = ConfigStore.instance()
 cs.store(name="optimizer", node=Optimizer)

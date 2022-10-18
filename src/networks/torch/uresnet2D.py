@@ -261,16 +261,18 @@ class DeepestBlock(nn.Module):
             x = ( self.bottleneck(_x) for _x in x )
             x = ( self.blocks(_x) for _x in x )
             x = ( self.unbottleneck(_x) for _x in x )
+            classification_head = torch.cat(x, dim=1)
         else:
 
             x = torch.cat(x, dim=1)
             x = self.bottleneck(x)
             x = self.blocks(x)
             x = self.unbottleneck(x)
+            classification_head = x
             x = torch.chunk(x, chunks=3, dim=1)
 
 
-        return x
+        return x, classification_head # The none is a placeholder for vertex ID YOLO
 
 class NoConnection(nn.Module):
 
@@ -365,6 +367,7 @@ class UNetCore(nn.Module):
         self.layers = params.blocks_per_layer
         self.depth  = depth
 
+
         if depth == 0:
             self.main_module = DeepestBlock(inplanes = inplanes,
                                             params = params)
@@ -449,7 +452,10 @@ class UNetCore(nn.Module):
 
 
         # Apply the main module:
-        x = self.main_module(x)
+        x, classification_head = self.main_module(x)
+
+        # The vertex_head is None after the DEEPEST layer.  But, if we're returning it, do it here:
+        
 
         if self.depth != 0:
 
@@ -468,13 +474,7 @@ class UNetCore(nn.Module):
             x = tuple( self.up_blocks(_x) for _x in x )
 
 
-
-        #
-        # if FLAGS.VERBOSITY >1:
-        #     for p in range(len(x)):
-        #         print("plane {} Depth {}, shape: ".format(p, self.depth), x[p].shape)
-
-        return x
+        return x, classification_head
 
 
 
@@ -486,9 +486,9 @@ class objectview(object):
 
 class UResNet(torch.nn.Module):
 
-    def __init__(self, params):
+    def __init__(self, params, image_size):
 
-
+        print(params)
         torch.nn.Module.__init__(self)
 
 
@@ -523,6 +523,36 @@ class UResNet(torch.nn.Module):
             bias         = params.bias)
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
+        if params.classification:
+
+            # The image size here is going to be the orignal / 2**depth
+            # We need to know it for the pooling layer
+            self.pool_size = [d // 2**params.depth for d in image_size]
+
+            n_filters = params.n_initial_filters
+            for i in range(params.depth):
+                if params.growth_rate == GrowthRate.multiplicative:
+                    n_filters = 2 * n_filters
+                else:
+                    n_filters = n_filters + params.n_initial_filters
+
+
+            n_filters_classification = 3 * n_filters
+            self.classifier = BlockSeries(
+                inplanes = n_filters_classification,
+                n_blocks = params.blocks_final,
+                params   = params
+            )
+            self.bottleneck_classifer = nn.Conv2d(
+                in_channels  = n_filters_classification,
+                out_channels = 4,
+                kernel_size  = 1,
+                stride       = 1,
+                padding      = 0,
+                bias         = params.bias)
+
+            self.pool = torch.nn.AvgPool2d(self.pool_size)
+
 
         #
         # Configure initialization:
@@ -543,6 +573,10 @@ class UResNet(torch.nn.Module):
 
         batch_size = input_tensor.shape[0]
 
+        return_dict = {
+            "event_label" : None,
+            "vertex"      : None,
+        }
 
 
         # Reshape this tensor into the right shape to apply this multiplane network.
@@ -556,17 +590,21 @@ class UResNet(torch.nn.Module):
 
 
 
-        #
-        # if VERBOSITY >1:
-        #     print("After Initial convolution: ")
-        #     for p in [0,1,2]:
-        #         print("Plane {}, shape ".format(p), x[p].shape)
-
         # Apply the main unet architecture:
-        x = self.net_core(x)
+        seg_labels, classification_head = self.net_core(x)
 
         # Apply the final residual block to each plane:
-        x = tuple( self.final_layer(_x) for _x in x )
-        x = tuple( self.bottleneck(_x) for _x in x )
-        # Might need to do some reshaping here
-        return x
+        seg_labels = tuple( self.final_layer(_x) for _x in seg_labels )
+        seg_labels = tuple( self.bottleneck(_x) for _x in seg_labels )
+
+        # Always return the segmentation
+        return_dict["segmentation"] = seg_labels
+
+        if hasattr(self, "classifier"):
+            classified = self.classifier(classification_head)
+            classified = self.bottleneck_classifer(classified)
+            # 4 classes of events:
+            classified = self.pool(classified).reshape((-1, 4))
+            return_dict["event_label"] = classified
+
+        return return_dict

@@ -30,7 +30,7 @@ torch.backends.cudnn.benchmark = True
 # from torch.jit import trace
 
 from src.utils.core.trainercore import trainercore
-from src.networks.torch         import LossCalculator
+from src.networks.torch         import LossCalculator, AccuracyCalculator
 
 import contextlib
 @contextlib.contextmanager
@@ -63,7 +63,7 @@ class torch_trainer(trainercore):
 
         if self.args.network.conv_mode == ConvMode.conv_2D and not self.args.framework.sparse:
             from src.networks.torch.uresnet2D import UResNet
-            self._raw_net = UResNet(self.args.network)
+            self._raw_net = UResNet(self.args.network, self.larcv_fetcher.image_size())
 
         else:
             if self.args.framework.sparse and self.args.mode.name != ModeKind.iotest:
@@ -127,8 +127,10 @@ class torch_trainer(trainercore):
 
 
             if self.is_training():
-                self.loss_calculator = LossCalculator.LossCalculator(self.args.mode.optimizer.loss_balance_scheme)
+                self.loss_calculator = LossCalculator.LossCalculator(
+                    self.args.mode.optimizer)
 
+            self.acc_calc = AccuracyCalculator.AccuracyCalculator()
 
             # For half precision, we disable gradient accumulation.  This is to allow
             # dynamic loss scaling
@@ -364,103 +366,26 @@ class torch_trainer(trainercore):
 
 
 
-    def _calculate_accuracy(self, logits, labels):
+    def _calculate_accuracy(self, network_dict, labels_dict):
         ''' Calculate the accuracy.
 
             Images received here are not sparse but dense.
             This is to ensure equivalent metrics are computed for sparse and dense networks.
 
         '''
+        return self.acc_calc(network_dict, labels_dict)
 
-        accuracy = {}
-        accuracy['Average/Total_Accuracy']   = 0.0
-        accuracy['Average/Cosmic_IoU']       = 0.0
-        accuracy['Average/Neutrino_IoU']     = 0.0
-        accuracy['Average/Non_Bkg_Accuracy'] = 0.0
-        accuracy['Average/mIoU']             = 0.0
-
-
-        for plane in [0,1,2]:
-
-            values, predicted_label = torch.max(logits[plane], dim=1)
-
-            correct = (predicted_label == labels[plane].long()).float()
-
-            # We calculate 4 metrics.
-            # First is the mean accuracy over all pixels
-            # Second is the intersection over union of all cosmic pixels
-            # Third is the intersection over union of all neutrino pixels
-            # Fourth is the accuracy of all non-zero pixels
-
-            # This is more stable than the accuracy, since the union is unlikely to be ever 0
-
-            non_zero_locations       = labels[plane] != 0
-
-            weighted_accuracy = correct * non_zero_locations
-            non_zero_accuracy = torch.sum(weighted_accuracy, dim=[1,2]) / torch.sum(non_zero_locations, dim=[1,2])
-
-            neutrino_label_locations = labels[plane] == self.NEUTRINO_INDEX
-            cosmic_label_locations   = labels[plane] == self.COSMIC_INDEX
-
-            neutrino_prediction_locations = predicted_label == self.NEUTRINO_INDEX
-            cosmic_prediction_locations   = predicted_label == self.COSMIC_INDEX
-
-
-            neutrino_intersection = (neutrino_prediction_locations & \
-                neutrino_label_locations).sum(dim=[1,2]).float()
-            cosmic_intersection = (cosmic_prediction_locations & \
-                cosmic_label_locations).sum(dim=[1,2]).float()
-
-            neutrino_union        = (neutrino_prediction_locations | \
-                neutrino_label_locations).sum(dim=[1,2]).float()
-            cosmic_union        = (cosmic_prediction_locations | \
-                cosmic_label_locations).sum(dim=[1,2]).float()
-            # neutrino_intersection =
-
-            one = torch.ones(1, dtype=neutrino_intersection.dtype,device=neutrino_intersection.device)
-
-
-            neutrino_safe_unions = torch.where(neutrino_union != 0, True, False)
-            neutrino_iou         = torch.where(neutrino_safe_unions, \
-                neutrino_intersection / neutrino_union, one)
-
-            cosmic_safe_unions = torch.where(cosmic_union != 0, True, False)
-            cosmic_iou         = torch.where(cosmic_safe_unions, \
-                cosmic_intersection / cosmic_union, one)
-
-            # Finally, we do average over the batch
-
-            cosmic_iou = torch.mean(cosmic_iou)
-            neutrino_iou = torch.mean(neutrino_iou)
-            non_zero_accuracy = torch.mean(non_zero_accuracy)
-
-            accuracy[f'plane{plane}/Total_Accuracy']   = torch.mean(correct)
-            accuracy[f'plane{plane}/Cosmic_IoU']       = cosmic_iou
-            accuracy[f'plane{plane}/Neutrino_IoU']     = neutrino_iou
-            accuracy[f'plane{plane}/Non_Bkg_Accuracy'] = non_zero_accuracy
-            accuracy[f'plane{plane}/mIoU']             = 0.5*(cosmic_iou + neutrino_iou)
-
-            accuracy['Average/Total_Accuracy']   += (0.3333333)*torch.mean(correct)
-            accuracy['Average/Cosmic_IoU']       += (0.3333333)*cosmic_iou
-            accuracy['Average/Neutrino_IoU']     += (0.3333333)*neutrino_iou
-            accuracy['Average/Non_Bkg_Accuracy'] += (0.3333333)*non_zero_accuracy
-            accuracy['Average/mIoU']             += (0.3333333)*(0.5)*(cosmic_iou + neutrino_iou)
-
-
-        return accuracy
-
-
-    def _compute_metrics(self, logits, labels, loss):
+    def _compute_metrics(self, network_dict, labels_dict, loss):
 
         # Call all of the functions in the metrics dictionary:
         metrics = {}
 
         if loss is not None:
             metrics['loss']     = loss.data
-        accuracy = self._calculate_accuracy(logits, labels)
-        metrics.update(accuracy)
+        accuracy = self._calculate_accuracy(network_dict, labels_dict)
+        accuracy.update(metrics)
 
-        return metrics
+        return accuracy
 
     def log(self, metrics, saver=''):
 
@@ -540,12 +465,12 @@ class torch_trainer(trainercore):
 
 
                 # Values get mapped to gray scale, so put them in the range (0,1)
-                labels[labels == self.COSMIC_INDEX] = 0.5
-                labels[labels == self.NEUTRINO_INDEX] = 1.0
+                labels[labels == 1] = 0.5
+                labels[labels == 2] = 1.0
 
 
-                prediction[prediction == self.COSMIC_INDEX] = 0.5
-                prediction[prediction == self.NEUTRINO_INDEX] = 1.0
+                prediction[prediction == 1] = 0.5
+                prediction[prediction == 2] = 1.0
 
 
                 if saver == "test":
@@ -673,24 +598,30 @@ class torch_trainer(trainercore):
         with self.default_device_context():
             minibatch_data = self.to_torch(minibatch_data)
 
-            labels_image = minibatch_data['label']
+            labels_dict = {
+                "segmentation" : torch.chunk(minibatch_data['label'].long(), chunks=3, dim=1),
+                "event_label"  : minibatch_data['event_label'],
+                "vertex"       : minibatch_data['vertex'],
+            }
+
             # Run a forward pass of the model on the input image:
             if net is None:
-                logits_image = self._net(minibatch_data['image'])
+                network_dict = self._net(minibatch_data['image'])
             else:
-                logits_image = net(minibatch_data['image'])
+                network_dict = net(minibatch_data['image'])
 
-            labels_image = labels_image.long()
-            labels_image = torch.chunk(labels_image, chunks=3, dim=1)
-            shape =  labels_image[0].shape
+            shape =  labels_dict["segmentation"][0].shape
 
 
             # weight = weight.view([shape[0], shape[-3], shape[-2], shape[-1]])
 
             # print numpy.unique(labels_image.cpu(), return_counts=True)
-            labels_image = [ _label.view([shape[0], shape[-2], shape[-1]]) for _label in labels_image ]
+            labels_dict["segmentation"] = [ 
+                _label.view([shape[0], shape[-2], shape[-1]]) 
+                    for _label in labels_dict["segmentation"] 
+            ]
 
-        return logits_image, labels_image
+        return network_dict, labels_dict
 
     def train_step(self):
 
@@ -737,15 +668,15 @@ class torch_trainer(trainercore):
                     with self.timing_context("forward"):
                         if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                             with torch.cuda.amp.autocast():
-                                logits_image, labels_image = self.forward_pass(minibatch_data)
+                                network_dict, labels_dict = self.forward_pass(minibatch_data)
                         else:
-                            logits_image, labels_image = self.forward_pass(minibatch_data)
+                            network_dict, labels_dict = self.forward_pass(minibatch_data)
 
                     verbose = False
 
-                    # Compute the loss based on the logits
+                    # Compute the loss based on the network_dict
                     with self.timing_context("loss"):
-                        loss = self.loss_calculator(labels_image, logits_image)
+                        loss = self.loss_calculator(labels_dict, network_dict)
 
 
                     # Compute the gradients for the network parameters:
@@ -758,7 +689,7 @@ class torch_trainer(trainercore):
 
                     # Compute any necessary metrics:
                     with self.timing_context("metrics"):
-                        interior_metrics = self._compute_metrics(logits_image, labels_image, loss)
+                        interior_metrics = self._compute_metrics(network_dict, labels_dict, loss)
 
                         for key in interior_metrics:
                             if key in metrics:
@@ -812,7 +743,7 @@ class torch_trainer(trainercore):
 
             with self.timing_context("summary"):
                 self.summary(metrics, saver="train")
-                self.summary_images(logits_image, labels_image, saver="train")
+                self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], saver="train")
                 # self.graph_summary()
                 if verbose: logger.debug("Summarized")
 
@@ -855,19 +786,19 @@ class torch_trainer(trainercore):
             # if mixed precision, and cuda, use autocast:
             if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                 with torch.cuda.amp.autocast():
-                    logits_image, labels_image = self.forward_pass(minibatch_data, net=val_net)
+                    network_dict, labels_dict = self.forward_pass(minibatch_data, net=val_net)
             else:
-                logits_image, labels_image = self.forward_pass(minibatch_data, net=val_net)
+                network_dict, labels_dict = self.forward_pass(minibatch_data, net=val_net)
 
-            # Compute the loss based on the logits
-            loss = self.loss_calculator(labels_image, logits_image)
+            # Compute the loss based on the network_dict
+            loss = self.loss_calculator(labels_dict, network_dict)
 
             # Compute any necessary metrics:
-            metrics = self._compute_metrics(logits_image, labels_image, loss)
+            metrics = self._compute_metrics(network_dict, labels_dict, loss)
 
             self.log(metrics, saver="test")
             self.summary(metrics, saver="test")
-            self.summary_images(logits_image, labels_image, saver="test")
+            self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], saver="test")
 
             return
 

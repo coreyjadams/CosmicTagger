@@ -276,13 +276,16 @@ class DeepestBlock(tf.keras.layers.Layer):
             x = self.blocks(x, training)
             x = self.unbottleneck(x, training)
 
+            classification_head = x
+
             x = tf.split(x, 3, self.channels_axis)
 
         else:
             x = [ self.bottleneck(_x, training) for _x in x ]
             x = [ self.blocks(_x, training) for _x in x ]
             x = [ self.unbottleneck(_x, training) for _x in x ]
-        return x
+            classification_head = tf.concat(x)
+        return x, classification_head
 
 
     def reg_loss(self):
@@ -506,9 +509,14 @@ class UNetCore(tf.keras.models.Model):
 
         # Apply the main module:
 
-        # print("depth ", self._depth_of_network, ", x[0] pre main module shape ", x[0].shape)
-        x = self.main_module(x, training)
-        # print("depth ", self._depth_of_network, ", x[0] after main module shape ", x[0].shape)
+        # Here, we call the next layer down.
+        # That will return the segementation layers as well as "classification head"
+        # In that case, it's the output of the deepest layer, before chunking.
+        # The deepest layer returns it directly.
+        # All subsequent layers return it from there.
+
+        x, classification_head = self.main_module(x, training)
+
 
         if self._depth_of_network != 0:
 
@@ -526,7 +534,7 @@ class UNetCore(tf.keras.models.Model):
             x = [self.connection(residual[i], x[i], training) for i in range(len(x)) ]
             # print("depth ", self._depth_of_network, ", x[0] after connection shape ", x[0].shape)
 
-        return x
+        return x, classification_head
 
     def reg_loss(self):
 
@@ -582,6 +590,8 @@ class UResNet(tf.keras.models.Model):
                 params      = params)
 
 
+        self.classification_subnet = tf.keras.layers.Sequential
+
 
         self.bottleneck = tf.keras.layers.Conv2D(
             filters             = 3,
@@ -624,7 +634,8 @@ class UResNet(tf.keras.models.Model):
 
 
         # Apply the main unet architecture:
-        x = self.net_core(x, training)
+        x, classification_head = self.net_core(x, training)
+
 
         # Apply the final residual block to each plane:
         if self.final_blocks:

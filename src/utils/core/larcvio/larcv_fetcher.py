@@ -238,6 +238,10 @@ class larcv_fetcher(object):
                 n_neutrino_pixels,
             )
 
+            # Get rid of the particle data now, we're done with it:
+            minibatch_data.pop("particle")
+
+
             # Vertex comes out with shape [batch_size, channels, max_boxes, 2*ndim (so 4, in this case)]
 
             vertex_channels_first = minibatch_data['vertex'][:,:,0,0:2]
@@ -246,6 +250,7 @@ class larcv_fetcher(object):
                 minibatch_data['vertex'] = numpy.transpose(vertex_channels_first,(0,2,1))
             else:
                 minibatch_data['vertex'] = vertex_channels_first
+
 
             if not self.sparse:
                 minibatch_data['image']  = data_transforms.larcvsparse_to_dense_2d(
@@ -261,7 +266,6 @@ class larcv_fetcher(object):
                 minibatch_data['label'],
                 dense_shape =self.image_shape,
                 dataformat  =self.dataformat)
-
 
         else:
 
