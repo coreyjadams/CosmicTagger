@@ -3,9 +3,11 @@ import torch
 
 class AccuracyCalculator(object):
 
-    def __init__(self):
+    def __init__(self, params):
 
         object.__init__(self)
+
+        self.network_params = params.network
 
     def segmentation_accuracy(self, labels, logits):
 
@@ -97,8 +99,9 @@ class AccuracyCalculator(object):
 
     def __call__(self, network_dict, labels_dict):
 
-    	accuracy = self.segmentation_accuracy(labels_dict["segmentation"], network_dict["segmentation"])
+        accuracy = self.segmentation_accuracy(labels_dict["segmentation"], network_dict["segmentation"])
 
-    	accuracy.update(self.event_accuracy(labels_dict["event_label"], network_dict["event_label"]))
+        if self.network_params.classification.active:
+            accuracy.update(self.event_accuracy(labels_dict["event_label"], network_dict["event_label"]))
 
-    	return accuracy
+        return accuracy

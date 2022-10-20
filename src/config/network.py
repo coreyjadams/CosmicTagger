@@ -34,6 +34,19 @@ class Norm(Enum):
     layer = 2
 
 @dataclass
+class Vertex:
+    active: bool  = False
+    depth:  int   = 4
+    weight: float = 1.0
+
+@dataclass
+class EventLabel:
+    active:    bool  = True
+    weight:    float = 1.0
+    n_filters: int   = 256
+
+
+@dataclass
 class Network:
     name:                 str          = "default"
     bias:                 bool         = True
@@ -54,9 +67,8 @@ class Network:
     downsampling:         DownSampling = DownSampling.max_pooling
     upsampling:           UpSampling   = UpSampling.interpolation
     data_format:          str          = MISSING
-    classification:       bool         = True
-    vertex_id:            bool         = True
-    vertex_depth:         int          = 4
+    classification:       EventLabel   = EventLabel()
+    vertex:               Vertex       = Vertex()
 
 
 @dataclass

@@ -3,6 +3,7 @@ from enum import Enum
 
 from dataclasses import dataclass
 from hydra.core.config_store import ConfigStore
+from typing import List, Any
 from omegaconf import MISSING
 
 class LossBalanceScheme(Enum):
@@ -15,7 +16,26 @@ class OptimizerKind(Enum):
     adam    = 0
     rmsprop = 1
 
+# class LRUnit(Enum):
+#     iteration = 0
+#     epoch     = 1
 
+# class LRFunction(Enum):
+#     linear    = 0
+#     flat      = 1
+#     decay     = 2
+
+# @dataclass
+# class LRSegment():
+#     length: int  = 1
+#     start: float = 0.0
+#     end:   float = 0.0
+#     function: LRFunction = LRFunction.linear
+
+# @dataclass
+# class LRSchedule():
+#     units: LRUnit = LRUnit.iteration
+#     schedule: List(LRSegment) = list(LRSegment())
 
 
 @dataclass 

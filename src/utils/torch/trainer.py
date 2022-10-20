@@ -81,7 +81,9 @@ class torch_trainer(trainercore):
 
 
 
-        self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU', 'Average/EventLabel']
+        self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
+        if self.args.network.classification.active:
+            self._log_keys += ['Average/EventLabel',]
         if self.is_training():
             self._log_keys.append("loss")
 
@@ -127,10 +129,9 @@ class torch_trainer(trainercore):
 
 
             if self.is_training():
-                self.loss_calculator = LossCalculator.LossCalculator(
-                    self.args.mode.optimizer)
+                self.loss_calculator = LossCalculator.LossCalculator(self.args)
 
-            self.acc_calc = AccuracyCalculator.AccuracyCalculator()
+            self.acc_calc = AccuracyCalculator.AccuracyCalculator(self.args)
 
             # For half precision, we disable gradient accumulation.  This is to allow
             # dynamic loss scaling

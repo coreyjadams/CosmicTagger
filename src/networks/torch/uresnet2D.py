@@ -478,12 +478,6 @@ class UNetCore(nn.Module):
 
 
 
-
-class objectview(object):
-    def __init__(self, d):
-        self.__dict__ = d
-
-
 class UResNet(torch.nn.Module):
 
     def __init__(self, params, image_size):
@@ -522,7 +516,7 @@ class UResNet(torch.nn.Module):
             bias         = params.bias)
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
-        if params.classification:
+        if params.classification.active:
 
             # The image size here is going to be the orignal / 2**depth
             # We need to know it for the pooling layer

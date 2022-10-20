@@ -136,20 +136,20 @@ class trainercore(object):
                 'warm_up' : {
                     'function'      : 'linear',
                     'start'         : 0,
-                    'n_epochs'      : 1,
+                    'n_epochs'      : 0.1,
                     'initial_rate'  : 0.00001,
                 },
                 'flat' : {
                     'function'      : 'flat',
-                    'start'         : 1,
-                    'n_epochs'      : 20,
+                    'start'         : 0.1,
+                    'n_epochs'      : 0.6,
                 },
                 'decay' : {
                     'function'      : 'decay',
-                    'start'         : 21,
-                    'n_epochs'      : 4,
-                        'floor'         : 0.0001,
-                    'decay_rate'    : 0.999
+                    'start'         : 0.7,
+                    'n_epochs'      : 0.3,
+                        'floor'         : 0.01*self.args.mode.optimizer.learning_rate,
+                    'decay_rate'    : 0.99999
                 },
             }
 
@@ -223,8 +223,8 @@ class trainercore(object):
             func_list.append(function)
 
         self.lr_calculator = lambda x: numpy.piecewise(
-            x * (self.args.run.minibatch_size / self._train_data_size),
-            [c(x * (self.args.run.minibatch_size / self._train_data_size)) for c in cond_list], func_list)
+            x  / self.args.run.epoch,
+            [c(x  / self.args.run.epoch) for c in cond_list], func_list)
 
 
     def init_network(self):
