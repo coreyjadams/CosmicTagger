@@ -136,18 +136,18 @@ class trainercore(object):
                 'warm_up' : {
                     'function'      : 'linear',
                     'start'         : 0,
-                    'n_epochs'      : 0.1,
+                    'n_epochs'      : 1,
                     'initial_rate'  : 0.00001,
                 },
                 'flat' : {
                     'function'      : 'flat',
-                    'start'         : 0.1,
-                    'n_epochs'      : 0.6,
+                    'start'         : 1,
+                    'n_epochs'      : 6,
                 },
                 'decay' : {
                     'function'      : 'decay',
-                    'start'         : 0.7,
-                    'n_epochs'      : 0.3,
+                    'start'         : 7,
+                    'n_epochs'      : 5,
                         'floor'         : 0.01*self.args.mode.optimizer.learning_rate,
                     'decay_rate'    : 0.99999
                 },

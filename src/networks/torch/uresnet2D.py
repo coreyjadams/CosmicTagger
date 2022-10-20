@@ -455,7 +455,7 @@ class UNetCore(nn.Module):
         x, classification_head = self.main_module(x)
 
         # The vertex_head is None after the DEEPEST layer.  But, if we're returning it, do it here:
-        
+
 
         if self.depth != 0:
 
@@ -530,14 +530,13 @@ class UResNet(torch.nn.Module):
                     n_filters = n_filters + params.n_initial_filters
 
 
-            n_filters_classification = 3 * n_filters
             self.classifier = BlockSeries(
-                inplanes = n_filters_classification,
-                n_blocks = params.blocks_final,
+                inplanes = params.classification.n_filters,
+                n_blocks = params.classification.n_layers,
                 params   = params
             )
             self.bottleneck_classifer = nn.Conv2d(
-                in_channels  = n_filters_classification,
+                in_channels  = params.classification.n_filters,
                 out_channels = 4,
                 kernel_size  = 1,
                 stride       = 1,

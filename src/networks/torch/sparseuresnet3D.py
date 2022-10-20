@@ -224,12 +224,15 @@ class SparseDeepestBlock(nn.Module):
 
     def forward(self, x):
 
-        return x
-
         x = self.merger(x)
         x = self.blocks(x)
+
+        classification_head = x
+
         x = self.splitter(x)
-        return x
+
+
+        return x, classification_head
 
 
 class NoConnection(nn.Module):
@@ -336,7 +339,7 @@ class SparseUNetCore(nn.Module):
             x = self.downsample(x)
 
         # Apply the main module:
-        x = self.main_module(x)
+        x, classification_head = self.main_module(x)
 
         if self.depth != 0:
 
@@ -351,13 +354,8 @@ class SparseUNetCore(nn.Module):
             x = self.up_blocks(x)
 
 
-        return x
+        return x, classification_head
 
-
-
-class objectview(object):
-    def __init__(self, d):
-        self.__dict__ = d
 
 
 class UResNet3D(torch.nn.Module):
@@ -415,6 +413,40 @@ class UResNet3D(torch.nn.Module):
 
         # The rest of the final operations (reshape, softmax) are computed in the forward pass
 
+
+        if params.classification.active:
+
+            # The image size here is going to be the orignal / 2**depth
+            # We need to know it for the pooling layer
+            pool_size = [d // 2**params.depth for d in image_size]
+
+            n_filters = params.n_initial_filters
+            for i in range(params.depth):
+                if params.growth_rate == GrowthRate.multiplicative:
+                    n_filters = 2 * n_filters
+                else:
+                    n_filters = n_filters + params.n_initial_filters
+
+            self.classifier = SparseBlockSeries(
+                inplanes = params.classification.n_filters,
+                n_blocks = params.classification.n_layers,
+                params   = params
+            )
+
+            scn.SubmanifoldConvolution(dimension=3,
+                nIn         = params.classification.n_filters,
+                nOut        = 4,
+                filter_size = [1,1,1],
+                bias        = params.bias)
+
+            self.pool = scn.AveragePooling(
+                dimension   = 3,
+                pool_size   = [1,] + pool_size,
+                pool_stride = [1,1,1],
+            )
+
+
+
         # # Configure initialization:
         # for m in self.modules():
         #     if isinstance(m, scn.SubmanifoldConvolution):
@@ -445,6 +477,10 @@ class UResNet3D(torch.nn.Module):
 
 
         batch_size = _input[-1]
+        return_dict = {
+            "event_label" : None,
+            "vertex"      : None,
+        }
 
         x = self.input_tensor(_input)
 
@@ -453,7 +489,7 @@ class UResNet3D(torch.nn.Module):
 
 
         # Apply the main unet architecture:
-        x = self.net_core(x)
+        seg_labels, classification_head = self.net_core(x)
 
 
 
@@ -461,27 +497,32 @@ class UResNet3D(torch.nn.Module):
 
 
         # Apply the final residual block to each plane:
-        x = self.final_layer(x)
+        seg_labels = self.final_layer(seg_labels)
 
-        x = self.bottleneck(x)
+        seg_labels = self.bottleneck(seg_labels)
 
 
         # Shift all pixels down in the "background category:"
-        # x.features -= self.empty_voxel
+        # seg_labels.features -= self.empty_voxel
 
         # Convert the images to dense layout:
-        x = self._s_to_d(x)
+        seg_labels = self._s_to_d(seg_labels)
 
 
 
         # Break the images into 3 planes:
-        x = torch.chunk(x, chunks=3, dim=2)
-        x = [ _x.view(_x.shape[0], _x.shape[1], _x.shape[-2], _x.shape[-1]) for _x in x ]
+        seg_labels = torch.chunk(seg_labels, chunks=3, dim=2)
+        seg_labels = [ _x.view(_x.shape[0], _x.shape[1], _x.shape[-2], _x.shape[-1]) for _x in seg_labels ]
 
-        # Replace all of the locations that are 0 from spare to SparseToDense
-        # With a very high background score:
-        # x = [ _x + self.empty_image for _x in x ]
+        return_dict["segmentation"] = seg_labels
+
+        if hasattr(self, "classifier"):
+            classified = self.classifier(classification_head)
+            classified = self.bottleneck_classifer(classified)
+            # 4 classes of events:
+            classified = self.pool(classified).reshape((-1, 4))
+            return_dict["event_label"] = classified
+            print(classified.shape)
 
 
-
-        return x
+        return return_dict  
