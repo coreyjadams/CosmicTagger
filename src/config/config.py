@@ -34,7 +34,7 @@ class Run:
     distributed:        bool        = True
     compute_mode:       ComputeMode = ComputeMode.GPU
     iterations:         int         = 500
-    epoch:              int         = 500
+    epoch:              int         = 1000
     aux_iterations:     int         = 10
     minibatch_size:     int         = 2
     # aux_minibatch_size: int         = MISSING

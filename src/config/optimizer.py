@@ -38,10 +38,10 @@ class OptimizerKind(Enum):
 #     schedule: List(LRSegment) = list(LRSegment())
 
 
-@dataclass 
+@dataclass
 class Optimizer:
     learning_rate:         float             =  0.0003
-    loss_balance_scheme:   LossBalanceScheme = LossBalanceScheme.focal
+    loss_balance_scheme:   LossBalanceScheme = LossBalanceScheme.light
     name:                  OptimizerKind     = OptimizerKind.adam
     gradient_accumulation: int               = 1
     train_event_id:        bool              = True

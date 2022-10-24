@@ -117,7 +117,7 @@ class distributed_trainer(torch_trainer):
                 sock = socket.socket()
                 sock.bind(('',0))
                 master_port  = sock.getsockname()[1]
-                master_port  = 2345
+                master_port  = 2346
             else:
                 master_addr = None
                 master_port = None

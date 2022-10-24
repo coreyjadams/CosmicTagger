@@ -44,6 +44,7 @@ class EventLabel:
     active:    bool  = True
     weight:    float = 1.0
     n_filters: int   = 256
+    n_layers:  int   = 3
 
 
 @dataclass

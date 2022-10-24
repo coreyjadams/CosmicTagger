@@ -529,14 +529,15 @@ class UResNet(torch.nn.Module):
                 else:
                     n_filters = n_filters + params.n_initial_filters
 
-
+            n_filters = 3*n_filters
+            
             self.classifier = BlockSeries(
-                inplanes = params.classification.n_filters,
+                inplanes = n_filters,
                 n_blocks = params.classification.n_layers,
                 params   = params
             )
             self.bottleneck_classifer = nn.Conv2d(
-                in_channels  = params.classification.n_filters,
+                in_channels  = n_filters,
                 out_channels = 4,
                 kernel_size  = 1,
                 stride       = 1,
@@ -544,7 +545,6 @@ class UResNet(torch.nn.Module):
                 bias         = params.bias)
 
             self.pool = torch.nn.AvgPool2d(self.pool_size)
-
 
         #
         # Configure initialization:
