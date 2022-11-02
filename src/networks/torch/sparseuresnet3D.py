@@ -418,7 +418,7 @@ class UResNet3D(torch.nn.Module):
 
             # The image size here is going to be the orignal / 2**depth
             # We need to know it for the pooling layer
-            pool_size = [d // 2**params.depth for d in image_size]
+            pool_size = [d // 2**params.depth for d in spatial_size]
 
             n_filters = params.n_initial_filters
             for i in range(params.depth):
@@ -433,7 +433,8 @@ class UResNet3D(torch.nn.Module):
                 params   = params
             )
 
-            scn.SubmanifoldConvolution(dimension=3,
+            self.bottleneck_classifier = scn.SubmanifoldConvolution(
+                dimension   = 3,
                 nIn         = params.classification.n_filters,
                 nOut        = 4,
                 filter_size = [1,1,1],
@@ -445,6 +446,7 @@ class UResNet3D(torch.nn.Module):
                 pool_stride = [1,1,1],
             )
 
+            self.classifier_sparse_to_dense = scn.SparseToDense(dimension=3, nPlanes=4)
 
 
         # # Configure initialization:
@@ -517,12 +519,14 @@ class UResNet3D(torch.nn.Module):
         return_dict["segmentation"] = seg_labels
 
         if hasattr(self, "classifier"):
+            classification_head = classification_head.detach()
             classified = self.classifier(classification_head)
-            classified = self.bottleneck_classifer(classified)
+            classified = self.bottleneck_classifier(classified)
             # 4 classes of events:
-            classified = self.pool(classified).reshape((-1, 4))
+            classified = self.pool(classified)
+            classified = self.classifier_sparse_to_dense(classified)
+            classified = classified.reshape((-1, 4))
             return_dict["event_label"] = classified
-            print(classified.shape)
 
 
         return return_dict  

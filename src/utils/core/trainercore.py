@@ -131,6 +131,8 @@ class trainercore(object):
     def build_lr_schedule(self, learning_rate_schedule = None):
         # Define the learning rate sequence:
 
+
+
         if learning_rate_schedule is None:
             learning_rate_schedule = {
                 'warm_up' : {

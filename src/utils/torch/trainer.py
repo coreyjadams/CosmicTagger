@@ -85,7 +85,7 @@ class torch_trainer(trainercore):
         if self.args.network.classification.active:
             self._log_keys += ['Average/EventLabel',]
         if self.is_training():
-            self._log_keys.append("loss")
+            self._log_keys.append("loss/total")
 
         # Foregoing any fusions as to not disturb the existing ingestion pipeline
         if self.is_training() and self.args.mode.quantization_aware:
@@ -376,13 +376,14 @@ class torch_trainer(trainercore):
         '''
         return self.acc_calc(network_dict, labels_dict)
 
-    def _compute_metrics(self, network_dict, labels_dict, loss):
+    def _compute_metrics(self, network_dict, labels_dict, loss_dict):
 
         # Call all of the functions in the metrics dictionary:
         metrics = {}
 
-        if loss is not None:
-            metrics['loss']     = loss.data
+        if loss_dict is not None:
+            for key in loss_dict:
+                metrics[f'loss/{key}'] = loss_dict[key].data
         accuracy = self._calculate_accuracy(network_dict, labels_dict)
         accuracy.update(metrics)
 
@@ -559,35 +560,47 @@ class torch_trainer(trainercore):
             for key in minibatch_data:
                 if key == 'entries' or key == 'event_ids':
                     continue
-                if self.args.framework.sparse:
-                    # if key == 'weight': continue
-                    if key == 'image':
-                        # Use the image transform?
-                        if self.args.data.img_transform:
-                            # It's numpy data here:
-                            minibatch_data[key][1] =  numpy.log(minibatch_data[key][1] + 1)
-                        minibatch_data[key] = (
-                                torch.tensor(minibatch_data[key][0], device=device).long(),
-                                torch.tensor(minibatch_data[key][1], device=device),
-                                minibatch_data[key][2],
-                            )
-                    elif key == 'label':
-                        minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
+                if key == 'image' and self.args.framework.sparse:
+                    # Use the image transform?
+                    if self.args.data.img_transform:
+                        # It's numpy data here:
+                        minibatch_data[key][1] =  numpy.log(minibatch_data[key][1] + 1)
+                    minibatch_data[key] = (
+                            torch.tensor(minibatch_data[key][0], device=device).long(),
+                            torch.tensor(minibatch_data[key][1], device=device),
+                            minibatch_data[key][2],
+                        )
+                    # elif key == 'label':
+                        # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 else:
                     # minibatch_data[key] = torch.tensor(minibatch_data[key])
                     minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
 
                     if key == 'image' and self.args.data.img_transform:
                         minibatch_data[key] =  torch.log(minibatch_data['image'] + 1)
+
             if self.args.data.synthetic:
                 minibatch_data['image'] = minibatch_data['image'].float()
-                minibatch_data['label'] = minibatch_data['label']
 
             if self.args.run.precision == Precision.bfloat16:
-                minibatch_data["image"] = minibatch_data["image"].bfloat16()
+                if self.args.framework.sparse:
+                    minibatch_data["image"] = (
+                        minibatch_data["image"][0],
+                        minibatch_data["image"][1].bfloat16(),
+                        minibatch_data["image"][2],
+                    )
+                else:
+                    minibatch_data["image"] = minibatch_data["image"].bfloat16()
 
             if self.args.run.precision == Precision.mixed:
-                minibatch_data["image"] = minibatch_data["image"].half()
+                if self.args.framework.sparse:
+                    minibatch_data["image"] = (
+                        minibatch_data["image"][0],
+                        minibatch_data["image"][1].half(),
+                        minibatch_data["image"][2],
+                    )
+                else:
+                    minibatch_data["image"] = minibatch_data["image"].half()
 
 
         return minibatch_data
@@ -677,7 +690,7 @@ class torch_trainer(trainercore):
 
                     # Compute the loss based on the network_dict
                     with self.timing_context("loss"):
-                        loss = self.loss_calculator(labels_dict, network_dict)
+                        loss, loss_metrics = self.loss_calculator(labels_dict, network_dict)
 
 
                     # Compute the gradients for the network parameters:
@@ -690,7 +703,7 @@ class torch_trainer(trainercore):
 
                     # Compute any necessary metrics:
                     with self.timing_context("metrics"):
-                        interior_metrics = self._compute_metrics(network_dict, labels_dict, loss)
+                        interior_metrics = self._compute_metrics(network_dict, labels_dict, loss_metrics)
 
                         for key in interior_metrics:
                             if key in metrics:
@@ -792,10 +805,10 @@ class torch_trainer(trainercore):
                 network_dict, labels_dict = self.forward_pass(minibatch_data, net=val_net)
 
             # Compute the loss based on the network_dict
-            loss = self.loss_calculator(labels_dict, network_dict)
+            loss, loss_metrics = self.loss_calculator(labels_dict, network_dict)
 
             # Compute any necessary metrics:
-            metrics = self._compute_metrics(network_dict, labels_dict, loss)
+            metrics = self._compute_metrics(network_dict, labels_dict, loss_metrics)
 
             self.log(metrics, saver="test")
             self.summary(metrics, saver="test")

@@ -39,21 +39,26 @@ class LossCalculator(torch.nn.Module):
     def forward(self, labels_dict, network_dict):
 
         loss   = self.segmentation_loss(labels_dict["segmentation"], network_dict["segmentation"])
+        loss_metrics = {
+            "segmentation" : loss
+        }
+
         if self.network_params.classification.active:
             event_loss = self.event_loss(labels_dict["event_label"], network_dict["event_label"])
+            loss_metrics["event_label"] = event_loss
             loss      += self.network_params.classification.weight * event_loss
 
         if self.network_params.vertex.active:
             vtx_loss   = self.vertex_loss(labels_dict["vertex"], network_dict["vertex"])
             loss      += self.network_params.vertex.weight * vtx_loss
 
-        return  loss
+        loss_metrics["total"] = loss
+        return  loss, loss_metrics
 
     def vertex_loss(self, labels, logits):
         return None
 
     def event_loss(self, labels, logits):
-
         event_label_loss = self.event_label_criterion(logits, labels.long())
         return event_label_loss
 

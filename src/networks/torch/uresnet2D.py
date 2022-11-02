@@ -480,7 +480,7 @@ class UNetCore(nn.Module):
 
 class UResNet(torch.nn.Module):
 
-    def __init__(self, params, image_size):
+    def __init__(self, params, spatial_size):
 
         torch.nn.Module.__init__(self)
 
@@ -520,7 +520,7 @@ class UResNet(torch.nn.Module):
 
             # The image size here is going to be the orignal / 2**depth
             # We need to know it for the pooling layer
-            self.pool_size = [d // 2**params.depth for d in image_size]
+            self.pool_size = [d // 2**params.depth for d in spatial_size]
 
             n_filters = params.n_initial_filters
             for i in range(params.depth):
@@ -593,6 +593,7 @@ class UResNet(torch.nn.Module):
         return_dict["segmentation"] = seg_labels
 
         if hasattr(self, "classifier"):
+            classified = classified.detach()
             classified = self.classifier(classification_head)
             classified = self.bottleneck_classifer(classified)
             # 4 classes of events:
