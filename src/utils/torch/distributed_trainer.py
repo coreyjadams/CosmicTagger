@@ -109,7 +109,7 @@ class distributed_trainer(torch_trainer):
 
             self._rank = rank
             self._size = size
-            self._local_rank = local_rank
+            self._local_rank = int(local_rank)
 
             # It will want the master address too, which we'll broadcast:
             if rank == 0:
@@ -131,7 +131,11 @@ class distributed_trainer(torch_trainer):
             if self.args.run.compute_mode == ComputeMode.XPU:
                 # import torch_ccl
                 backend = 'ccl'
-            elif self.args.run.compute_mode == ComputeMode.GPU: backend = 'nccl'
+            elif self.args.run.compute_mode == ComputeMode.GPU:
+                backend = 'nccl'
+                if self.args.framework.oversubscribe:
+                    # nccl can have only 1 rank per GPU
+                    backend = 'gloo'
             elif self.args.run.compute_mode == ComputeMode.CPU: backend = 'gloo'
 
             # init_method = 'file:///home/cadams/ddp_init/ddp_init.txt'
@@ -151,7 +155,18 @@ class distributed_trainer(torch_trainer):
         if self._rank == 0:
             torch_trainer.save_model(self)
 
+    def target_device(self):
+        if self.args.framework.oversubscribe != 1:
+            if self.args.run.compute_mode == ComputeMode.GPU:
+                n_local_devices = torch.cuda.device_count()
+                return self._local_rank // self.args.framework.oversubscribe
+        else:
+            return self._local_rank
+
     def default_device_context(self):
+
+        # In some cases, we map multiple ranks onto the same target device:
+        target_device = self.target_device()
 
         # Convert the input data to torch tensors
         if self.args.run.compute_mode == ComputeMode.GPU:
@@ -159,11 +174,11 @@ class distributed_trainer(torch_trainer):
                 # Then, it's manually set, use it
                 return torch.cuda.device(0)
             else:
-                return torch.cuda.device(int(self._local_rank))
+                return torch.cuda.device(int(target_device))
         elif self.args.run.compute_mode == ComputeMode.XPU:
             # return contextlib.nullcontext
             try:
-                return ipex.xpu.device(int(self._local_rank))
+                return ipex.xpu.device(int(target_device))
             except:
                 pass
             return contextlib.nullcontext
@@ -179,14 +194,16 @@ class distributed_trainer(torch_trainer):
 
     def default_device(self):
 
+        target_device = self.target_device()
+
         if self.args.run.compute_mode == ComputeMode.GPU:
             if 'CUDA_VISIBLE_DEVICES' in os.environ:
                 # Then, it's manually set, use it
                 return torch.device("cuda:0")
             else:
-                return torch.device(f"cuda:{self._local_rank}")
+                return torch.device(f"cuda:{target_device}")
         elif self.args.run.compute_mode == ComputeMode.XPU:
-            device = torch.device(f"xpu:{self._local_rank}")
+            device = torch.device(f"xpu:{target_device}")
         elif self.args.run.compute_mode == ComputeMode.DPCPP:
             device = torch.device("dpcpp")
         else:
@@ -204,7 +221,6 @@ class distributed_trainer(torch_trainer):
         if self.args.framework.distributed_mode == DistributedMode.horovod:
             print(self._opt)
             self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
-            self._opt.param_groups[0]['capturable'] = True
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
 

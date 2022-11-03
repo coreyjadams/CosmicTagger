@@ -530,7 +530,7 @@ class UResNet(torch.nn.Module):
                     n_filters = n_filters + params.n_initial_filters
 
             n_filters = 3*n_filters
-            
+
             self.classifier = BlockSeries(
                 inplanes = n_filters,
                 n_blocks = params.classification.n_layers,
@@ -593,7 +593,7 @@ class UResNet(torch.nn.Module):
         return_dict["segmentation"] = seg_labels
 
         if hasattr(self, "classifier"):
-            classified = classified.detach()
+            classification_head = classification_head.detach()
             classified = self.classifier(classification_head)
             classified = self.bottleneck_classifer(classified)
             # 4 classes of events:

@@ -40,19 +40,22 @@ class LossCalculator(torch.nn.Module):
 
         loss   = self.segmentation_loss(labels_dict["segmentation"], network_dict["segmentation"])
         loss_metrics = {
-            "segmentation" : loss
+            "segmentation" : loss.detach()
         }
 
         if self.network_params.classification.active:
             event_loss = self.event_loss(labels_dict["event_label"], network_dict["event_label"])
-            loss_metrics["event_label"] = event_loss
-            loss      += self.network_params.classification.weight * event_loss
+            event_loss = event_loss * self.network_params.classification.weight
+            loss_metrics["event_label"] = event_loss.detach()
+            loss =  loss +  event_loss
 
         if self.network_params.vertex.active:
             vtx_loss   = self.vertex_loss(labels_dict["vertex"], network_dict["vertex"])
-            loss      += self.network_params.vertex.weight * vtx_loss
+            vtx_loss   = self.network_params.vertex.weight * vtx_loss
+            loss      +=  vtx_loss
 
         loss_metrics["total"] = loss
+
         return  loss, loss_metrics
 
     def vertex_loss(self, labels, logits):
@@ -120,10 +123,10 @@ class LossCalculator(torch.nn.Module):
                         weights[labels[i] == 1 ] = 1.5 * per_pixel_weight
                         weights[labels[i] == 2 ] = 10  * per_pixel_weight
 
-                total_weight = torch.sum(weights)
-                plane_loss = torch.sum(weights*plane_loss)
+                plane_loss = torch.mean(weights*plane_loss)
 
-                plane_loss /= total_weight
+                # total_weight = torch.sum(weights)
+                # plane_loss /= total_weight
 
             if loss is None:
                 loss = plane_loss

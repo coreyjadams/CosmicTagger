@@ -63,6 +63,7 @@ class SparseResidualBlock(nn.Module):
             filter_size = [nplanes,3,3],
             bias        = params.bias)
 
+        self._do_normalization = False
         if params.normalization == Norm.batch:
             self._do_normalization = True
             self.relu1 = scn.BatchNormLeakyReLU(outplanes)
@@ -78,7 +79,6 @@ class SparseResidualBlock(nn.Module):
             bias        = False)
 
         if params.normalization == Norm.batch:
-            self._do_normalization = True
             self.norm2 = scn.BatchNormalization(outplanes)
 
 
@@ -529,4 +529,4 @@ class UResNet3D(torch.nn.Module):
             return_dict["event_label"] = classified
 
 
-        return return_dict  
+        return return_dict
