@@ -560,7 +560,15 @@ class torch_trainer(trainercore):
             for key in minibatch_data:
                 if key == 'entries' or key == 'event_ids':
                     continue
-                if key == 'image' and self.args.framework.sparse:
+                if key == 'vertex':
+                    minibatch_data[key]['detection'] = \
+                        [torch.tensor(d, device=device) for d in minibatch_data[key]['detection'] ]
+                    minibatch_data[key]['regression'] = \
+                        torch.tensor(minibatch_data[key]['regression'],  device=device)
+                    minibatch_data[key]['energy'] = \
+                        torch.tensor(minibatch_data[key]['energy'],  device=device)
+
+                elif key == 'image' and self.args.framework.sparse:
                     # Use the image transform?
                     if self.args.data.img_transform:
                         # It's numpy data here:
@@ -578,6 +586,7 @@ class torch_trainer(trainercore):
 
                     if key == 'image' and self.args.data.img_transform:
                         minibatch_data[key] =  torch.log(minibatch_data['image'] + 1)
+
 
             if self.args.data.synthetic:
                 minibatch_data['image'] = minibatch_data['image'].float()

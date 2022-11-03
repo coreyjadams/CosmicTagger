@@ -10,12 +10,26 @@ import logging
 logger = logging.getLogger("cosmictagger")
 
 
+
 class larcv_fetcher(object):
 
-    FULL_RESOLUTION_H = 1408
-    FULL_RESOLUTION_W = 2048
 
-    def __init__(self, mode, distributed, downsample, dataformat, synthetic, sparse, seed=None):
+    # This represents the intrinsic image shape:
+    image_meta = numpy.array([
+        ([1408, 2048], [439.4660061919505, 614.4],[-18.1030030959, -9.6]),
+        ([1408, 2048], [439.4660061919505, 614.4],[-18.1030030959, -9.6]),
+        ([1408, 2048], [439.4660061919505, 614.4],[-18.1030030959, -57.5999999])],
+        dtype=[
+            ('full_pixels', "int", (2)),
+            ('size', "float", (2)),
+            ('origin', "float", (2)),
+        ]
+    )
+
+
+
+
+    def __init__(self, mode, distributed, downsample, dataformat, synthetic, sparse, seed=None, vtx_depth=None):
 
         if mode not in ['train', 'inference', 'iotest']:
             raise Exception("Larcv Fetcher can't handle mode ", mode)
@@ -48,14 +62,14 @@ class larcv_fetcher(object):
         self.dataformat = dataformat
         self.synthetic  = synthetic
         self.sparse     = sparse
-
+        self.vtx_depth  = vtx_depth
         self.writer     = None
 
         # Compute the realized image shape:
-        self.full_image_shape = [self.FULL_RESOLUTION_H, self.FULL_RESOLUTION_W]
         self.ds = 2**downsample
 
-        self.image_shape = [ int(i / self.ds) for i in self.full_image_shape ]
+        self.image_shape = [ int(i / self.ds) for i in self.image_meta['full_pixels'][0] ]
+
 
     def __del__(self):
         if hasattr(self, "writer") and self.writer is not None:
@@ -194,14 +208,6 @@ class larcv_fetcher(object):
             return self._larcv_interface.size(name)
 
 
-
-
-
-
-
-
-
-
     def fetch_next_batch(self, name, force_pop=False):
 
         if not self.synthetic:
@@ -238,18 +244,16 @@ class larcv_fetcher(object):
                 n_neutrino_pixels,
             )
 
+            # Put together the YOLO labels:
+            minibatch_data["vertex"]  = data_transforms.form_yolo_targets(self.vtx_depth,
+                minibatch_data["vertex"], minibatch_data["particle"], 
+                minibatch_data["event_label"], self.dataformat,
+                self.image_meta, self.ds)
+
             # Get rid of the particle data now, we're done with it:
             minibatch_data.pop("particle")
 
 
-            # Vertex comes out with shape [batch_size, channels, max_boxes, 2*ndim (so 4, in this case)]
-
-            vertex_channels_first = minibatch_data['vertex'][:,:,0,0:2]
-
-            if self.dataformat != "channels_first":
-                minibatch_data['vertex'] = numpy.transpose(vertex_channels_first,(0,2,1))
-            else:
-                minibatch_data['vertex'] = vertex_channels_first
 
 
             if not self.sparse:

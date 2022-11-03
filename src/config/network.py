@@ -35,9 +35,10 @@ class Norm(Enum):
 
 @dataclass
 class Vertex:
-    active: bool  = False
-    depth:  int   = 4
+    active:  bool = False
+    depth:    int = 4
     weight: float = 1.0
+    n_layers: int = 3
 
 @dataclass
 class EventLabel:
@@ -56,7 +57,7 @@ class Network:
     blocks_per_layer:     int          = 2
     blocks_deepest_layer: int          = 5
     blocks_final:         int          = 5
-    depth:                int          = 5
+    depth:                int          = 6
     filter_size_deepest:  int          = 5
     bottleneck_deepest:   int          = 256
     residual:             bool         = True

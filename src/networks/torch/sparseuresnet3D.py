@@ -232,7 +232,7 @@ class SparseDeepestBlock(nn.Module):
         x = self.splitter(x)
 
 
-        return x, classification_head
+        return x, classification_head, None
 
 
 class NoConnection(nn.Module):
@@ -276,6 +276,7 @@ class SparseUNetCore(nn.Module):
 
 
         self.depth  = depth
+        self.vertex_depth = params.vertex.depth
 
         if depth == 0:
             self.main_module = SparseDeepestBlock(inplanes=inplanes, params=params)
@@ -339,9 +340,10 @@ class SparseUNetCore(nn.Module):
             x = self.downsample(x)
 
         # Apply the main module:
-        x, classification_head = self.main_module(x)
+        x, classification_head, vertex_head = self.main_module(x)
 
         if self.depth != 0:
+
 
             # perform the upsampling step:
             # perform the downsampling operation:
@@ -353,8 +355,10 @@ class SparseUNetCore(nn.Module):
             # Apply the convolutional steps:
             x = self.up_blocks(x)
 
+        if self.depth == self.vertex_depth: vertex_head = x
 
-        return x, classification_head
+
+        return x, classification_head, vertex_head
 
 
 
@@ -428,14 +432,14 @@ class UResNet3D(torch.nn.Module):
                     n_filters = n_filters + params.n_initial_filters
 
             self.classifier = SparseBlockSeries(
-                inplanes = params.classification.n_filters,
+                inplanes = n_filters,
                 n_blocks = params.classification.n_layers,
                 params   = params
             )
 
             self.bottleneck_classifier = scn.SubmanifoldConvolution(
                 dimension   = 3,
-                nIn         = params.classification.n_filters,
+                nIn         = n_filters,
                 nOut        = 4,
                 filter_size = [1,1,1],
                 bias        = params.bias)
@@ -447,6 +451,36 @@ class UResNet3D(torch.nn.Module):
             )
 
             self.classifier_sparse_to_dense = scn.SparseToDense(dimension=3, nPlanes=4)
+
+
+        if params.vertex.active:
+
+            vertex_size = [ d // 2**(params.depth - params.vertex.depth ) for d in spatial_size]
+           
+            n_filters = params.n_initial_filters
+            for i in range(params.depth - params.vertex.depth):
+                if params.growth_rate == GrowthRate.multiplicative:
+                    n_filters = 2 * n_filters
+                else:
+                    n_filters = n_filters + params.n_initial_filters
+
+            self.vertex_layers = SparseBlockSeries(
+                inplanes  = n_filters,
+                n_blocks  = params.vertex.n_layers,
+                params    = params
+            )
+
+            self.bottleneck_vertex = scn.SubmanifoldConvolution(
+                dimension   = 3,
+                nIn         = n_filters,
+                nOut        = 3,
+                filter_size = [1,1,1],
+                bias        = True
+            )
+
+            self.vertex_sigmoid = scn.Sigmoid()
+
+            self.vertex_sparse_to_dense = scn.SparseToDense(dimension=3, nPlanes=3)
 
 
         # # Configure initialization:
@@ -485,18 +519,16 @@ class UResNet3D(torch.nn.Module):
         }
 
         x = self.input_tensor(_input)
+        init_size = x.spatial_size
 
         # Apply the initial convolutions:
         x = self.initial_convolution(x)
 
 
         # Apply the main unet architecture:
-        seg_labels, classification_head = self.net_core(x)
-
-
+        seg_labels, classification_head, vertex_head = self.net_core(x)
 
         # This squeezes into an image tensor, not 3D
-
 
         # Apply the final residual block to each plane:
         seg_labels = self.final_layer(seg_labels)
@@ -528,5 +560,21 @@ class UResNet3D(torch.nn.Module):
             classified = classified.reshape((-1, 4))
             return_dict["event_label"] = classified
 
+
+        if hasattr(self, "vertex_layers"):
+            vertex_head = vertex_head.detach()
+            vertex = self.vertex_layers(vertex_head)
+            vertex = self.bottleneck_vertex(vertex)
+
+            # Apply a sigmoid before going to dense:
+            vertex = self.vertex_sigmoid(vertex)
+
+            vertex = self.vertex_sparse_to_dense(vertex)
+
+            # Split into per-plane results:
+            vertex = torch.chunk(vertex, chunks=3, dim=2)
+            vertex = [ _x.view(_x.shape[0], _x.shape[1], _x.shape[-2], _x.shape[-1]) for _x in vertex ]
+
+            return_dict["vertex"] = vertex
 
         return return_dict  

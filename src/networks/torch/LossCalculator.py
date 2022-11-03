@@ -50,13 +50,27 @@ class LossCalculator(torch.nn.Module):
 
         if self.network_params.vertex.active:
             vtx_loss   = self.vertex_loss(labels_dict["vertex"], network_dict["vertex"])
+            loss_metrics["event_label"] = event_loss
             loss      += self.network_params.vertex.weight * vtx_loss
 
         loss_metrics["total"] = loss
         return  loss, loss_metrics
 
     def vertex_loss(self, labels, logits):
-        return None
+
+        # This assumes channels first:
+        detection_logits = [l[:,0,:,:] for l in logits]
+
+        detection_loss = [
+            torch.nn.functional.mse_loss(i.float(), t.float()) 
+            for i, t in zip(detection_logits, labels['detection'])
+        ]
+        detection_loss = torch.sum(torch.stack(detection_loss))
+        print(detection_loss)
+
+
+
+        return detection_loss
 
     def event_loss(self, labels, logits):
         event_label_loss = self.event_label_criterion(logits, labels.long())

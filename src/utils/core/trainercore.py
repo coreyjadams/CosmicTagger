@@ -50,7 +50,8 @@ class trainercore(object):
             downsample  = args.data.downsample,
             dataformat  = args.data.data_format.name,
             synthetic   = args.data.synthetic,
-            sparse      = sparse )
+            sparse      = sparse,
+            vtx_depth   = args.network.depth - args.network.vertex.depth )
 
         if args.data.data_format == DataFormatKind.channels_first: self._channels_dim = 1
         if args.data.data_format == DataFormatKind.channels_last : self._channels_dim = -1
