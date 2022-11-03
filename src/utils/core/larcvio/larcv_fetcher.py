@@ -217,6 +217,8 @@ class larcv_fetcher(object):
             if not force_pop:
                 pop = False
 
+            pop = False
+
 
             minibatch_data = self._larcv_interface.fetch_minibatch_data(name,
                 pop=pop,fetch_meta_data=metadata)

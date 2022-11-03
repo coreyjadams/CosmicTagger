@@ -23,6 +23,7 @@ class Torch(Framework):
     name:             str             = "torch"
     sparse:           bool            = False
     distributed_mode: DistributedMode = DistributedMode.DDP
+    oversubscribe:                int = 1
 
 cs = ConfigStore.instance()
 cs.store(group="framework", name="tensorflow", node=Tensorflow)

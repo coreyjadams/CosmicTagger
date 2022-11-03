@@ -52,7 +52,7 @@ class EventLabel:
 class Network:
     name:                 str          = "default"
     bias:                 bool         = True
-    normalization:        Norm         = Norm.batch
+    normalization:        Norm         = Norm.none
     n_initial_filters:    int          = 16
     blocks_per_layer:     int          = 2
     blocks_deepest_layer: int          = 5
@@ -76,7 +76,7 @@ class Network:
 @dataclass
 class UResNet(Network):
     name:                 str          = "uresnet"
-    normalization:        Norm         = Norm.batch
+    normalization:        Norm         = Norm.none
 
 @dataclass
 class A21(Network):

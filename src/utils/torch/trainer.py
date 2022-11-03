@@ -84,6 +84,8 @@ class torch_trainer(trainercore):
         self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
         if self.args.network.classification.active:
             self._log_keys += ['Average/EventLabel',]
+        if self.args.network.vertex.active:
+            self._log_keys += ['Average/VertexDetection',]
         if self.is_training():
             self._log_keys.append("loss/total")
 

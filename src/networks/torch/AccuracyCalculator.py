@@ -97,11 +97,41 @@ class AccuracyCalculator(object):
 
     	return {"Average/EventLabel" : torch.mean(event_accuracy.float())}
 
+    def vertex_accuracy(self, label, logits):
+
+        accuracy = {}
+
+        detection_logits = [l[:,0,:,:] for l in logits]
+
+        accuracy['Average/VertexDetection']  = 0.0
+
+        #flatten to make argmax easier:
+
+        batch_size = logits[0].shape[0]
+
+        detection_logits = [d.reshape(batch_size, -1) for d in detection_logits]
+        detection_labels = [d.reshape(batch_size, -1) for d in label['detection']]
+
+        detection_accuracy = [
+            torch.argmax(i.float()) == torch.argmax(t.float()) 
+            for i, t in zip(detection_logits, detection_labels)
+        ]
+        detection_accuracy = [ d.float() for d in detection_accuracy ]
+
+        for p, d in enumerate(detection_accuracy):
+            accuracy[f"plane{p}/VertexDetection"] = d
+            accuracy["Average/VertexDetection"] += 0.3333333*d
+
+        return accuracy
+
     def __call__(self, network_dict, labels_dict):
 
         accuracy = self.segmentation_accuracy(labels_dict["segmentation"], network_dict["segmentation"])
 
         if self.network_params.classification.active:
             accuracy.update(self.event_accuracy(labels_dict["event_label"], network_dict["event_label"]))
+
+        if self.network_params.vertex.active:
+            accuracy.update(self.vertex_accuracy(labels_dict["vertex"], network_dict["vertex"]))
 
         return accuracy
