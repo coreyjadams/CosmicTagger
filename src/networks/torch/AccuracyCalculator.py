@@ -103,6 +103,12 @@ class AccuracyCalculator(object):
 
         detection_logits = [l[:,0,:,:] for l in logits]
 
+        print("detection_logits[0].shape: ", detection_logits[0].shape)
+        print("label['detection'][0].shape: ", label['detection'][0].shape)
+
+        print(detection_logits[0])
+        print(label['detection'][0])
+
         accuracy['Average/VertexDetection']  = 0.0
 
         #flatten to make argmax easier:
@@ -113,7 +119,7 @@ class AccuracyCalculator(object):
         detection_labels = [d.reshape(batch_size, -1) for d in label['detection']]
 
         detection_accuracy = [
-            torch.argmax(i.float()) == torch.argmax(t.float()) 
+            torch.argmax(i.float()) == torch.argmax(t.float())
             for i, t in zip(detection_logits, detection_labels)
         ]
         detection_accuracy = [ d.float() for d in detection_accuracy ]

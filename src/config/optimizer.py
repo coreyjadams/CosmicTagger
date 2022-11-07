@@ -13,8 +13,11 @@ class LossBalanceScheme(Enum):
     focal = 3
 
 class OptimizerKind(Enum):
-    adam    = 0
-    rmsprop = 1
+    adam     = 0
+    rmsprop  = 1
+    sgd      = 2
+    adagrad  = 3
+    adadelta = 4
 
 # class LRUnit(Enum):
 #     iteration = 0
@@ -41,7 +44,7 @@ class OptimizerKind(Enum):
 @dataclass
 class Optimizer:
     learning_rate:         float             =  0.0003
-    loss_balance_scheme:   LossBalanceScheme = LossBalanceScheme.light
+    loss_balance_scheme:   LossBalanceScheme = LossBalanceScheme.focal
     name:                  OptimizerKind     = OptimizerKind.adam
     gradient_accumulation: int               = 1
 

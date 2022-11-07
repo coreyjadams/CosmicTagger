@@ -272,7 +272,7 @@ class DeepestBlock(nn.Module):
             x = torch.chunk(x, chunks=3, dim=1)
 
 
-        return x, classification_head # The none is a placeholder for vertex ID YOLO
+        return x, classification_head, None # The none is a placeholder for vertex ID YOLO
 
 class NoConnection(nn.Module):
 
@@ -366,6 +366,7 @@ class UNetCore(nn.Module):
 
         self.layers = params.blocks_per_layer
         self.depth  = depth
+        self.vertex_depth = params.vertex.depth
 
 
         if depth == 0:
@@ -452,7 +453,7 @@ class UNetCore(nn.Module):
 
 
         # Apply the main module:
-        x, classification_head = self.main_module(x)
+        x, classification_head, vertex_head = self.main_module(x)
 
         # The vertex_head is None after the DEEPEST layer.  But, if we're returning it, do it here:
 
@@ -473,8 +474,10 @@ class UNetCore(nn.Module):
             # Apply the convolutional steps:
             x = tuple( self.up_blocks(_x) for _x in x )
 
+        if self.depth == self.vertex_depth: vertex_head = x
 
-        return x, classification_head
+
+        return x, classification_head, vertex_head
 
 
 
@@ -546,6 +549,31 @@ class UResNet(torch.nn.Module):
 
             self.pool = torch.nn.AvgPool2d(self.pool_size)
 
+        if params.vertex.active:
+
+            vertex_size = [ d // 2**(params.depth - params.vertex.depth ) for d in spatial_size]
+
+            n_filters = params.n_initial_filters
+            for i in range(params.depth - params.vertex.depth):
+                if params.growth_rate == GrowthRate.multiplicative:
+                    n_filters = 2 * n_filters
+                else:
+                    n_filters = n_filters + params.n_initial_filters
+
+            self.vertex_layers = BlockSeries(
+                inplanes  = n_filters,
+                n_blocks  = params.vertex.n_layers,
+                params    = params
+            )
+
+            self.bottleneck_vertex = nn.Conv2d(
+                in_channels  = n_filters,
+                out_channels = 3,
+                kernel_size  = 1,
+                stride       = 1,
+                padding      = 0,
+                bias         = params.bias)
+
         #
         # Configure initialization:
         for m in self.modules():
@@ -583,7 +611,7 @@ class UResNet(torch.nn.Module):
 
 
         # Apply the main unet architecture:
-        seg_labels, classification_head = self.net_core(x)
+        seg_labels, classification_head, vertex_head = self.net_core(x)
 
         # Apply the final residual block to each plane:
         seg_labels = tuple( self.final_layer(_x) for _x in seg_labels )
@@ -599,5 +627,18 @@ class UResNet(torch.nn.Module):
             # 4 classes of events:
             classified = self.pool(classified).reshape((-1, 4))
             return_dict["event_label"] = classified
+
+
+        if hasattr(self, "vertex_layers"):
+            vertex = [ v.detach() for v in vertex_head ]
+            vertex = [ self.vertex_layers(v) for v in vertex ]
+            vertex = [ self.bottleneck_vertex(v) for v in vertex ]
+
+            # # Apply a sigmoid before going to dense:
+            # vertex[:,0,:,:] = [torch.nn.functional.softmax(v[:,0,:,:]) for v in vertex]
+            # vertex[:,1:2,:,:] = [torch.sigmoid(v[:,1:2,:,:]) for v in vertex]
+
+            return_dict["vertex"] = vertex
+
 
         return return_dict

@@ -217,8 +217,6 @@ class larcv_fetcher(object):
             if not force_pop:
                 pop = False
 
-            pop = False
-
 
             minibatch_data = self._larcv_interface.fetch_minibatch_data(name,
                 pop=pop,fetch_meta_data=metadata)
@@ -248,7 +246,7 @@ class larcv_fetcher(object):
 
             # Put together the YOLO labels:
             minibatch_data["vertex"]  = data_transforms.form_yolo_targets(self.vtx_depth,
-                minibatch_data["vertex"], minibatch_data["particle"], 
+                minibatch_data["vertex"], minibatch_data["particle"],
                 minibatch_data["event_label"], self.dataformat,
                 self.image_meta, self.ds)
 

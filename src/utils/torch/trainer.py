@@ -201,9 +201,15 @@ class torch_trainer(trainercore):
         # IMPORTANT: the scheduler in torch is a multiplicative factor,
         # but I've written it as learning rate itself.  So set the LR to 1.0
         if self.args.mode.optimizer.name == OptimizerKind.rmsprop:
-            self._opt = torch.optim.RMSprop(self._net.parameters(), 1.0, eps=1e-4)
+            self._opt = torch.optim.RMSprop(self._net.parameters(), 1.0, eps=1e-6)
+        elif self.args.mode.optimizer.name == OptimizerKind.adam:
+            self._opt = torch.optim.Adam(self._net.parameters(), 1.0, eps=1e-6, betas=(0.8,0.9))
+        elif self.args.mode.optimizer.name == OptimizerKind.adagrad:
+            self._opt = torch.optim.Adagrad(self._net.parameters(), 1.0)
+        elif self.args.mode.optimizer.name == OptimizerKind.adadelta:
+            self._opt = torch.optim.Adadelta(self._net.parameters(), 1.0, eps=1e-6)
         else:
-            self._opt = torch.optim.Adam(self._net.parameters(), 1.0)
+            self._opt = torch.optim.SGD(self._net.parameters(), 1.0)
 
         # For a regression in pytowrch 1.12.0:
         self._opt.param_groups[0]["capturable"] = False
@@ -641,9 +647,9 @@ class torch_trainer(trainercore):
             # weight = weight.view([shape[0], shape[-3], shape[-2], shape[-1]])
 
             # print numpy.unique(labels_image.cpu(), return_counts=True)
-            labels_dict["segmentation"] = [ 
-                _label.view([shape[0], shape[-2], shape[-1]]) 
-                    for _label in labels_dict["segmentation"] 
+            labels_dict["segmentation"] = [
+                _label.view([shape[0], shape[-2], shape[-1]])
+                    for _label in labels_dict["segmentation"]
             ]
 
         return network_dict, labels_dict
