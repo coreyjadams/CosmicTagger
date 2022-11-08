@@ -151,7 +151,7 @@ class trainercore(object):
                     'function'      : 'decay',
                     'start'         : 7,
                     'n_epochs'      : 5,
-                        'floor'         : 0.01*self.args.mode.optimizer.learning_rate,
+                        'floor'         : 0.1*self.args.mode.optimizer.learning_rate,
                     'decay_rate'    : 0.99999
                 },
             }

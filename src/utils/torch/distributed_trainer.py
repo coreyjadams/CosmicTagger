@@ -133,7 +133,7 @@ class distributed_trainer(torch_trainer):
                 backend = 'ccl'
             elif self.args.run.compute_mode == ComputeMode.GPU:
                 backend = 'nccl'
-                if self.args.framework.oversubscribe:
+                if self.args.framework.oversubscribe != 1:
                     # nccl can have only 1 rank per GPU
                     backend = 'gloo'
             elif self.args.run.compute_mode == ComputeMode.CPU: backend = 'gloo'

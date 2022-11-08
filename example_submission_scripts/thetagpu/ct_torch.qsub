@@ -1,0 +1,46 @@
+#!/bin/bash -l
+#COBALT -t 4:00:00
+#COBALT -n 16
+#COBALT -q full-node
+#COBALT -A datascience
+
+module load conda/2022-07-01
+conda activate
+source /home/cadams/ThetaGPU/ct_venv_sparse_8-3-22/bin/activate
+
+module load hdf5
+
+# Calculate how many ranks are available in this job:
+
+# MPI and OpenMP settings
+NNODES=$(cat $COBALT_NODEFILE | wc -l)
+NRANKS_PER_NODE=8
+DOWNSAMPLE=2
+LOCAL_BATCH_SIZE=8
+
+let DEPTH=7-${DOWNSAMPLE}
+let NRANKS=${NNODES}*${NRANKS_PER_NODE}
+
+let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
+
+echo "Global batch size: ${GLOBAL_BATCH_SIZE}"
+echo "N Ranks: ${NRANKS}"
+let MINIBATCH_SIZE=${NRANKS}*2
+
+mpiexec -n ${NRANKS} -hostfile ${COBALT_NODEFILE} -map-by node \
+-x PATH -x LD_LIBRARY_PATH -x PYTHONSTARTUP -x PYTHONUSERBASE \
+python bin/exec.py \
+run.id=event_id_on-${GLOBAL_BATCH_SIZE}-vertex3-ds2 \
+run.minibatch_size=${GLOBAL_BATCH_SIZE} \
+run.iterations=20000 \
+run.epoch=1000 \
+run.precision=float32 \
+data.downsample=${DOWNSAMPLE} \
+mode.optimizer.name=adam \
+mode.optimizer.learning_rate=3e-3 \
+framework=torch \
+network.classification.active=True \
+network.vertex.active=True \
+network.blocks_deepest_layer=3 \
+network.blocks_final=3 \
+network.depth=${DEPTH}

@@ -64,12 +64,14 @@ class LossCalculator(torch.nn.Module):
         # This assumes channels first:
         detection_logits = [l[:,0,:,:] for l in logits]
 
-        detection_logits = [ torch.nn.functional.softmax(d) for d in detection_logits ]
+        detection_logits = [ torch.nn.functional.sigmoid(d) for d in detection_logits ]
+
 
         detection_loss = [
-            torch.nn.functional.mse_loss(i.float(), t.float(), reduction="mean")
+            torch.nn.functional.cross_entropy(i.float(), t.float(), reduction="mean")
             for i, t in zip(detection_logits, labels['detection'])
         ]
+
         detection_loss = torch.sum(torch.stack(detection_loss))
 
         return detection_loss

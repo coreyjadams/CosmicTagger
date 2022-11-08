@@ -533,14 +533,22 @@ class UResNet(torch.nn.Module):
                     n_filters = n_filters + params.n_initial_filters
 
             n_filters = 3*n_filters
+            self.classifier_input = nn.Conv2d(
+                in_channels  = n_filters,
+                out_channels = params.classification.n_filters,
+                kernel_size  = 1,
+                stride       = 1,
+                padding      = 0,
+                bias         = params.bias
+            )
 
             self.classifier = BlockSeries(
-                inplanes = n_filters,
+                inplanes = params.classification.n_filters,
                 n_blocks = params.classification.n_layers,
                 params   = params
             )
             self.bottleneck_classifer = nn.Conv2d(
-                in_channels  = n_filters,
+                in_channels  = params.classification.n_filters,
                 out_channels = 4,
                 kernel_size  = 1,
                 stride       = 1,
@@ -560,15 +568,23 @@ class UResNet(torch.nn.Module):
                 else:
                     n_filters = n_filters + params.n_initial_filters
 
+            self.vertex_input = nn.Conv2d(
+                in_channels  = n_filters,
+                out_channels = params.vertex.n_filters,
+                kernel_size  = 1,
+                stride       = 1,
+                padding      = 0,
+                bias         = params.bias)
+
             self.vertex_layers = BlockSeries(
-                inplanes  = n_filters,
+                inplanes  = params.vertex.n_filters,
                 n_blocks  = params.vertex.n_layers,
                 params    = params
             )
 
             self.bottleneck_vertex = nn.Conv2d(
-                in_channels  = n_filters,
-                out_channels = 3,
+                in_channels  = params.vertex.n_filters,
+                out_channels = 1,
                 kernel_size  = 1,
                 stride       = 1,
                 padding      = 0,
@@ -622,7 +638,8 @@ class UResNet(torch.nn.Module):
 
         if hasattr(self, "classifier"):
             classification_head = classification_head.detach()
-            classified = self.classifier(classification_head)
+            classified = self.classifier_input(classification_head)
+            classified = self.classifier(classified)
             classified = self.bottleneck_classifer(classified)
             # 4 classes of events:
             classified = self.pool(classified).reshape((-1, 4))
@@ -631,6 +648,7 @@ class UResNet(torch.nn.Module):
 
         if hasattr(self, "vertex_layers"):
             vertex = [ v.detach() for v in vertex_head ]
+            vertex = [ self.vertex_input(v) for v in vertex ]
             vertex = [ self.vertex_layers(v) for v in vertex ]
             vertex = [ self.bottleneck_vertex(v) for v in vertex ]
 
