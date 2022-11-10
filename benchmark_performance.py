@@ -22,7 +22,7 @@ core_command = [
     "--config-name",
     config_name,
     "data=synthetic",
-    "run.iterations=100",
+    "run.iterations=500",
 ]
 
 GPUS_AVAILABLE = ["0", "1", "2", "3"]
@@ -31,8 +31,8 @@ base_environ = os.environ
 
 command_list = []
 env_list = []
-run_id = 0
-for batch_size in [1, 2, 4]:
+run_id = 24
+for batch_size in [8,16]:
     for precision in ["float32", "mixed"]:
         for XLA in [True, False]:
             for TF32 in [True, False]:
