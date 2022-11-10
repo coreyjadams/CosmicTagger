@@ -36,17 +36,18 @@ class Norm(Enum):
 @dataclass
 class Vertex:
     active:   bool = False
-    depth:     int = 0
+    depth:     int = 2
     weight:  float = 1.0
-    n_layers:  int = 8
+    n_layers:  int = 2
     n_filters: int = 64
+    lambda_noobj: float = 1e-3
 
 @dataclass
 class EventLabel:
     active:    bool  = True
     weight:    float = 0.01
     n_filters: int   = 64
-    n_layers:  int   = 8
+    n_layers:  int   = 2
 
 
 @dataclass

@@ -24,6 +24,7 @@ class LossCalculator(torch.nn.Module):
 
         self.network_params = params.network
 
+
     def label_counts(self, label_plane):
         # helper function to compute number of each type of label
 
@@ -64,13 +65,23 @@ class LossCalculator(torch.nn.Module):
         # This assumes channels first:
         detection_logits = [l[:,0,:,:] for l in logits]
 
-        detection_logits = [ torch.nn.functional.sigmoid(d) for d in detection_logits ]
+        detection_logits = [ torch.sigmoid(d) for d in detection_logits ]
 
-
+        # The YOLO detection loss is scaled by the no-obj parameter.
+        # Compute the loss per anchor box:
         detection_loss = [
-            torch.nn.functional.cross_entropy(i.float(), t.float(), reduction="mean")
+            torch.nn.functional.mse_loss(i.float(), t.float(), reduction="none")
+            # torch.nn.functional.cross_entropy(i.float(), t.float(), reduction="mean")
             for i, t in zip(detection_logits, labels['detection'])
         ]
+
+        # Compute the weight per object box:
+        weights = [l + self.network_params.vertex.lambda_noobj for l in labels['detection']]
+
+
+
+        # Compute the weight * loss:
+        detection_loss = [ torch.mean(l * w) for l, w in zip(detection_loss, weights)]
 
         detection_loss = torch.sum(torch.stack(detection_loss))
 
