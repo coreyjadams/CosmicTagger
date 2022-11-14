@@ -1,0 +1,24 @@
+defaults:
+  - base_config
+  - override framework: torch
+  - _self_
+data:
+  downsample: 2
+
+mode:
+  optimizer:
+    name: adam
+    learning_rate: 1e-3
+network:
+  n_initial_filters: 24
+  classification:
+    active: True
+  vertex:
+    active: True
+  blocks_deepest_layer: 3
+  blocks_final: 3
+  depth: 5
+run:
+  iterations: 30000
+  epoch: 1000
+output_dir: "output/${framework.name}/${network.name}/${run.id}/ds${data.downsample}"

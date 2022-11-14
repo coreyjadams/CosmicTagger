@@ -97,13 +97,14 @@ class AccuracyCalculator(object):
 
     	return {"Average/EventLabel" : torch.mean(event_accuracy.float())}
 
-    def vertex_accuracy(self, label, logits):
+    def vertex_accuracy(self, label, logits, predicted_vertex, event_label):
 
         accuracy = {}
 
         detection_logits = [l[:,0,:,:] for l in logits]
 
         accuracy['Average/VertexDetection']  = 0.0
+        accuracy['Average/VertexResolution']  = 0.0
 
         #flatten to make argmax easier:
 
@@ -119,9 +120,20 @@ class AccuracyCalculator(object):
 
         detection_accuracy = [ torch.mean(e.float()) for e in equal ]
 
+        difference = (label['xy_loc'] - predicted_vertex)**2
+
+        difference = torch.sqrt(torch.sum(difference, axis=-1))
+
+        has_vertex = (event_label != 3).float()
+        difference = difference * has_vertex.reshape((-1,1))
+
+        difference = torch.sum(difference, axis=-1) / ( torch.sum(has_vertex) + 1e-5)
+
         for p, d in enumerate(detection_accuracy):
             accuracy[f"plane{p}/VertexDetection"] = d
+            accuracy[f"plane{p}/VertexResolution"] = difference[p]
             accuracy["Average/VertexDetection"] += 0.3333333*d
+            accuracy["Average/VertexResolution"] += 0.3333333*difference[p]
 
         return accuracy
 
@@ -133,6 +145,8 @@ class AccuracyCalculator(object):
             accuracy.update(self.event_accuracy(labels_dict["event_label"], network_dict["event_label"]))
 
         if self.network_params.vertex.active:
-            accuracy.update(self.vertex_accuracy(labels_dict["vertex"], network_dict["vertex"]))
+            accuracy.update(self.vertex_accuracy(
+                labels_dict["vertex"], network_dict["vertex"],
+                network_dict["predicted_vertex"], labels_dict["event_label"]))
 
         return accuracy

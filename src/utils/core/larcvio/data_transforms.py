@@ -222,7 +222,6 @@ def larcvsparse_to_dense_3d(input_array, dense_shape):
 
 def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels, dataformat, image_meta, ds):
 
-
     batch_size = event_labels.shape[0]
     event_energy = particle_labels['_energy_init'][:,0]
 
@@ -233,17 +232,17 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
     # The data gets loaded in (W, H) format and we need it in (H, W) format.:
     vertex_labels[:,:,[0,1]] = vertex_labels[:,:,[1,0]]
 
-    
+
     # First, determine the dimensionality of the output space of the vertex yolo network:
     vertex_output_space = tuple(d // 2**vertex_depth  for d in image_shape )
 
 
     if dataformat == "channels_last":
         vertex_labels = numpy.transpose(vertex_channels_first,(0,2,1))
-        vertex_presence_labels = numpy.zeros((batch_size,) + vertex_output_space + (3,))
+        vertex_presence_labels = numpy.zeros((batch_size,) + vertex_output_space + (3,), dtype="float32")
     else:
         # Nimages, 3 planes, shape-per-plane
-        vertex_presence_labels = numpy.zeros((batch_size, 3,) + vertex_output_space)
+        vertex_presence_labels = numpy.zeros((batch_size, 3,) + vertex_output_space, dtype="float32")
 
 
     n_pixels_vertex = 2**vertex_depth
@@ -288,7 +287,9 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
     # Normalize to (0,1)
 
     bounding_box_location = vertex_output_space_anchor_box_float - vertex_output_space_anchor_box
-    
+
+    bounding_box_location = bounding_box_location.astype("float32")
+
     if dataformat == "channels_last":
         vertex_presence_labels = numpy.split(vertex_presence_labels, 3, axis=-1)
         vertex_presence_labels = [v.reshape((batch_size, ) + vertex_output_space) for v in vertex_presence_labels]
@@ -297,4 +298,9 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
         vertex_presence_labels = [v.reshape((batch_size, ) + vertex_output_space) for v in vertex_presence_labels]
 
 
-    return {"detection" : vertex_presence_labels, "regression" : bounding_box_location, "energy" : event_energy}
+    return {
+        "detection"  : vertex_presence_labels,
+        "regression" : bounding_box_location,
+        "energy"     : event_energy,
+        "xy_loc"     : vertex_labels,
+    }

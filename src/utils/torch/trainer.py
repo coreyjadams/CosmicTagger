@@ -96,6 +96,23 @@ class torch_trainer(trainercore):
         else:
             self._net = self._raw_net
 
+
+        # To predict the vertex, we first figure out the size of each bounding box:
+        # Vertex comes out with shape [batch_size, channels, max_boxes, 2*ndim (so 4, in this case)]
+        image_shape = self.larcv_fetcher.image_size()
+        vertex_depth = self.args.network.depth - self.args.network.vertex.depth
+        vertex_output_space = tuple(d // 2**vertex_depth  for d in image_shape )
+
+        anchor_size = self.larcv_fetcher.image_meta['size'] / vertex_output_space
+
+        origin = self.larcv_fetcher.image_meta['origin']
+
+        device = self.default_device()
+        with self.default_device_context():
+            self.vertex_output_space = torch.tensor(vertex_output_space, device=device)
+            self.anchor_size = torch.tensor(anchor_size, device=device)
+            self.origin = torch.tensor(origin, device=device)
+
     def initialize(self, io_only=False):
 
         self._initialize_io(color=self._rank)
@@ -382,7 +399,52 @@ class torch_trainer(trainercore):
             This is to ensure equivalent metrics are computed for sparse and dense networks.
 
         '''
+
+        # Predict the vertex, if needed:
+        if self.args.network.vertex.active:
+            network_dict['predicted_vertex'] = self.predict_vertex(network_dict)
+
         return self.acc_calc(network_dict, labels_dict)
+
+    def predict_vertex(self, network_dict):
+
+        # We also flatten to make the argmax operation easier:
+        detection_logits = [ n[:,0,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
+        #
+        predicted_vertex_index = [ torch.argmax(n, dim=1) for n in detection_logits ]
+
+        height_index = [torch.div(p, self.vertex_output_space[1], rounding_mode='floor')  for p in predicted_vertex_index]
+        width_index  = [p % self.vertex_output_space[1]  for p in predicted_vertex_index]
+
+        height_prediction = [h * a[0] + b[0] for h, a, b in zip(height_index, self.anchor_size, self.origin)]
+        width_prediction  = [w * a[1] + b[1] for w, a, b in zip(width_index, self.anchor_size, self.origin)]
+
+        vertex_prediction = torch.stack([
+            torch.stack(height_prediction, dim=-1),
+            torch.stack(width_prediction, dim=-1)
+        ], dim=-1)
+
+
+
+        internal_offsets_height = [ n[:,1,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
+        internal_offsets_width  = [ n[:,2,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
+
+        batch_size = network_dict['vertex'][0].shape[0]
+        batch_indexes = torch.arange(batch_size)
+
+        internal_offsets_height = [ i[batch_indexes, p] for i, p in zip(internal_offsets_height, predicted_vertex_index) ]
+        internal_offsets_width  = [ i[batch_indexes, p] for i, p in zip(internal_offsets_width,  predicted_vertex_index) ]
+
+        height_correction = [i * a[0] for i, a in zip(internal_offsets_height, self.anchor_size)]
+        width_correction  = [i * a[1] for i, a in zip(internal_offsets_width,  self.anchor_size)]
+
+        vertex_correction = torch.stack([
+            torch.stack(height_correction, dim=-1),
+            torch.stack(width_correction, dim=-1)
+        ], dim=-1)
+
+        return vertex_prediction + vertex_correction
+
 
     def _compute_metrics(self, network_dict, labels_dict, loss_dict):
 
@@ -575,6 +637,8 @@ class torch_trainer(trainercore):
                         torch.tensor(minibatch_data[key]['regression'],  device=device)
                     minibatch_data[key]['energy'] = \
                         torch.tensor(minibatch_data[key]['energy'],  device=device)
+                    minibatch_data[key]['xy_loc'] = \
+                        torch.tensor(minibatch_data[key]['xy_loc'],  device=device)
 
                 elif key == 'image' and self.args.framework.sparse:
                     # Use the image transform?

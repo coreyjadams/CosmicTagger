@@ -584,7 +584,7 @@ class UResNet(torch.nn.Module):
 
             self.bottleneck_vertex = nn.Conv2d(
                 in_channels  = params.vertex.n_filters,
-                out_channels = 1,
+                out_channels = 3,
                 kernel_size  = 1,
                 stride       = 1,
                 padding      = 0,
@@ -652,11 +652,9 @@ class UResNet(torch.nn.Module):
             vertex = [ self.vertex_layers(v) for v in vertex ]
             vertex = [ self.bottleneck_vertex(v) for v in vertex ]
 
-            # # Apply a sigmoid before going to dense:
-            # vertex[:,0,:,:] = [torch.nn.functional.softmax(v[:,0,:,:]) for v in vertex]
-            # vertex[:,1:2,:,:] = [torch.sigmoid(v[:,1:2,:,:]) for v in vertex]
+            # Apply a sigmoid before returning:
 
-            return_dict["vertex"] = vertex
+            return_dict["vertex"] = [ torch.sigmoid(v) for v in vertex ]
 
 
         return return_dict

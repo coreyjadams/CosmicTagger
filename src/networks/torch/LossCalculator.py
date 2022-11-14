@@ -51,21 +51,30 @@ class LossCalculator(torch.nn.Module):
             loss =  loss +  event_loss
 
         if self.network_params.vertex.active:
-            vtx_loss   = self.vertex_loss(labels_dict["vertex"], network_dict["vertex"])
-            vtx_loss   = self.network_params.vertex.weight * vtx_loss
-            loss_metrics["vertex"] = vtx_loss.detach()
-            loss      +=  vtx_loss
+            vtx_detection, vtx_localization = self.vertex_loss(labels_dict["vertex"], network_dict["vertex"], labels_dict['event_label'])
+            vtx_detection  = self.network_params.vertex.weight * vtx_detection
+            vtx_localization   = self.network_params.vertex.weight * vtx_localization
+            loss_metrics["vertex/detection"] = vtx_detection.detach()
+            loss_metrics["vertex/localization"] = vtx_localization.detach()
+
+            loss      +=  vtx_detection + vtx_localization
 
         loss_metrics["total"] = loss
 
         return  loss, loss_metrics
 
-    def vertex_loss(self, labels, logits):
+    def vertex_loss(self, labels, logits, event_label):
 
         # This assumes channels first:
         detection_logits = [l[:,0,:,:] for l in logits]
 
-        detection_logits = [ torch.sigmoid(d) for d in detection_logits ]
+        # Get the detection labels, and zero out any cosmic-only event
+        detection_labels = labels['detection']
+        has_vertex = event_label != 3
+
+
+        detection_labels = [ torch.reshape(has_vertex, (-1,1,1))*d for d in detection_labels]
+
 
         # The YOLO detection loss is scaled by the no-obj parameter.
         # Compute the loss per anchor box:
@@ -76,16 +85,48 @@ class LossCalculator(torch.nn.Module):
         ]
 
         # Compute the weight per object box:
-        weights = [l + self.network_params.vertex.lambda_noobj for l in labels['detection']]
-
-
+        # Assuming the lambda_noobj parameter is small compared to 1, this is approximately correct
+        weights = [l + self.network_params.vertex.l_noobj for l in labels['detection']]
 
         # Compute the weight * loss:
         detection_loss = [ torch.mean(l * w) for l, w in zip(detection_loss, weights)]
-
         detection_loss = torch.sum(torch.stack(detection_loss))
 
-        return detection_loss
+
+        # For localization, we first compute the index locations of active vertexes:
+        active_sites = [ d == 1 for d in detection_labels]
+
+        detection_localization_logits = [ l[:,1:,:,:] for l in logits ]
+
+        regression_labels = torch.chunk(labels['regression'], 3, dim=1)
+        regression_labels = [torch.reshape(l, (-1, 2)) for l in regression_labels ]
+
+        labels_x = [rl[:,0][has_vertex] for rl in regression_labels]
+        labels_y = [rl[:,1][has_vertex] for rl in regression_labels]
+
+
+
+
+        # Split x and y, and then zero in on the active sites:
+        detection_localization_logits_x = [ l[:,1,:,:] for l in logits ]
+        detection_localization_logits_y = [ l[:,2,:,:] for l in logits ]
+
+        # Select the active sites in labels and logits:
+        active_localization_logits_x = [ d[a] for d, a in zip(detection_localization_logits_x, active_sites) ]
+        active_localization_logits_y = [ d[a] for d, a in zip(detection_localization_logits_y, active_sites) ]
+
+        # Weigh the loss:
+        weight = self.network_params.vertex.l_coord
+
+        # Compute the loss in x and y:
+        loss_x = [ weight*torch.nn.functional.mse_loss(lx, alx) for lx, alx in zip(labels_x, active_localization_logits_x)]
+        loss_y = [ weight*torch.nn.functional.mse_loss(ly, aly) for ly, aly in zip(labels_y, active_localization_logits_y)]
+
+        # Sum the losses:
+        localization_loss = [x + y for x, y in zip(loss_x, loss_y)]
+        localization_loss = torch.sum(torch.stack(localization_loss))
+
+        return detection_loss, localization_loss
 
     def event_loss(self, labels, logits):
         event_label_loss = self.event_label_criterion(logits, labels.long())
