@@ -5,9 +5,11 @@ import tempfile
 from collections import OrderedDict
 
 import logging
-logger = logging.getLogger()
+logger = logging.getLogger("cosmictagger")
 logger.propogate = False
 
+import mlflow
+# mlflow.autolog(disable=True)
 
 import numpy
 
@@ -40,10 +42,6 @@ def dummycontext():
 
 import datetime
 
-try:
-    from torch.utils.tensorboard import SummaryWriter
-except:
-    from tensorboardX import SummaryWriter
 
 from src.config import ComputeMode, Precision, ConvMode, ModeKind
 
@@ -136,7 +134,7 @@ class torch_trainer(trainercore):
             if self.is_training():
                 self.init_optimizer()
 
-            self.init_saver()
+            # self.init_saver()
 
             self._global_step = 0
 
@@ -236,21 +234,21 @@ class torch_trainer(trainercore):
         if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
             self.scaler = torch.cuda.amp.GradScaler()
 
-    def init_saver(self):
+    # def init_saver(self):
 
 
-        # This sets up the summary saver:
-        dir = self.args.output_dir
+    #     # This sets up the summary saver:
+    #     dir = self.args.output_dir
 
 
-        self._saver = SummaryWriter(dir + "/train/")
+    #     self._saver = SummaryWriter(dir + "/train/")
 
-        if hasattr(self, "_aux_data_size") and self.is_training():
-            self._aux_saver = SummaryWriter(dir + "/test/")
-        elif hasattr(self, "_aux_data_size") and not self.is_training():
-            self._aux_saver = SummaryWriter(dir + "/val/")
-        else:
-            self._aux_saver = None
+    #     if hasattr(self, "_aux_data_size") and self.is_training():
+    #         self._aux_saver = SummaryWriter(dir + "/test/")
+    #     elif hasattr(self, "_aux_data_size") and not self.is_training():
+    #         self._aux_saver = SummaryWriter(dir + "/val/")
+    #     else:
+    #         self._aux_saver = None
 
     def load_state_from_file(self):
         ''' This function attempts to restore the model from file
@@ -459,7 +457,7 @@ class torch_trainer(trainercore):
 
         return accuracy
 
-    def log(self, metrics, saver=''):
+    def log(self, metrics, prefix=""):
 
         if self._global_step % self.args.mode.logging_iteration == 0:
 
@@ -494,26 +492,30 @@ class torch_trainer(trainercore):
 
 
             self._previous_log_time = self._current_log_time
-            logger.info("{} Step {} metrics: {}".format(saver, self._global_step, s))
+            logger.info("{} Step {} metrics: {}".format(prefix, self._global_step, s))
 
-    def summary(self, metrics,saver=""):
+    def summary(self, metrics, prefix=""):
 
         if self._global_step % self.args.mode.summary_iteration == 0:
             for metric in metrics:
-                name = metric
-                if saver == "test":
-                    self._aux_saver.add_scalar(metric, metrics[metric], self._global_step)
-                else:
-                    self._saver.add_scalar(metric, metrics[metric], self._global_step)
+                name = prefix + "_" + metric
+                mlflow.log_metric(name, metrics[metric], step=self._global_step)
+                # if saver == "test":
+                #     self._aux_saver.add_scalar(metric, metrics[metric], self._global_step)
+                # else:
+                #     self._saver.add_scalar(metric, metrics[metric], self._global_step)
 
 
             # try to get the learning rate
             if self.is_training():
-                self._saver.add_scalar("learning_rate", self._opt.state_dict()['param_groups'][0]['lr'], self._global_step)
+                current_lr = self._opt.state_dict()['param_groups'][0]['lr']
+                # self._saver.add_scalar("learning_rate", , self._global_step)
+                mlflow.log_metric(prefix + "_learning_rate", current_lr, self._global_step)
+                # self._saver.add_scalar("learning_rate", self._opt.state_dict()['param_groups'][0]['lr'], self._global_step)
             return
 
 
-    def summary_images(self, logits_image, labels_image, saver=""):
+    def summary_images(self, logits_image, labels_image, prefix=""):
 
         # if self._global_step % 1 * self.args.mode.summary_iteration == 0:
         if self._global_step % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:
@@ -832,13 +834,13 @@ class torch_trainer(trainercore):
             metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
 
             with self.timing_context("log"):
-                self.log(metrics, saver="train")
+                self.log(metrics, prefix="train")
 
                 if verbose: logger.debug("Completed Log")
 
             with self.timing_context("summary"):
-                self.summary(metrics, saver="train")
-                self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], saver="train")
+                self.summary(metrics, prefix="train")
+                self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], prefix="train")
                 # self.graph_summary()
                 if verbose: logger.debug("Summarized")
 
@@ -891,9 +893,9 @@ class torch_trainer(trainercore):
             # Compute any necessary metrics:
             metrics = self._compute_metrics(network_dict, labels_dict, loss_metrics)
 
-            self.log(metrics, saver="test")
-            self.summary(metrics, saver="test")
-            self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], saver="test")
+            self.log(metrics, prefix="test")
+            self.summary(metrics, prefix="test")
+            self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], prefix="test")
 
             return
 
@@ -944,7 +946,7 @@ class torch_trainer(trainercore):
             self.accumulate_metrics(metrics)
 
 
-            self.log(metrics, saver="ana")
+            self.log(metrics, prefix="ana")
             # self.summary(metrics, saver="test")
             # self.summary_images(logits_image, labels_image, saver="ana")
 

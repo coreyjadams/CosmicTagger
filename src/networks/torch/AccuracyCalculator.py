@@ -120,20 +120,20 @@ class AccuracyCalculator(object):
 
         detection_accuracy = [ torch.mean(e.float()) for e in equal ]
 
-        difference = (label['xy_loc'] - predicted_vertex)**2
+        # difference = (label['xy_loc'] - predicted_vertex)**2
+        # print(difference.shape)
+        # difference = torch.sqrt(torch.sum(difference, axis=-1))
 
-        difference = torch.sqrt(torch.sum(difference, axis=-1))
+        # has_vertex = (event_label != 3).float()
+        # difference = difference * has_vertex.reshape((-1,1))
 
-        has_vertex = (event_label != 3).float()
-        difference = difference * has_vertex.reshape((-1,1))
-
-        difference = torch.sum(difference, axis=-1) / ( torch.sum(has_vertex) + 1e-5)
-
+        # difference = torch.sum(difference, axis=-1) / ( torch.sum(has_vertex) + 1e-5)
+        # print(difference)
         for p, d in enumerate(detection_accuracy):
             accuracy[f"plane{p}/VertexDetection"] = d
-            accuracy[f"plane{p}/VertexResolution"] = difference[p]
+            # accuracy[f"plane{p}/VertexResolution"] = difference[p]
             accuracy["Average/VertexDetection"] += 0.3333333*d
-            accuracy["Average/VertexResolution"] += 0.3333333*difference[p]
+            # accuracy["Average/VertexResolution"] += 0.3333333*difference[p]
 
         return accuracy
 

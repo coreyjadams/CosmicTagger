@@ -226,10 +226,9 @@ class SparseDeepestBlock(nn.Module):
 
         x = self.merger(x)
         x = self.blocks(x)
+        x = self.splitter(x)
 
         classification_head = x
-
-        x = self.splitter(x)
 
 
         return x, classification_head, None
@@ -431,17 +430,27 @@ class UResNet3D(torch.nn.Module):
                 else:
                     n_filters = n_filters + params.n_initial_filters
 
+
+            self.classifier_input = scn.Convolution(
+                dimension   = 3,
+                nIn         = n_filters,
+                nOut        = params.classification.n_filters,
+                filter_size = [3,1,1],
+                filter_stride = [1,1,1],
+                bias        = params.bias)
+
             self.classifier = SparseBlockSeries(
-                inplanes = n_filters,
+                inplanes = params.classification.n_filters,
                 n_blocks = params.classification.n_layers,
                 params   = params
             )
 
             self.bottleneck_classifier = scn.SubmanifoldConvolution(
                 dimension   = 3,
-                nIn         = n_filters,
+                nIn         = params.classification.n_filters,
                 nOut        = 4,
                 filter_size = [1,1,1],
+                # filter_stride = [1,1,1],
                 bias        = params.bias)
 
             self.pool = scn.AveragePooling(
@@ -552,12 +561,13 @@ class UResNet3D(torch.nn.Module):
 
         if hasattr(self, "classifier"):
             classification_head = classification_head.detach()
-            classified = self.classifier(classification_head)
+            classified = self.classifier_input(classification_head)
+            classified = self.classifier(classified)
             classified = self.bottleneck_classifier(classified)
             # 4 classes of events:
             classified = self.pool(classified)
             classified = self.classifier_sparse_to_dense(classified)
-            classified = classified.reshape((-1, 4))
+            classified = classified.view(classified.shape[0], classified.shape[1])
             return_dict["event_label"] = classified
 
 

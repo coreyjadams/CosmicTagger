@@ -69,8 +69,11 @@ class exec(object):
 
     def configure_logger(self, rank):
 
-        logger = logging.getLogger()
+        import mlflow
+        mlflow.autolog(disable=True)
+        
 
+        logger = logging.getLogger("cosmictagger")
         # Create a handler for STDOUT, but only on the root rank.
         # If not distributed, we still get 0 passed in here.
         if rank == 0:
@@ -94,6 +97,7 @@ class exec(object):
             handler = logging.NullHandler()
             logger.addHandler(handler)
             logger.setLevel(logging.INFO)
+
 
 
     def train(self):
@@ -242,7 +246,7 @@ class exec(object):
 
         from src.config.data import DataFormatKind
 
-        logger = logging.getLogger()
+        logger = logging.getLogger("cosmictagger")
 
         if self.args.framework.name == "torch":
             # In torch, only option is channels first:
