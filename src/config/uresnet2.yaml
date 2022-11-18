@@ -3,7 +3,7 @@ defaults:
   - override framework: torch
   - _self_
 data:
-  downsample: 2
+  downsample: 1
 
 mode:
   optimizer:

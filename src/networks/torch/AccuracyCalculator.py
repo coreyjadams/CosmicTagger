@@ -19,12 +19,13 @@ class AccuracyCalculator(object):
         accuracy['Average/Non_Bkg_Accuracy'] = 0.0
         accuracy['Average/mIoU']             = 0.0
 
+        target_dtype = logits[0].dtype
 
         for plane in [0,1,2]:
 
             values, predicted_label = torch.max(logits[plane], dim=1)
 
-            correct = (predicted_label == labels[plane].long()).float()
+            correct = (predicted_label == labels[plane].long()).type(target_dtype)
 
             # We calculate 4 metrics.
             # First is the mean accuracy over all pixels
@@ -37,7 +38,7 @@ class AccuracyCalculator(object):
             non_zero_locations       = labels[plane] != 0
 
             weighted_accuracy = correct * non_zero_locations
-            non_zero_accuracy = torch.sum(weighted_accuracy, dim=[1,2]) / (torch.sum(non_zero_locations, dim=[1,2]) +0.1)
+            non_zero_accuracy = torch.sum(weighted_accuracy, dim=[1,2]) / (torch.sum(non_zero_locations, dim=[1,2]) +0.1).type(target_dtype)
 
             neutrino_label_locations = labels[plane] == 2
             cosmic_label_locations   = labels[plane] == 1
@@ -47,14 +48,14 @@ class AccuracyCalculator(object):
 
 
             neutrino_intersection = (neutrino_prediction_locations & \
-                neutrino_label_locations).sum(dim=[1,2]).float()
+                neutrino_label_locations).sum(dim=[1,2]).type(target_dtype)
             cosmic_intersection = (cosmic_prediction_locations & \
-                cosmic_label_locations).sum(dim=[1,2]).float()
+                cosmic_label_locations).sum(dim=[1,2]).type(target_dtype)
 
             neutrino_union        = (neutrino_prediction_locations | \
-                neutrino_label_locations).sum(dim=[1,2]).float()
+                neutrino_label_locations).sum(dim=[1,2]).type(target_dtype)
             cosmic_union        = (cosmic_prediction_locations | \
-                cosmic_label_locations).sum(dim=[1,2]).float()
+                cosmic_label_locations).sum(dim=[1,2]).type(target_dtype)
             # neutrino_intersection =
 
             one = torch.ones(1, dtype=neutrino_intersection.dtype,device=neutrino_intersection.device)
@@ -95,11 +96,12 @@ class AccuracyCalculator(object):
 
     	event_accuracy = selected_class == label
 
-    	return {"Average/EventLabel" : torch.mean(event_accuracy.float())}
+    	return {"Average/EventLabel" : torch.mean(event_accuracy.type(logits[0].dtype))}
 
     def vertex_accuracy(self, label, logits, predicted_vertex, event_label):
 
         accuracy = {}
+        target_dtype = logits[0].dtype
 
         detection_logits = [l[:,0,:,:] for l in logits]
 
@@ -113,27 +115,28 @@ class AccuracyCalculator(object):
         detection_logits = [d.reshape(batch_size, -1) for d in detection_logits]
         detection_labels = [d.reshape(batch_size, -1) for d in label['detection']]
 
-        selected_index  = [torch.argmax(d.float(), dim=1) for d in detection_logits ]
-        predicted_index = [torch.argmax(d.float(), dim=1) for d in detection_labels ]
+        selected_index  = [torch.argmax(d.type(target_dtype), dim=1) for d in detection_logits ]
+        predicted_index = [torch.argmax(d.type(target_dtype), dim=1) for d in detection_labels ]
 
         equal = [s == p for s, p in zip(selected_index, predicted_index)]
 
-        detection_accuracy = [ torch.mean(e.float()) for e in equal ]
+        detection_accuracy = [ torch.mean(e.type(target_dtype)) for e in equal ]
 
-        # difference = (label['xy_loc'] - predicted_vertex)**2
-        # print(difference.shape)
-        # difference = torch.sqrt(torch.sum(difference, axis=-1))
+        difference = (label['xy_loc'] - predicted_vertex)**2
 
-        # has_vertex = (event_label != 3).float()
-        # difference = difference * has_vertex.reshape((-1,1))
+        difference = torch.sqrt(torch.sum(difference, axis=-1))
 
-        # difference = torch.sum(difference, axis=-1) / ( torch.sum(has_vertex) + 1e-5)
-        # print(difference)
+        has_vertex = (event_label != 3).type(target_dtype)
+
+        difference = difference * has_vertex.reshape((-1,1))
+        difference = torch.sum(difference, axis=0) / ( torch.sum(has_vertex) + 1e-5)
+        difference = difference.type(target_dtype)
+
         for p, d in enumerate(detection_accuracy):
             accuracy[f"plane{p}/VertexDetection"] = d
-            # accuracy[f"plane{p}/VertexResolution"] = difference[p]
+            accuracy[f"plane{p}/VertexResolution"] = difference[p]
             accuracy["Average/VertexDetection"] += 0.3333333*d
-            # accuracy["Average/VertexResolution"] += 0.3333333*difference[p]
+            accuracy["Average/VertexResolution"] += 0.3333333*difference[p]
 
         return accuracy
 
@@ -148,5 +151,6 @@ class AccuracyCalculator(object):
             accuracy.update(self.vertex_accuracy(
                 labels_dict["vertex"], network_dict["vertex"],
                 network_dict["predicted_vertex"], labels_dict["event_label"]))
+
 
         return accuracy

@@ -8,8 +8,6 @@ import logging
 logger = logging.getLogger("cosmictagger")
 logger.propogate = False
 
-import mlflow
-# mlflow.autolog(disable=True)
 
 import numpy
 
@@ -38,6 +36,8 @@ import contextlib
 @contextlib.contextmanager
 def dummycontext():
     yield None
+
+from tensorboardX import SummaryWriter
 
 
 import datetime
@@ -127,14 +127,13 @@ class torch_trainer(trainercore):
 
             self._net = self._net.to(self.default_device())
 
-            # self._net.to(device)
 
             self.print_network_info()
 
             if self.is_training():
                 self.init_optimizer()
 
-            # self.init_saver()
+            self.init_saver()
 
             self._global_step = 0
 
@@ -164,10 +163,10 @@ class torch_trainer(trainercore):
 
 
     def trace_module(self):
-
-        if self.args.run.precision == Precision.mixed:
-            logger.warning("Tracing not available with mixed precision, sorry")
-            return
+        #
+        # if self.args.run.precision == Precision.mixed:
+        #     logger.warning("Tracing not available with mixed precision, sorry")
+        #     return
 
         # Trace the module:
         minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
@@ -176,9 +175,9 @@ class torch_trainer(trainercore):
 
         if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
             with torch.cuda.amp.autocast():
-                self._net = torch.jit.trace_module(self._net, {"forward" : example_inputs['image']} )
+                self._net = torch.jit.trace(self._net, example_inputs['image'] )
         else:
-            self._net = torch.jit.trace_module(self._net, {"forward" : example_inputs['image']} )
+            self._net = torch.jit.trace(self._net, example_inputs['image'] )
 
 
 
@@ -234,21 +233,20 @@ class torch_trainer(trainercore):
         if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
             self.scaler = torch.cuda.amp.GradScaler()
 
-    # def init_saver(self):
+    def init_saver(self):
+
+        # This sets up the summary saver:
+        dir = self.args.output_dir
 
 
-    #     # This sets up the summary saver:
-    #     dir = self.args.output_dir
+        self._saver = SummaryWriter(dir + "/train/")
 
-
-    #     self._saver = SummaryWriter(dir + "/train/")
-
-    #     if hasattr(self, "_aux_data_size") and self.is_training():
-    #         self._aux_saver = SummaryWriter(dir + "/test/")
-    #     elif hasattr(self, "_aux_data_size") and not self.is_training():
-    #         self._aux_saver = SummaryWriter(dir + "/val/")
-    #     else:
-    #         self._aux_saver = None
+        if hasattr(self, "_aux_data_size") and self.is_training():
+            self._aux_saver = SummaryWriter(dir + "/test/")
+        elif hasattr(self, "_aux_data_size") and not self.is_training():
+            self._aux_saver = SummaryWriter(dir + "/val/")
+        else:
+            self._aux_saver = None
 
     def load_state_from_file(self):
         ''' This function attempts to restore the model from file
@@ -446,18 +444,19 @@ class torch_trainer(trainercore):
 
     def _compute_metrics(self, network_dict, labels_dict, loss_dict):
 
-        # Call all of the functions in the metrics dictionary:
-        metrics = {}
+        with torch.no_grad():
+            # Call all of the functions in the metrics dictionary:
+            metrics = {}
 
-        if loss_dict is not None:
-            for key in loss_dict:
-                metrics[f'loss/{key}'] = loss_dict[key].data
-        accuracy = self._calculate_accuracy(network_dict, labels_dict)
-        accuracy.update(metrics)
+            if loss_dict is not None:
+                for key in loss_dict:
+                    metrics[f'loss/{key}'] = loss_dict[key].data
+            accuracy = self._calculate_accuracy(network_dict, labels_dict)
+            accuracy.update(metrics)
 
         return accuracy
 
-    def log(self, metrics, prefix=""):
+    def log(self, metrics, saver=''):
 
         if self._global_step % self.args.mode.logging_iteration == 0:
 
@@ -492,30 +491,27 @@ class torch_trainer(trainercore):
 
 
             self._previous_log_time = self._current_log_time
-            logger.info("{} Step {} metrics: {}".format(prefix, self._global_step, s))
+            logger.info("{} Step {} metrics: {}".format(saver, self._global_step, s))
 
-    def summary(self, metrics, prefix=""):
+    def summary(self, metrics, saver=""):
 
         if self._global_step % self.args.mode.summary_iteration == 0:
             for metric in metrics:
-                name = prefix + "_" + metric
-                mlflow.log_metric(name, metrics[metric], step=self._global_step)
-                # if saver == "test":
-                #     self._aux_saver.add_scalar(metric, metrics[metric], self._global_step)
-                # else:
-                #     self._saver.add_scalar(metric, metrics[metric], self._global_step)
+                name = metric
+                if saver == "test":
+                    self._aux_saver.add_scalar(metric, metrics[metric], self._global_step)
+                else:
+                    self._saver.add_scalar(metric, metrics[metric], self._global_step)
 
 
             # try to get the learning rate
             if self.is_training():
                 current_lr = self._opt.state_dict()['param_groups'][0]['lr']
-                # self._saver.add_scalar("learning_rate", , self._global_step)
-                mlflow.log_metric(prefix + "_learning_rate", current_lr, self._global_step)
-                # self._saver.add_scalar("learning_rate", self._opt.state_dict()['param_groups'][0]['lr'], self._global_step)
+                self._saver.add_scalar("learning_rate", current_lr, self._global_step)
             return
 
 
-    def summary_images(self, logits_image, labels_image, prefix=""):
+    def summary_images(self, logits_image, labels_image, saver=""):
 
         # if self._global_step % 1 * self.args.mode.summary_iteration == 0:
         if self._global_step % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:
@@ -603,12 +599,8 @@ class torch_trainer(trainercore):
             except:
                 pass
             return contextlib.nullcontext()
-        # elif self.args.run.compute_mode == "DPCPP":
-        #     return contextlib.nullcontext()
-        #     # device = torch.device("dpcpp")
         else:
             return contextlib.nullcontext()
-            # device = torch.device('cpu')
 
     def default_device(self):
 
@@ -616,8 +608,6 @@ class torch_trainer(trainercore):
             return torch.device("cuda")
         elif self.args.run.compute_mode == ComputeMode.XPU:
             device = torch.device("xpu")
-        # elif self.args.run.compute_mode == "DPCPP":
-        #     device = torch.device("dpcpp")
         else:
             device = torch.device('cpu')
         return device
@@ -627,6 +617,12 @@ class torch_trainer(trainercore):
         if device_context is None:
             device_context = self.default_device_context()
 
+        target_precision = torch.float32
+        if self.args.run.precision == Precision.bfloat16:
+            target_precision = torch.bfloat16
+        elif self.args.run.precision == Precision.mixed:
+            target_precision = torch.float16
+
         device = self.default_device()
         with device_context:
             for key in minibatch_data:
@@ -634,13 +630,13 @@ class torch_trainer(trainercore):
                     continue
                 if key == 'vertex':
                     minibatch_data[key]['detection'] = \
-                        [torch.tensor(d, device=device) for d in minibatch_data[key]['detection'] ]
+                        [torch.tensor(d, device=device, dtype=target_precision) for d in minibatch_data[key]['detection'] ]
                     minibatch_data[key]['regression'] = \
-                        torch.tensor(minibatch_data[key]['regression'],  device=device)
+                        torch.tensor(minibatch_data[key]['regression'],  device=device, dtype=target_precision)
                     minibatch_data[key]['energy'] = \
-                        torch.tensor(minibatch_data[key]['energy'],  device=device)
+                        torch.tensor(minibatch_data[key]['energy'],  device=device, dtype=target_precision)
                     minibatch_data[key]['xy_loc'] = \
-                        torch.tensor(minibatch_data[key]['xy_loc'],  device=device)
+                        torch.tensor(minibatch_data[key]['xy_loc'],  device=device, dtype=target_precision)
 
                 elif key == 'image' and self.args.framework.sparse:
                     # Use the image transform?
@@ -649,42 +645,21 @@ class torch_trainer(trainercore):
                         minibatch_data[key][1] =  numpy.log(minibatch_data[key][1] + 1)
                     minibatch_data[key] = (
                             torch.tensor(minibatch_data[key][0], device=device).long(),
-                            torch.tensor(minibatch_data[key][1], device=device),
+                            torch.tensor(minibatch_data[key][1], device=device, dtype=initial_learning_rate),
                             minibatch_data[key][2],
                         )
                     # elif key == 'label':
                         # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 else:
                     # minibatch_data[key] = torch.tensor(minibatch_data[key])
-                    minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
+                    minibatch_data[key] = torch.tensor(minibatch_data[key], device=device, dtype=target_precision)
 
                     if key == 'image' and self.args.data.img_transform:
                         minibatch_data[key] =  torch.log(minibatch_data['image'] + 1)
 
 
             if self.args.data.synthetic:
-                minibatch_data['image'] = minibatch_data['image'].float()
-
-            if self.args.run.precision == Precision.bfloat16:
-                if self.args.framework.sparse:
-                    minibatch_data["image"] = (
-                        minibatch_data["image"][0],
-                        minibatch_data["image"][1].bfloat16(),
-                        minibatch_data["image"][2],
-                    )
-                else:
-                    minibatch_data["image"] = minibatch_data["image"].bfloat16()
-
-            if self.args.run.precision == Precision.mixed:
-                if self.args.framework.sparse:
-                    minibatch_data["image"] = (
-                        minibatch_data["image"][0],
-                        minibatch_data["image"][1].half(),
-                        minibatch_data["image"][2],
-                    )
-                else:
-                    minibatch_data["image"] = minibatch_data["image"].half()
-
+                minibatch_data['image'] = minibatch_data['image'].type(target_precision)
 
         return minibatch_data
 
@@ -709,8 +684,6 @@ class torch_trainer(trainercore):
 
             shape =  labels_dict["segmentation"][0].shape
 
-
-            # weight = weight.view([shape[0], shape[-3], shape[-2], shape[-1]])
 
             # print numpy.unique(labels_image.cpu(), return_counts=True)
             labels_dict["segmentation"] = [
@@ -775,7 +748,7 @@ class torch_trainer(trainercore):
                     with self.timing_context("loss"):
                         loss, loss_metrics = self.loss_calculator(labels_dict, network_dict)
 
-
+                    if loss.isnan(): exit()
                     # Compute the gradients for the network parameters:
                     with self.timing_context("backward"):
                         if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
@@ -834,13 +807,13 @@ class torch_trainer(trainercore):
             metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
 
             with self.timing_context("log"):
-                self.log(metrics, prefix="train")
+                self.log(metrics, saver="train")
 
                 if verbose: logger.debug("Completed Log")
 
             with self.timing_context("summary"):
-                self.summary(metrics, prefix="train")
-                self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], prefix="train")
+                self.summary(metrics, saver="train")
+                self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], saver="train")
                 # self.graph_summary()
                 if verbose: logger.debug("Summarized")
 
@@ -880,6 +853,7 @@ class torch_trainer(trainercore):
                 minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
             io_end_time = datetime.datetime.now()
 
+
             # if mixed precision, and cuda, use autocast:
             if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                 with torch.cuda.amp.autocast():
@@ -893,9 +867,9 @@ class torch_trainer(trainercore):
             # Compute any necessary metrics:
             metrics = self._compute_metrics(network_dict, labels_dict, loss_metrics)
 
-            self.log(metrics, prefix="test")
-            self.summary(metrics, prefix="test")
-            self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], prefix="test")
+            self.log(metrics, saver="test")
+            self.summary(metrics, saver="test")
+            self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], saver="test")
 
             return
 
@@ -946,9 +920,7 @@ class torch_trainer(trainercore):
             self.accumulate_metrics(metrics)
 
 
-            self.log(metrics, prefix="ana")
-            # self.summary(metrics, saver="test")
-            # self.summary_images(logits_image, labels_image, saver="ana")
+            self.log(metrics, saver="ana")
 
         self._global_step += 1
 

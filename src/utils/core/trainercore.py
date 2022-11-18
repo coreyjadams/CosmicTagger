@@ -18,11 +18,11 @@ import pathlib
 
 
 import logging
-logger = logging.getLogger()
+logger = logging.getLogger("cosmictagger")
 
-import mlflow
-from mlflow import log_param
+import contextlib
 
+import tensorboardX
 
 
 from src.config import DataFormatKind, ModeKind
@@ -282,9 +282,6 @@ class trainercore(object):
         # self._larcv_interface.stop()
         pass
 
-    def close_savers(self):
-        pass
-
     def inference_report(self):
         pass
 
@@ -315,7 +312,7 @@ class trainercore(object):
 
     def flatten(self, dictionary_object, prefix=""):
 
-        new_dict = type(dictionary_object)({})
+        new_dict = {}
         for key in dictionary_object:
             new_key = prefix + key
             if type(dictionary_object[key]) == type(dictionary_object):
@@ -329,14 +326,14 @@ class trainercore(object):
 
     def store_parameters(self):
         ''' Store all the hyperparameters with MLFLow'''
-        with self.active_run:
-            flattened = self.flatten(self.args)
-            for key in flattened:
-                val = flattened[key]
-                if hasattr(val, 'name'): val = val.name
-
-                log_param(key, val)
-
+        if self._rank is None or self._rank == 0:
+            flattened_dict = self.flatten(self.args)
+            experiment, start_summary, end_summary = tensorboardX.summary.hparams(
+                flattened_dict,
+                {"Average/mIoU" : None}
+            )
+            self._saver.file_writer.add_summary(experiment)
+            self._saver.file_writer.add_summary(start_summary)
         return
 
 
@@ -348,99 +345,94 @@ class trainercore(object):
         yield
         self.profiling_array[self.profiling_index][key] = self.now() - start
 
+
+    def close_savers(self):
+        pass
+
     def batch_process(self):
 
+        start = time.time()
+        post_one_time = None
+        post_two_time = None
 
-        self.experiment = mlflow.set_experiment(self.args.experiment)
-        self.active_run = mlflow.start_run()
+        times = []
+
+        # This is the 'master' function, so it controls a lot
+
         self.store_parameters()
 
-        # Starting a run in a context manager allows automatic closure of the run:
-        with self.active_run:
+        self.profiling_index = 0
+
+        # Run iterations
+        for self._iteration in range(self.args.run.iterations):
+
+            # Resize the profiling array if needed:
+            if self.profiling_index > len(self.profiling_array) - 1:
+                # Add 500 more rows:
+                self.profiling_array.resize((self.profiling_index + 500))
+
+            self.profiling_array[self.profiling_index]["i"] = self._iteration
+            self.profiling_array[self.profiling_index]["start"] = self.now()
+            with self.timing_context("iteration"):
+                iteration_start = time.time()
+                if self.is_training() and self._iteration >= self.args.run.iterations:
+
+                    logger.info('Finished training (iteration %d)' % self._iteration)
+                    self.checkpoint()
+                    break
 
 
-            start = time.time()
-            post_one_time = None
-            post_two_time = None
-
-            times = []
-
-            # This is the 'master' function, so it controls a lot
-
-            self.profiling_index = 0
-
-            # Run iterations
-            for self._iteration in range(self.args.run.iterations):
-
-                # Resize the profiling array if needed:
-                if self.profiling_index > len(self.profiling_array) - 1:
-                    # Add 500 more rows:
-                    self.profiling_array.resize((self.profiling_index + 500))
-
-                self.profiling_array[self.profiling_index]["i"] = self._iteration
-                self.profiling_array[self.profiling_index]["start"] = self.now()
-                with self.timing_context("iteration"):
-                    iteration_start = time.time()
-                    if self.is_training() and self._iteration >= self.args.run.iterations:
-
-                        logger.info('Finished training (iteration %d)' % self._iteration)
+                if self.is_training():
+                    with self.timing_context("val"):
+                        self.val_step()
+                    with self.timing_context("train"):
+                        self.train_step()
+                    with self.timing_context("checkpoint"):
                         self.checkpoint()
-                        break
+                else:
+                    self.ana_step()
+
+                if post_one_time is None:
+                    post_one_time = time.time()
+                elif post_two_time is None:
+                    post_two_time = time.time()
+                times.append(time.time() - iteration_start)
+            self.profiling_index += 1
 
 
-                    if self.is_training():
-                        with self.timing_context("val"):
-                            self.val_step()
-                        with self.timing_context("train"):
-                            self.train_step()
-                        with self.timing_context("checkpoint"):
-                            self.checkpoint()
-                    else:
-                        self.ana_step()
+        self.write_profiling_info()
+        self.close_savers()
 
-                    if post_one_time is None:
-                        post_one_time = time.time()
-                    elif post_two_time is None:
-                        post_two_time = time.time()
-                    times.append(time.time() - iteration_start)
-                self.profiling_index += 1
+        end = time.time()
 
-            self.close_savers()
-
-            self.write_profiling_info()
-
-            end = time.time()
-
-            if self.args.data.synthetic and self.args.run.distributed:
-                try:
-                    total_images_per_batch = self.args.run.minibatch_size * self._size
-                except:
-                    total_images_per_batch = self.args.run.minibatch_size
-            else:
+        if self.args.data.synthetic and self.args.run.distributed:
+            try:
+                total_images_per_batch = self.args.run.minibatch_size * self._size
+            except:
                 total_images_per_batch = self.args.run.minibatch_size
+        else:
+            total_images_per_batch = self.args.run.minibatch_size
 
 
-            if self.args.mode.name == ModeKind.inference:
-                self.inference_report()
+        if self.args.mode.name == ModeKind.inference:
+            self.inference_report()
 
-            logger.info(f"Total time to batch_process: {end - start:.4f}")
-            if post_one_time is not None:
-                throughput = (self.args.run.iterations - 1) * total_images_per_batch
-                throughput /= (end - post_one_time)
-                logger.info("Total time to batch process except first iteration: "
-                            f"{end - post_one_time:.4f}"
-                            f", throughput: {throughput:.4f}")
-            if post_two_time is not None:
-                throughput = (self.args.run.iterations - 2) * total_images_per_batch
-                throughput /= (end - post_two_time)
-                logger.info("Total time to batch process except first two iterations: "
-                            f"{end - post_two_time:.4f}"
-                            f", throughput: {throughput:.4f}")
-            if len(times) > 40:
-                throughput = (40) * total_images_per_batch
-                throughput /= (numpy.sum(times[-40:]))
-                logger.info("Total time to batch process last 40 iterations: "
-                            f"{numpy.sum(times[-40:]):.4f}"
-                            f", throughput: {throughput:.4f}" )
-
-            
+        logger.info(f"Total time to batch_process: {end - start:.4f}")
+        if post_one_time is not None:
+            throughput = (self.args.run.iterations - 1) * total_images_per_batch
+            throughput /= (end - post_one_time)
+            logger.info("Total time to batch process except first iteration: "
+                        f"{end - post_one_time:.4f}"
+                        f", throughput: {throughput:.4f}")
+        if post_two_time is not None:
+            throughput = (self.args.run.iterations - 2) * total_images_per_batch
+            throughput /= (end - post_two_time)
+            logger.info("Total time to batch process except first two iterations: "
+                        f"{end - post_two_time:.4f}"
+                        f", throughput: {throughput:.4f}")
+        if len(times) > 40:
+            throughput = (40) * total_images_per_batch
+            throughput /= (numpy.sum(times[-40:]))
+            logger.info("Total time to batch process last 40 iterations: "
+                        f"{numpy.sum(times[-40:]):.4f}"
+                        f", throughput: {throughput:.4f}" )

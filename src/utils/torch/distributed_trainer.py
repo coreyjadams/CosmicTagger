@@ -215,7 +215,6 @@ class distributed_trainer(torch_trainer):
 
         # This takes the base optimizer (self._opt) and replaces
         # it with a distributed version
-
         torch_trainer.init_optimizer(self)
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
@@ -308,22 +307,45 @@ class distributed_trainer(torch_trainer):
             torch_trainer.summary_images(self, logits_image, labels_image, saver)
         return
 
+    def flatten_metrics_dict(self, data_dict):
+        ''' Flatten all the metrics into just one tensor to make the allreduce a little faster at scale'''
+        real_shapes = [ data_dict[k].shape for k in data_dict]
+
+        flattened_cat_data = torch.stack([ data_dict[k] for k in data_dict], axis=0)
+
+        return flattened_cat_data , real_shapes
+
     def _compute_metrics(self, logits, minibatch_data, loss):
 
         # This function calls the parent function which computes local metrics.
         # Then, it performs an all reduce on all metrics:
         metrics = torch_trainer._compute_metrics(self, logits, minibatch_data, loss)
 
+        # Metrics is all scalars.  So grab the keys and then stack them to speed this up:
+        metric_keys = metrics.keys()
+        flat_metrics = torch.stack([ metrics[k] for k in metrics], axis=0)
+
+
+
         if self.args.framework.distributed_mode == DistributedMode.horovod:
             for key in metrics:
                 metrics[key] = hvd.allreduce(metrics[key], name = key)
         elif self.args.framework.distributed_mode == DistributedMode.DDP:
-            for key in metrics:
-                torch.distributed.all_reduce(metrics[key])
-                metrics[key] /= self._size
+            # pre_device = metrics[key].device
+            with self.default_device_context():
+                torch.distributed.reduce(flat_metrics, dst=0, op=torch.distributed.ReduceOp.SUM)
+                flat_metrics /= self._size
+                # for key in metrics:
+                #     torch.distributed.reduce(metrics[key], dst=0, op=torch.distributed.ReduceOp.SUM)
+                #     metrics[key] /= self._size
 
+        # split up the metrics again:
+        split_metrics = torch.split(flat_metrics, 1, dim=0)
+        metrics = { k : s.reshape(()) for k, s in zip(metric_keys, split_metrics)}
+        # print(f"Rank {self._rank} post rediced_metrics: ", reduced_metrics)
         return metrics
 
+        # return metrics
 
 
 
