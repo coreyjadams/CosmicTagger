@@ -35,6 +35,7 @@ class Norm(Enum):
 
 @dataclass
 class Vertex:
+    detach:   bool = True
     active:   bool = False
     depth:     int = 2
     weight:  float = 1.0
@@ -45,10 +46,11 @@ class Vertex:
 
 @dataclass
 class EventLabel:
-    active:    bool  = True
-    weight:    float = 0.01
-    n_filters: int   = 64
-    n_layers:  int   = 2
+    detach:   bool = True
+    active:   bool = True
+    weight:  float = 0.01
+    n_filters: int = 64
+    n_layers:  int = 2
 
 
 @dataclass

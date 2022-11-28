@@ -5,7 +5,7 @@ import tempfile
 from collections import OrderedDict
 
 import logging
-logger = logging.getLogger("cosmictagger")
+logger = logging.getLogger()
 logger.propogate = False
 
 
@@ -37,7 +37,7 @@ import contextlib
 def dummycontext():
     yield None
 
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 
 import datetime
@@ -79,13 +79,6 @@ class torch_trainer(trainercore):
 
 
 
-        self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
-        if self.args.network.classification.active:
-            self._log_keys += ['Average/EventLabel',]
-        if self.args.network.vertex.active:
-            self._log_keys += ['Average/VertexDetection',]
-        if self.is_training():
-            self._log_keys.append("loss/total")
 
         # Foregoing any fusions as to not disturb the existing ingestion pipeline
         if self.is_training() and self.args.mode.quantization_aware:
@@ -386,6 +379,16 @@ class torch_trainer(trainercore):
 
         return name, checkpoint_file_path
 
+    def store_parameters(self, metrics):
+        ''' Store all the hyperparameters with MLFLow'''
+        flattened_dict = self.flatten(self.args)
+        hparams_metrics = {}
+        # Slice off just some keys:
+        for key in self._log_keys:
+            hparams_metrics[key] = float(metrics[key].cpu())
+        self._aux_saver.add_hparams(flattened_dict, hparams_metrics, run_name="hparams")
+        self._aux_saver.flush()
+        return
 
 
     def _calculate_accuracy(self, network_dict, labels_dict):
@@ -871,6 +874,8 @@ class torch_trainer(trainercore):
             self.summary(metrics, saver="test")
             self.summary_images(network_dict["segmentation"], labels_dict["segmentation"], saver="test")
 
+            # Store these for hyperparameter logging.
+            self.latest_metrics = metrics
             return
 
     def checkpoint(self):
@@ -950,6 +955,16 @@ class torch_trainer(trainercore):
 
     def close_savers(self):
         if self._saver is not None:
+            self._saver.flush()
             self._saver.close()
         if self._aux_saver is not None:
+            self._aux_saver.flush()
             self._aux_saver.close()
+
+
+    def exit(self):
+        self.store_parameters(self.latest_metrics)
+        self.close_savers()
+        trainercore.exit(self)
+
+        super()

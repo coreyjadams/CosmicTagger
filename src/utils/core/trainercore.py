@@ -18,7 +18,7 @@ import pathlib
 
 
 import logging
-logger = logging.getLogger("cosmictagger")
+logger = logging.getLogger()
 
 import contextlib
 
@@ -39,10 +39,12 @@ class trainercore(object):
 
     def __init__(self, args):
 
-        self._iteration    = 0
-        self._global_step  = 0
-        self.args          = args
-        self._rank         = None
+        self._iteration     = 0
+        self._global_step   = 0
+        self.args           = args
+        self._rank          = None
+        self._exit          = False
+        self.latest_metrics = {}
 
         if args.framework.name == "torch":
             sparse = args.framework.sparse
@@ -82,6 +84,16 @@ class trainercore(object):
 
         # Create the baseline array:
         self.profiling_array = numpy.zeros((args.run.iterations,), dtype=self.profiling_dtype)
+
+        self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
+        if self.args.network.classification.active:
+            self._log_keys += ['Average/EventLabel',]
+        if self.args.network.vertex.active:
+            self._log_keys += ['Average/VertexDetection',]
+        if self.is_training():
+            self._log_keys.append("loss/total")
+
+
 
     def now(self):
         return numpy.datetime64(datetime.datetime.now())
@@ -318,24 +330,22 @@ class trainercore(object):
             if type(dictionary_object[key]) == type(dictionary_object):
                 new_dict.update(self.flatten(dictionary_object[key], prefix=new_key + "/"))
             else:
-                new_dict[new_key] = dictionary_object[key]
+                if hasattr(dictionary_object[key], "value"):
+                    new_dict[new_key] = str(dictionary_object[key].value)
+                else:
+                    new_dict[new_key] = dictionary_object[key]
 
         return new_dict
 
 
 
-    def store_parameters(self):
-        ''' Store all the hyperparameters with MLFLow'''
-        if self._rank is None or self._rank == 0:
-            flattened_dict = self.flatten(self.args)
-            experiment, start_summary, end_summary = tensorboardX.summary.hparams(
-                flattened_dict,
-                {"Average/mIoU" : None}
-            )
-            self._saver.file_writer.add_summary(experiment)
-            self._saver.file_writer.add_summary(start_summary)
+    def store_parameters(self, metrics):
+
         return
 
+    def exit(self):
+        self._exit = True
+        return
 
     def barrier(self): return
 
@@ -359,12 +369,13 @@ class trainercore(object):
 
         # This is the 'master' function, so it controls a lot
 
-        self.store_parameters()
 
         self.profiling_index = 0
 
         # Run iterations
         for self._iteration in range(self.args.run.iterations):
+
+            if self._exit: break
 
             # Resize the profiling array if needed:
             if self.profiling_index > len(self.profiling_array) - 1:
@@ -401,7 +412,6 @@ class trainercore(object):
 
 
         self.write_profiling_info()
-        self.close_savers()
 
         end = time.time()
 

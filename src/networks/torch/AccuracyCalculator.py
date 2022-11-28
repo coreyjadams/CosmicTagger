@@ -142,15 +142,17 @@ class AccuracyCalculator(object):
 
     def __call__(self, network_dict, labels_dict):
 
-        accuracy = self.segmentation_accuracy(labels_dict["segmentation"], network_dict["segmentation"])
+        with torch.no_grad():
 
-        if self.network_params.classification.active:
-            accuracy.update(self.event_accuracy(labels_dict["event_label"], network_dict["event_label"]))
+            accuracy = self.segmentation_accuracy(labels_dict["segmentation"], network_dict["segmentation"])
 
-        if self.network_params.vertex.active:
-            accuracy.update(self.vertex_accuracy(
-                labels_dict["vertex"], network_dict["vertex"],
-                network_dict["predicted_vertex"], labels_dict["event_label"]))
+            if self.network_params.classification.active:
+                accuracy.update(self.event_accuracy(labels_dict["event_label"], network_dict["event_label"]))
+
+            if self.network_params.vertex.active:
+                accuracy.update(self.vertex_accuracy(
+                    labels_dict["vertex"], network_dict["vertex"],
+                    network_dict["predicted_vertex"], labels_dict["event_label"]))
 
 
         return accuracy

@@ -26,6 +26,8 @@ sys.path.insert(0,network_dir)
 from src.config import Config
 from src.config.mode import ModeKind
 
+import atexit
+
 class exec(object):
 
     def __init__(self, config):
@@ -48,15 +50,16 @@ class exec(object):
         logger.info("Dumping launch arguments.")
         logger.info(sys.argv)
 
-
-        if config.mode.name == ModeKind.train:
+    def run(self):
+        if self.args.mode.name == ModeKind.train:
             self.train()
-        if config.mode.name == ModeKind.iotest:
+        if self.args.mode.name == ModeKind.iotest:
             self.iotest()
-        if config.mode.name == ModeKind.inference:
+        if self.args.mode.name == ModeKind.inference:
             self.inference()
 
-
+    def exit(self):
+        self.trainer.exit()
 
     def init_mpi(self):
         if not self.args.run.distributed:
@@ -71,9 +74,9 @@ class exec(object):
 
         import mlflow
         mlflow.autolog(disable=True)
-        
 
-        logger = logging.getLogger("cosmictagger")
+
+        logger = logging.getLogger()
         # Create a handler for STDOUT, but only on the root rank.
         # If not distributed, we still get 0 passed in here.
         if rank == 0:
@@ -102,7 +105,7 @@ class exec(object):
 
     def train(self):
 
-        logger = logging.getLogger("cosmictagger")
+        logger = logging.getLogger()
 
         logger.info("Running Training")
         logger.info(self.__str__())
@@ -116,7 +119,7 @@ class exec(object):
     def iotest(self):
 
         self.make_trainer()
-        logger = logging.getLogger("cosmictagger")
+        logger = logging.getLogger()
 
         logger.info("Running IO Test")
         logger.info(self.__str__())
@@ -197,7 +200,7 @@ class exec(object):
     def inference(self):
 
 
-        logger = logging.getLogger("cosmictagger")
+        logger = logging.getLogger()
 
         logger.info("Running Inference")
         logger.info(self.__str__())
@@ -246,7 +249,7 @@ class exec(object):
 
         from src.config.data import DataFormatKind
 
-        logger = logging.getLogger("cosmictagger")
+        logger = logging.getLogger()
 
         if self.args.framework.name == "torch":
             # In torch, only option is channels first:
@@ -268,7 +271,9 @@ class exec(object):
 def main(cfg : OmegaConf) -> None:
 
     s = exec(cfg)
+    atexit.register(s.exit)
 
+    s.run()
 
 if __name__ == '__main__':
     #  Is this good practice?  No.  But hydra doesn't give a great alternative

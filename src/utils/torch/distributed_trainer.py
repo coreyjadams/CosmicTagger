@@ -302,6 +302,19 @@ class distributed_trainer(torch_trainer):
             torch_trainer.summary(self, metrics, saver)
         return
 
+    def store_parameters(self, metrics):
+
+        if self._rank == 0:
+            torch_trainer.store_parameters(self, metrics)
+        return
+
+    def close_savers(self):
+
+        if self._rank == 0:
+            torch_trainer.close_savers(self)
+        return
+
+
     def summary_images(self, logits_image, labels_image, saver=""):
         if self._rank == 0:
             torch_trainer.summary_images(self, logits_image, labels_image, saver)

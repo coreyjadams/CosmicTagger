@@ -532,6 +532,8 @@ class UResNet(torch.nn.Module):
                 else:
                     n_filters = n_filters + params.n_initial_filters
 
+            self.classification_detach = params.classification.detach
+
             n_filters = 3*n_filters
             self.classifier_input = nn.Conv2d(
                 in_channels  = n_filters,
@@ -567,6 +569,8 @@ class UResNet(torch.nn.Module):
                     n_filters = 2 * n_filters
                 else:
                     n_filters = n_filters + params.n_initial_filters
+
+            self.vertex_detach = params.vertex.detach
 
             self.vertex_input = nn.Conv2d(
                 in_channels  = n_filters,
@@ -637,7 +641,8 @@ class UResNet(torch.nn.Module):
         return_dict["segmentation"] = seg_labels
 
         if hasattr(self, "classifier"):
-            classification_head = classification_head.detach()
+            if self.classification_detach:
+                classification_head = classification_head.detach()
             classified = self.classifier_input(classification_head)
             classified = self.classifier(classified)
             classified = self.bottleneck_classifer(classified)
@@ -647,8 +652,9 @@ class UResNet(torch.nn.Module):
 
 
         if hasattr(self, "vertex_layers"):
-            vertex = [ v.detach() for v in vertex_head ]
-            vertex = [ self.vertex_input(v) for v in vertex ]
+            if self.vertex_detach:
+                vertex_head = [ v.detach() for v in vertex_head ]
+            vertex = [ self.vertex_input(v) for v in vertex_head ]
             vertex = [ self.vertex_layers(v) for v in vertex ]
             vertex = [ self.bottleneck_vertex(v) for v in vertex ]
 
