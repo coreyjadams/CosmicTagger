@@ -93,7 +93,6 @@ class torch_trainer(trainercore):
         image_shape = self.larcv_fetcher.image_size()
         vertex_depth = self.args.network.depth - self.args.network.vertex.depth
         vertex_output_space = tuple(d // 2**vertex_depth  for d in image_shape )
-
         anchor_size = self.larcv_fetcher.image_meta['size'] / vertex_output_space
 
         origin = self.larcv_fetcher.image_meta['origin']
@@ -384,8 +383,8 @@ class torch_trainer(trainercore):
         flattened_dict = self.flatten(self.args)
         hparams_metrics = {}
         # Slice off just some keys:
-        for key in self._log_keys:
-            hparams_metrics[key] = float(metrics[key].cpu())
+        for key in self._hparams_keys:
+            hparams_metrics[key] = float(metrics[key].float().cpu())
         self._aux_saver.add_hparams(flattened_dict, hparams_metrics, run_name="hparams")
         self._aux_saver.flush()
         return
@@ -501,10 +500,15 @@ class torch_trainer(trainercore):
         if self._global_step % self.args.mode.summary_iteration == 0:
             for metric in metrics:
                 name = metric
+                value = metrics[metric]
+                if isinstance(value, torch.Tensor):
+                    # Cast metrics to 32 bit float
+                    value = value.float()
+
                 if saver == "test":
-                    self._aux_saver.add_scalar(metric, metrics[metric], self._global_step)
+                    self._aux_saver.add_scalar(metric, value, self._global_step)
                 else:
-                    self._saver.add_scalar(metric, metrics[metric], self._global_step)
+                    self._saver.add_scalar(metric, value, self._global_step)
 
 
             # try to get the learning rate

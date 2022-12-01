@@ -93,7 +93,19 @@ class trainercore(object):
         if self.is_training():
             self._log_keys.append("loss/total")
 
-
+        # Copy these:
+        self._hparams_keys = [ lk for lk in  self._log_keys]
+        # Add to it
+        self._hparams_keys += ["Average/Neutrino_IoU"]
+        self._hparams_keys += ["Average/Cosmic_IoU"]
+        self._hparams_keys += ["Average/Total_Accuracy"]
+        self._hparams_keys += ["loss/segmentation"]
+        if self.args.network.classification.active:
+            self._hparams_keys += ['loss/event_label',]
+        if self.args.network.vertex.active:
+            self._hparams_keys += ['Average/VertexResolution',]
+            self._hparams_keys += ['loss/vertex/detection',]
+            self._hparams_keys += ['loss/vertex/localization',]
 
     def now(self):
         return numpy.datetime64(datetime.datetime.now())

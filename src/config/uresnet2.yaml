@@ -18,7 +18,9 @@ network:
   blocks_deepest_layer: 3
   blocks_final: 3
   depth: 5
+  upsampling: convolutional
 run:
-  iterations: 30000
+  iterations: 20000
+  precision: mixed
   epoch: 1000
 output_dir: "output/${framework.name}/${network.name}/${run.id}/ds${data.downsample}"
