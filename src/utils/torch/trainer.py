@@ -37,8 +37,10 @@ import contextlib
 def dummycontext():
     yield None
 
-from torch.utils.tensorboard import SummaryWriter
-
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except:
+    from tensorboardX import SummaryWriter
 
 import datetime
 
