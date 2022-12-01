@@ -72,10 +72,6 @@ class exec(object):
 
     def configure_logger(self, rank):
 
-        import mlflow
-        mlflow.autolog(disable=True)
-
-
         logger = logging.getLogger()
         # Create a handler for STDOUT, but only on the root rank.
         # If not distributed, we still get 0 passed in here.
