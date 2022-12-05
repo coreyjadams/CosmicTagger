@@ -13,6 +13,7 @@ class Data:
     synthetic:   bool            = False
     downsample:  int             = 1
     data_format: DataFormatKind  = DataFormatKind.channels_last
+    img_transform:          bool = False
 
 @dataclass
 class Real(Data):
@@ -20,7 +21,6 @@ class Real(Data):
     data_directory: str  = "/grand/projects/datascience/cadams/datasets/SBND/"
     file:           str  = "cosmic_tagging_train.h5"
     aux_file:       str  = "cosmic_tagging_val.h5"
-    img_transform:  bool = False
 
 
 

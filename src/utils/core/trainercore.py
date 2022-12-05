@@ -42,6 +42,7 @@ class trainercore(object):
 
         if args.framework.name == "torch":
             sparse = args.framework.sparse
+            io_dataformat = "channels_first"
         else:
             sparse = False
 
@@ -49,7 +50,8 @@ class trainercore(object):
             mode        = args.mode.name.name,
             distributed = args.run.distributed,
             downsample  = args.data.downsample,
-            dataformat  = args.data.data_format.name,
+            # dataformat  = args.data.data_format.name,
+            dataformat  = io_dataformat,
             synthetic   = args.data.synthetic,
             sparse      = sparse )
 
