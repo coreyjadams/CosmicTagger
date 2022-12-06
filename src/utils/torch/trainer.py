@@ -384,7 +384,8 @@ class torch_trainer(trainercore):
         ''' Store all the hyperparameters with MLFLow'''
         flattened_dict = self.flatten(self.args)
         hparams_metrics = {}
-        # Slice off just some keys:
+        if self.args.mode.name == ModeKind.inference:
+            return
         for key in self._hparams_keys:
             hparams_metrics[key] = float(metrics[key].float().cpu())
         self._aux_saver.add_hparams(flattened_dict, hparams_metrics, run_name="hparams")
@@ -681,9 +682,12 @@ class torch_trainer(trainercore):
 
             labels_dict = {
                 "segmentation" : torch.chunk(minibatch_data['label'].long(), chunks=3, dim=1),
-                "event_label"  : minibatch_data['event_label'],
-                "vertex"       : minibatch_data['vertex'],
+
             }
+            if self.args.network.classification.active:
+                labels_dict.update({"event_label"  : minibatch_data['event_label']})
+            if self.args.network.vertex.active:
+                labels_dict.update({"vertex"  : minibatch_data['vertex']})
 
             # Run a forward pass of the model on the input image:
             if net is None:
@@ -927,7 +931,7 @@ class torch_trainer(trainercore):
             # loss = self.loss_calculator(labels_image, logits_image)
 
             # Compute the metrics for this iteration:
-            metrics = self._compute_metrics(logits_image, labels_image, loss=None)
+            metrics = self._compute_metrics(logits_image, labels_image, loss_dict=None)
             self.accumulate_metrics(metrics)
 
 

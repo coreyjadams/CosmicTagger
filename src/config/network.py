@@ -47,7 +47,7 @@ class Vertex:
 @dataclass
 class EventLabel:
     detach:   bool = True
-    active:   bool = True
+    active:   bool = False
     weight:  float = 0.01
     n_filters: int = 64
     n_layers:  int = 2
