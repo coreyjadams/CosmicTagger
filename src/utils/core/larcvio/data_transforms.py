@@ -49,7 +49,7 @@ def event_label(neutrino_particles, n_neutrino_pixels, neutrino_threshold=10):
             # )
 
 
-def larcvsparse_to_dense_2d(input_array, dense_shape, dataformat):
+def larcvsparse_to_dense_2d(input_array, dense_shape, dataformat,  threshold=None):
 
     batch_size = input_array.shape[0]
     n_planes   = input_array.shape[1]
@@ -63,6 +63,10 @@ def larcvsparse_to_dense_2d(input_array, dense_shape, dataformat):
     x_coords = input_array[:,:,:,0]
     y_coords = input_array[:,:,:,1]
     val_coords = input_array[:,:,:,2]
+
+    if threshold is not None:
+        over_coords = val_coords > threshold
+        val_coords[over_coords] = threshold
 
 
     filled_locs = val_coords != -999
@@ -152,7 +156,7 @@ def larcvsparse_to_scnsparse_2d(input_array):
     return output_list
 
 
-def larcvsparse_to_scnsparse_3d(input_array):
+def larcvsparse_to_scnsparse_3d(input_array,  threshold=None):
     # This format converts the larcv sparse format to
     # the tuple format required for sparseconvnet
 
@@ -173,6 +177,10 @@ def larcvsparse_to_scnsparse_3d(input_array):
 
     # Getting the voxel values (features) is also straightforward:
     features = numpy.expand_dims(split_tensors[-1][non_zero_inds],axis=-1)
+
+    if threshold is not None:
+        locs = features > threshold
+        features[locs] = threshold
 
     # Lastly, we need to stack up the coordinates, which we do here:
     dimension_list = []
