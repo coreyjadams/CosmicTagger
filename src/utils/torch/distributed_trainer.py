@@ -131,7 +131,11 @@ class distributed_trainer(torch_trainer):
             if self.args.run.compute_mode == ComputeMode.XPU:
                 # import torch_ccl
                 backend = 'ccl'
-            elif self.args.run.compute_mode == ComputeMode.GPU: backend = 'nccl'
+            elif self.args.run.compute_mode == ComputeMode.GPU:
+                if self.args.framework.oversubscribe > 1:
+                    backend = 'gloo'
+                else:
+                    backend = 'nccl'
             elif self.args.run.compute_mode == ComputeMode.CPU: backend = 'gloo'
 
             # init_method = 'file:///home/cadams/ddp_init/ddp_init.txt'
