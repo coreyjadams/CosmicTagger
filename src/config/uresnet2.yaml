@@ -7,7 +7,7 @@ data:
 
 
 network:
-  n_initial_filters: 24
+  n_initial_filters: 64
   classification:
     active: True
   vertex:

@@ -40,7 +40,7 @@ class Vertex:
     depth:     int = 2
     weight:  float = 1.0
     n_layers:  int = 4
-    n_filters: int = 64
+    n_filters: int = 128
     l_det:   float = 1e0
     l_coord: float = 1e0
 
@@ -49,7 +49,7 @@ class EventLabel:
     detach:   bool = True
     active:   bool = False
     weight:  float = 0.01
-    n_filters: int = 64
+    n_filters: int = 128
     n_layers:  int = 4
 
 
