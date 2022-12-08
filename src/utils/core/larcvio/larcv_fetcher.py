@@ -15,7 +15,7 @@ class larcv_fetcher(object):
 
 
     # This represents the intrinsic image shape:
-    image_meta = numpy.array([
+    image_meta2 = numpy.array([
         ([1408, 2048], [439.4660061919505, 614.4],[-18.1030030959, -9.6]),
         ([1408, 2048], [439.4660061919505, 614.4],[-18.1030030959, -9.6]),
         ([1408, 2048], [439.4660061919505, 614.4],[-18.1030030959, -57.5999999])],
@@ -26,8 +26,16 @@ class larcv_fetcher(object):
         ]
     )
 
-
-
+    image_meta1 = numpy.array([
+        ([1280, 2048], [1280, 2048],[0.,0.]),
+        ([1280, 2048], [1280, 2048],[0.,0.]),
+        ([1280, 2048], [1280, 2048],[0.,0.])],
+        dtype=[
+            ('full_pixels', "int", (2)),
+            ('size', "float", (2)),
+            ('origin', "float", (2)),
+        ]
+    )
 
     def __init__(self, mode, distributed, downsample, dataformat, synthetic, sparse, seed=None, vtx_depth=None):
 
@@ -67,6 +75,11 @@ class larcv_fetcher(object):
 
         # Compute the realized image shape:
         self.ds = 2**downsample
+
+        if data_version == 1:
+            self.image_meta = self.image_meta1
+        else:
+            self.image_meta = self.image_meta2
 
         self.image_shape = [ int(i / self.ds) for i in self.image_meta['full_pixels'][0] ]
 
