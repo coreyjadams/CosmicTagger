@@ -8,13 +8,15 @@ class DataFormatKind(Enum):
     channels_last  = 0
     channels_first = 1
 
+
+
 @dataclass
 class Data:
     synthetic:      bool            = False
     downsample:     int             = 0
     data_format:    DataFormatKind  = DataFormatKind.channels_last
-    img_transform:  bool = False
-
+    img_transform:  bool            = False
+    version:        int             = 2 # Pick 1 or two
 @dataclass
 class Real(Data):
     synthetic:      bool = False

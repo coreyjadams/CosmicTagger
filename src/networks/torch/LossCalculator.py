@@ -5,7 +5,7 @@ from src.config import LossBalanceScheme
 
 class LossCalculator(torch.nn.Module):
 
-    def __init__(self, params):
+    def __init__(self, params, weight=None):
 
         torch.nn.Module.__init__(self)
 
@@ -20,7 +20,9 @@ class LossCalculator(torch.nn.Module):
         else:
             self._criterion = torch.nn.CrossEntropyLoss(reduction='mean')
 
-        self.event_label_criterion = torch.nn.CrossEntropyLoss(reduction="mean")
+
+        print(weight)
+        self.event_label_criterion = torch.nn.CrossEntropyLoss(reduction="mean", weight=weight)
 
         self.network_params = params.network
 
@@ -68,9 +70,20 @@ class LossCalculator(torch.nn.Module):
         # This assumes channels first:
         detection_logits = [l[:,0,:,:] for l in logits]
 
+
         # Get the detection labels, and zero out any cosmic-only event
         detection_labels = labels['detection']
+
+        # Compute pt, where CE=-log(pt)
+        pt = [ torch.where(logit == 1, logit, 1 - logit) for mask, logit in zip(pt_mask, detection_logits) ]
+        focal_loss = [ -(1 - _pt)**2 * torch.log(_pt) for _pt in pt]
+
+
         has_vertex = event_label != 3
+
+        ## TODO:
+        # convert this to binary cross entropy loss per-pixel
+        # Then, it will work with focal loss better.
 
 
         detection_labels = [ torch.reshape(has_vertex, (-1,1,1))*d for d in detection_labels]
@@ -80,18 +93,18 @@ class LossCalculator(torch.nn.Module):
         # The YOLO detection loss is scaled by the no-obj parameter.
         # Compute the loss per anchor box:
         detection_loss = [
-            torch.nn.functional.mse_loss(i.type(target_dtype), t.type(target_dtype), reduction="none")
+            f*torch.nn.functional.mse_loss(i.type(target_dtype), t.type(target_dtype), reduction="none")
             # torch.nn.functional.cross_entropy(i, t, reduction="mean")
-            for i, t in zip(detection_logits, labels['detection'])
+            for f, i, t in zip(focus, detection_logits, labels['detection'])
         ]
 
-        # Compute the weight per object box:
-        # Assuming the lambda_noobj parameter is small compared to 1, this is approximately correct
-        weights = [l + self.network_params.vertex.l_noobj for l in labels['detection']]
-        weights = [w.type(target_dtype) for w in weights]
+        # # Compute the weight per object box:
+        # # Assuming the lambda_noobj parameter is small compared to 1, this is approximately correct
+        # weights = [l + self.network_params.vertex.l_noobj for l in labels['detection']]
+        # weights = [w.type(target_dtype) for w in weights]
 
         # Compute the weight * loss:
-        detection_loss = [ torch.mean(l * w) for l, w in zip(detection_loss, weights)]
+        detection_loss = [ torch.mean(l) for l in detection_loss]
         detection_loss = torch.sum(torch.stack(detection_loss))
 
 

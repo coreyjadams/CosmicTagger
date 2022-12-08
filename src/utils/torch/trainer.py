@@ -105,6 +105,10 @@ class torch_trainer(trainercore):
             self.anchor_size = torch.tensor(anchor_size, device=device)
             self.origin = torch.tensor(origin, device=device)
 
+            print(self.vertex_output_space)
+            print(self.anchor_size)
+            print(self.origin)
+
     def initialize(self, io_only=False):
 
         self._initialize_io(color=self._rank)
@@ -139,8 +143,12 @@ class torch_trainer(trainercore):
 
 
             if self.is_training():
-                self.loss_calculator = LossCalculator.LossCalculator(self.args)
-
+                if self.args.network.classification.active:
+                    with self.default_device_context():
+                        weight = torch.tensor([0.16, 0.1666, 0.16666, 0.5]).to(self.default_device())
+                        self.loss_calculator = LossCalculator.LossCalculator(self.args, weight=weight)
+                else:
+                    self.loss_calculator = LossCalculator.LossCalculator(self.args)
             self.acc_calc = AccuracyCalculator.AccuracyCalculator(self.args)
 
             # For half precision, we disable gradient accumulation.  This is to allow
@@ -387,6 +395,7 @@ class torch_trainer(trainercore):
         if self.args.mode.name == ModeKind.inference:
             return
         for key in self._hparams_keys:
+            if key not in metrics: continue
             hparams_metrics[key] = float(metrics[key].float().cpu())
         self._aux_saver.add_hparams(flattened_dict, hparams_metrics, run_name="hparams")
         self._aux_saver.flush()
@@ -411,40 +420,40 @@ class torch_trainer(trainercore):
 
         # We also flatten to make the argmax operation easier:
         detection_logits = [ n[:,0,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
-        #
+
+        # Extract the index, which comes out flattened:
         predicted_vertex_index = [ torch.argmax(n, dim=1) for n in detection_logits ]
 
+        # Convert flat index to 2D coordinates:
         height_index = [torch.div(p, self.vertex_output_space[1], rounding_mode='floor')  for p in predicted_vertex_index]
         width_index  = [p % self.vertex_output_space[1]  for p in predicted_vertex_index]
 
-        height_prediction = [h * a[0] + b[0] for h, a, b in zip(height_index, self.anchor_size, self.origin)]
-        width_prediction  = [w * a[1] + b[1] for w, a, b in zip(width_index, self.anchor_size, self.origin)]
-
-        vertex_prediction = torch.stack([
-            torch.stack(height_prediction, dim=-1),
-            torch.stack(width_prediction, dim=-1)
-        ], dim=-1)
-
-
-
+        # Extract the regression parameters for every box:
         internal_offsets_height = [ n[:,1,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
         internal_offsets_width  = [ n[:,2,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
 
+        # Get the specific regression parameters
+        # Creates flat index into the vectors
         batch_size = network_dict['vertex'][0].shape[0]
         batch_indexes = torch.arange(batch_size)
 
+        # Extract the specific internal offsets:
         internal_offsets_height = [ i[batch_indexes, p] for i, p in zip(internal_offsets_height, predicted_vertex_index) ]
         internal_offsets_width  = [ i[batch_indexes, p] for i, p in zip(internal_offsets_width,  predicted_vertex_index) ]
 
-        height_correction = [i * a[0] for i, a in zip(internal_offsets_height, self.anchor_size)]
-        width_correction  = [i * a[1] for i, a in zip(internal_offsets_width,  self.anchor_size)]
+        # Calculate the predicted height as origin + (p+r)*box_size
+        predicted_height = [ self.origin[i,0] + (p+r)*self.anchor_size[i,0] for  \
+            i, (p,r) in enumerate(zip(height_index, internal_offsets_height)) ]
+        predicted_width  = [ self.origin[i,1] + (p+r)*self.anchor_size[i,1] for \
+            i, (p,r) in enumerate(zip(width_index, internal_offsets_width)) ]
 
-        vertex_correction = torch.stack([
-            torch.stack(height_correction, dim=-1),
-            torch.stack(width_correction, dim=-1)
+        # Stack it all together properly:
+        vertex_prediction = torch.stack([
+            torch.stack(predicted_height, dim=-1),
+            torch.stack(predicted_width, dim=-1)
         ], dim=-1)
 
-        return vertex_prediction + vertex_correction
+        return vertex_prediction
 
 
     def _compute_metrics(self, network_dict, labels_dict, loss_dict):
@@ -912,9 +921,6 @@ class torch_trainer(trainercore):
             force_pop = True
         minibatch_data = self.larcv_fetcher.fetch_next_batch("train", force_pop=force_pop)
 
-        # Convert the input data to torch tensors
-        minibatch_data = self.to_torch(minibatch_data)
-
 
         # Run a forward pass of the model on the input image:
         with torch.no_grad():
@@ -923,6 +929,25 @@ class torch_trainer(trainercore):
                     logits_image, labels_image = self.forward_pass(minibatch_data)
             else:
                 logits_image, labels_image = self.forward_pass(minibatch_data)
+
+        # print("self.vertex_output_space: ", self.vertex_output_space)
+        # print("self.anchor_size: ", self.anchor_size)
+        # print("self.origin: ", self.origin)
+        #
+        # print("shape: ", [ t.shape for t in labels_image['vertex']['detection'] ] )
+        # print(labels_image['vertex']['regression'])
+        # print(labels_image['vertex']['detection'][0] )
+        # print(labels_image['vertex']['detection'][1] )
+        # print(labels_image['vertex']['detection'][2] )
+        # # print("argmax H: ", [ torch.argmax(t, axis=1) for t in labels_image['vertex']['detection'] ] )
+        # # print("argmax W: ", [ torch.argmax(t, axis=2) for t in labels_image['vertex']['detection'] ] )
+        # print(labels_image['vertex']['xy_loc'])
+        #
+        # print(logits_image['vertex'][2][0,0,:,:].shape)
+        # for i, row in enumerate(logits_image['vertex'][2][0,0,:,:]):
+        #     print(i , torch.argmax(row))
+        #     print("  ", row)
+        #     print("  ",  torch.max(row))
 
 
         # If the input data has labels available, compute the metrics:
