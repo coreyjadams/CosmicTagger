@@ -105,9 +105,6 @@ class torch_trainer(trainercore):
             self.anchor_size = torch.tensor(anchor_size, device=device)
             self.origin = torch.tensor(origin, device=device)
 
-            print(self.vertex_output_space)
-            print(self.anchor_size)
-            print(self.origin)
 
     def initialize(self, io_only=False):
 
@@ -930,24 +927,6 @@ class torch_trainer(trainercore):
             else:
                 logits_image, labels_image = self.forward_pass(minibatch_data)
 
-        # print("self.vertex_output_space: ", self.vertex_output_space)
-        # print("self.anchor_size: ", self.anchor_size)
-        # print("self.origin: ", self.origin)
-        #
-        # print("shape: ", [ t.shape for t in labels_image['vertex']['detection'] ] )
-        # print(labels_image['vertex']['regression'])
-        # print(labels_image['vertex']['detection'][0] )
-        # print(labels_image['vertex']['detection'][1] )
-        # print(labels_image['vertex']['detection'][2] )
-        # # print("argmax H: ", [ torch.argmax(t, axis=1) for t in labels_image['vertex']['detection'] ] )
-        # # print("argmax W: ", [ torch.argmax(t, axis=2) for t in labels_image['vertex']['detection'] ] )
-        # print(labels_image['vertex']['xy_loc'])
-        #
-        # print(logits_image['vertex'][2][0,0,:,:].shape)
-        # for i, row in enumerate(logits_image['vertex'][2][0,0,:,:]):
-        #     print(i , torch.argmax(row))
-        #     print("  ", row)
-        #     print("  ",  torch.max(row))
 
 
         # If the input data has labels available, compute the metrics:

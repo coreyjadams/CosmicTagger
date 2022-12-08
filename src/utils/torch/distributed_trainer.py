@@ -206,7 +206,6 @@ class distributed_trainer(torch_trainer):
         torch_trainer.init_optimizer(self)
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
-            print(self._opt)
             self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
             self._opt.param_groups[0]['capturable'] = True
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
@@ -306,9 +305,10 @@ class distributed_trainer(torch_trainer):
             for key in metrics:
                 metrics[key] = hvd.allreduce(metrics[key], name = key)
         elif self.args.framework.distributed_mode == DistributedMode.DDP:
-            for key in metrics:
-                torch.distributed.all_reduce(metrics[key])
-                metrics[key] /= self._size
+            with self.default_device_context():
+                for key in metrics:
+                    torch.distributed.all_reduce(metrics[key])
+                    metrics[key] /= self._size
 
         return metrics
 

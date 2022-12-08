@@ -49,7 +49,7 @@ class larcv_fetcher(object):
                 self._larcv_interface.no_warnings()
             elif mode == "train" or mode == "iotest":
                 self._larcv_interface = queueloader.queue_interface(
-                    random_access_mode="serial_access", seed=0)
+                    random_access_mode="serial_access", seed=seed)
                     # random_access_mode="random_blocks", seed=seed)
                 self._larcv_interface.no_warnings()
             else:

@@ -21,7 +21,6 @@ class LossCalculator(torch.nn.Module):
             self._criterion = torch.nn.CrossEntropyLoss(reduction='mean')
 
 
-        print(weight)
         self.event_label_criterion = torch.nn.CrossEntropyLoss(reduction="mean", weight=weight)
 
         self.network_params = params.network
@@ -67,6 +66,11 @@ class LossCalculator(torch.nn.Module):
 
     def vertex_loss(self, labels, logits, event_label):
 
+        target_dtype = logits[0].dtype
+        # Weigh the loss:
+        weight_detection = torch.tensor(self.network_params.vertex.l_det, dtype=target_dtype, device=logits[0].device)
+        weight = torch.tensor(self.network_params.vertex.l_coord, dtype=target_dtype, device=logits[0].device)
+
         # This assumes channels first:
         detection_logits = [l[:,0,:,:] for l in logits]
 
@@ -74,10 +78,16 @@ class LossCalculator(torch.nn.Module):
         # Get the detection labels, and zero out any cosmic-only event
         detection_labels = labels['detection']
 
-        # Compute pt, where CE=-log(pt)
-        pt = [ torch.where(logit == 1, logit, 1 - logit) for mask, logit in zip(pt_mask, detection_logits) ]
-        focal_loss = [ -(1 - _pt)**2 * torch.log(_pt) for _pt in pt]
+        # print("Min logit: ", [torch.min(l) for l in detection_logits])
+        # print("Max logit: ", [torch.max(l) for l in detection_logits])
 
+        # Compute pt, where CE=-log(pt)
+        pt = [ torch.where(logit == 1, logit, 1 - logit) for logit in detection_logits ]
+        focal_loss = [ - weight_detection *(1 - _pt)**2 * torch.log(_pt) for _pt in pt]
+        # print("Min pt: ", [torch.min(l) for l in pt])
+        # print("Max pt: ", [torch.max(l) for l in pt])
+        # print("Min focal: ", [torch.min(l) for l in focal_loss])
+        # print("Max focal: ", [torch.max(l) for l in focal_loss])
 
         has_vertex = event_label != 3
 
@@ -88,23 +98,10 @@ class LossCalculator(torch.nn.Module):
 
         detection_labels = [ torch.reshape(has_vertex, (-1,1,1))*d for d in detection_labels]
 
-        target_dtype = logits[0].dtype
 
-        # The YOLO detection loss is scaled by the no-obj parameter.
-        # Compute the loss per anchor box:
-        detection_loss = [
-            f*torch.nn.functional.mse_loss(i.type(target_dtype), t.type(target_dtype), reduction="none")
-            # torch.nn.functional.cross_entropy(i, t, reduction="mean")
-            for f, i, t in zip(focus, detection_logits, labels['detection'])
-        ]
-
-        # # Compute the weight per object box:
-        # # Assuming the lambda_noobj parameter is small compared to 1, this is approximately correct
-        # weights = [l + self.network_params.vertex.l_noobj for l in labels['detection']]
-        # weights = [w.type(target_dtype) for w in weights]
 
         # Compute the weight * loss:
-        detection_loss = [ torch.mean(l) for l in detection_loss]
+        detection_loss = [ torch.sum(l) for l in focal_loss]
         detection_loss = torch.sum(torch.stack(detection_loss))
 
 
@@ -130,8 +127,6 @@ class LossCalculator(torch.nn.Module):
         active_localization_logits_x = [ d[a] for d, a in zip(detection_localization_logits_x, active_sites) ]
         active_localization_logits_y = [ d[a] for d, a in zip(detection_localization_logits_y, active_sites) ]
 
-        # Weigh the loss:
-        weight = torch.tensor(self.network_params.vertex.l_coord, dtype=target_dtype, device=logits[0].device)
         # Compute the loss in x and y:
         loss_x = [ weight*torch.nn.functional.mse_loss(lx, alx) for lx, alx in zip(labels_x, active_localization_logits_x)]
         loss_y = [ weight*torch.nn.functional.mse_loss(ly, aly) for ly, aly in zip(labels_y, active_localization_logits_y)]
