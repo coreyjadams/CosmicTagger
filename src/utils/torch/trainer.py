@@ -143,7 +143,7 @@ class torch_trainer(trainercore):
                 if self.args.network.classification.active:
                     with self.default_device_context():
                         weight = torch.tensor([0.16, 0.1666, 0.16666, 0.5]).to(self.default_device())
-                        self.loss_calculator = LossCalculator.LossCalculator(self.args, weight=weight)
+                        self.culator = LossCalculator.LossCalculator(self.args, weight=weight)
                 else:
                     self.loss_calculator = LossCalculator.LossCalculator(self.args)
             self.acc_calc = AccuracyCalculator.AccuracyCalculator(self.args)
@@ -881,7 +881,7 @@ class torch_trainer(trainercore):
                 network_dict, labels_dict = self.forward_pass(minibatch_data, net=val_net)
 
             # Compute the loss based on the network_dict
-            loss, loss_metrics = self.loss_calculator(labels_dict, network_dict)
+            loss, loss_metrics = self.culator(labels_dict, network_dict)
 
             # Compute any necessary metrics:
             metrics = self._compute_metrics(network_dict, labels_dict, loss_metrics)
@@ -932,7 +932,7 @@ class torch_trainer(trainercore):
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss
-            # loss = self.loss_calculator(labels_image, logits_image)
+            # loss = self.culator(labels_image, logits_image)
 
             # Compute the metrics for this iteration:
             metrics = self._compute_metrics(logits_image, labels_image, loss_dict=None)
