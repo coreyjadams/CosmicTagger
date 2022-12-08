@@ -5,10 +5,7 @@ defaults:
 data:
   downsample: 1
 
-mode:
-  optimizer:
-    name: adam
-    learning_rate: 1e-3
+
 network:
   n_initial_filters: 24
   classification:
@@ -18,9 +15,8 @@ network:
   blocks_deepest_layer: 3
   blocks_final: 3
   depth: 5
-  upsampling: convolutional
 run:
   iterations: 20000
-  precision: mixed
+  precision: float32
   epoch: 1000
 output_dir: "output/${framework.name}/${network.name}/${run.id}/ds${data.downsample}"

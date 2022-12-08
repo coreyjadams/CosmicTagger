@@ -250,7 +250,7 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
 
     # To create the right bounding box location, we have to map the vertex x/z/y to a set of pixels.
 
-    corrected_vertex_position = vertex_labels - image_meta["origin"]
+    corrected_vertex_position = vertex_labels + image_meta["origin"]
     fractional_vertex_position = corrected_vertex_position / image_meta["size"]
 
 
