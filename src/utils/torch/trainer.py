@@ -423,14 +423,10 @@ class torch_trainer(trainercore):
         # Extract the index, which comes out flattened:
         predicted_vertex_index = [ torch.argmax(n, dim=1) for n in detection_logits ]
 
-        print(predicted_vertex_index)
 
         # Convert flat index to 2D coordinates:
         height_index = [torch.div(p, self.vertex_output_space[1], rounding_mode='floor')  for p in predicted_vertex_index]
         width_index  = [p % self.vertex_output_space[1]  for p in predicted_vertex_index]
-
-        print(height_index)
-        print(width_index)
 
         # Extract the regression parameters for every box:
         internal_offsets_height = [ n[:,1,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
@@ -745,7 +741,7 @@ class torch_trainer(trainercore):
                 io_start_time = datetime.datetime.now()
                 with self.timing_context("io"):
                     # // TODO change force_pop to True!
-                    minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = False)
+                    minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
                 io_end_time = datetime.datetime.now()
                 io_fetch_time += (io_end_time - io_start_time).total_seconds()
 

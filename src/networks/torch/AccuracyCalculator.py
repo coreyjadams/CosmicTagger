@@ -124,8 +124,8 @@ class AccuracyCalculator(object):
 
         detection_accuracy = [ torch.mean(e.type(target_dtype)) for e in equal ]
 
-        print("Predicted: ", predicted_vertex)
-        print("Actual: ", label['xy_loc'])
+        # print("Predicted: ", predicted_vertex)
+        # print("Actual: ", label['xy_loc'])
 
 
         difference = (label['xy_loc'] - predicted_vertex)**2

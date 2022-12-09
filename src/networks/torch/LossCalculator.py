@@ -40,7 +40,7 @@ class LossCalculator(torch.nn.Module):
 
     def forward(self, labels_dict, network_dict):
 
-        loss   = 0.0*self.segmentation_loss(labels_dict["segmentation"], network_dict["segmentation"])
+        loss   = elf.segmentation_loss(labels_dict["segmentation"], network_dict["segmentation"])
         loss_metrics = {
             "segmentation" : loss.detach()
         }
@@ -91,6 +91,8 @@ class LossCalculator(torch.nn.Module):
         # print("Max focal: ", [torch.max(l) for l in focal_loss])
 
         has_vertex = event_label != 3
+
+        # print("has_vertex: ",has_vertex)
 
         ## TODO:
         # convert this to binary cross entropy loss per-pixel

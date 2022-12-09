@@ -10,11 +10,11 @@ data:
 network:
   n_initial_filters: 64
   classification:
-    active: False
+    active: True
     detach: True
   vertex:
     active: True
-    detach: False
+    detach: True
   blocks_deepest_layer: 3
   blocks_final: 3
   depth: 5
