@@ -143,7 +143,7 @@ class torch_trainer(trainercore):
                 if self.args.network.classification.active:
                     with self.default_device_context():
                         weight = torch.tensor([0.16, 0.1666, 0.16666, 0.5]).to(self.default_device())
-                        self.culator = LossCalculator.LossCalculator(self.args, weight=weight)
+                        self.loss_calculator = LossCalculator.LossCalculator(self.args, weight=weight)
                 else:
                     self.loss_calculator = LossCalculator.LossCalculator(self.args)
             self.acc_calc = AccuracyCalculator.AccuracyCalculator(self.args)
@@ -394,8 +394,9 @@ class torch_trainer(trainercore):
         for key in self._hparams_keys:
             if key not in metrics: continue
             hparams_metrics[key] = float(metrics[key].float().cpu())
-        self._aux_saver.add_hparams(flattened_dict, hparams_metrics, run_name="hparams")
-        self._aux_saver.flush()
+        if hasattr(self, "_aux_saver") and self._aux_saver is not None:
+            self._aux_saver.add_hparams(flattened_dict, hparams_metrics, run_name="hparams")
+            self._aux_saver.flush()
         return
 
 
@@ -406,6 +407,7 @@ class torch_trainer(trainercore):
             This is to ensure equivalent metrics are computed for sparse and dense networks.
 
         '''
+
 
         # Predict the vertex, if needed:
         if self.args.network.vertex.active:
@@ -421,9 +423,14 @@ class torch_trainer(trainercore):
         # Extract the index, which comes out flattened:
         predicted_vertex_index = [ torch.argmax(n, dim=1) for n in detection_logits ]
 
+        print(predicted_vertex_index)
+
         # Convert flat index to 2D coordinates:
         height_index = [torch.div(p, self.vertex_output_space[1], rounding_mode='floor')  for p in predicted_vertex_index]
         width_index  = [p % self.vertex_output_space[1]  for p in predicted_vertex_index]
+
+        print(height_index)
+        print(width_index)
 
         # Extract the regression parameters for every box:
         internal_offsets_height = [ n[:,1,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
@@ -690,7 +697,7 @@ class torch_trainer(trainercore):
                 "segmentation" : torch.chunk(minibatch_data['label'].long(), chunks=3, dim=1),
 
             }
-            if self.args.network.classification.active:
+            if self.args.network.classification.active or self.args.network.vertex.active:
                 labels_dict.update({"event_label"  : minibatch_data['event_label']})
             if self.args.network.vertex.active:
                 labels_dict.update({"vertex"  : minibatch_data['vertex']})
@@ -737,7 +744,8 @@ class torch_trainer(trainercore):
                 # Fetch the next batch of data with larcv
                 io_start_time = datetime.datetime.now()
                 with self.timing_context("io"):
-                    minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
+                    # // TODO change force_pop to True!
+                    minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = False)
                 io_end_time = datetime.datetime.now()
                 io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
@@ -881,7 +889,7 @@ class torch_trainer(trainercore):
                 network_dict, labels_dict = self.forward_pass(minibatch_data, net=val_net)
 
             # Compute the loss based on the network_dict
-            loss, loss_metrics = self.culator(labels_dict, network_dict)
+            loss, loss_metrics = self.loss_calculator(labels_dict, network_dict)
 
             # Compute any necessary metrics:
             metrics = self._compute_metrics(network_dict, labels_dict, loss_metrics)
@@ -932,7 +940,7 @@ class torch_trainer(trainercore):
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss
-            # loss = self.culator(labels_image, logits_image)
+            # loss = self.loss_calculator(labels_image, logits_image)
 
             # Compute the metrics for this iteration:
             metrics = self._compute_metrics(logits_image, labels_image, loss_dict=None)

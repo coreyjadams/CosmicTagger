@@ -38,7 +38,8 @@ class AccuracyCalculator(object):
             non_zero_locations       = labels[plane] != 0
 
             weighted_accuracy = correct * non_zero_locations
-            non_zero_accuracy = torch.sum(weighted_accuracy, dim=[1,2]) / (torch.sum(non_zero_locations, dim=[1,2]) +0.1).type(target_dtype)
+            non_zero_accuracy = torch.sum(weighted_accuracy, dim=[1,2]) / \
+                (torch.sum(non_zero_locations, dim=[1,2]) + 0.1).type(target_dtype)
 
             neutrino_label_locations = labels[plane] == 2
             cosmic_label_locations   = labels[plane] == 1
@@ -112,15 +113,20 @@ class AccuracyCalculator(object):
 
         batch_size = logits[0].shape[0]
 
+
         detection_logits = [d.reshape(batch_size, -1) for d in detection_logits]
         detection_labels = [d.reshape(batch_size, -1) for d in label['detection']]
 
-        selected_index  = [torch.argmax(d.type(target_dtype), dim=1) for d in detection_logits ]
-        predicted_index = [torch.argmax(d.type(target_dtype), dim=1) for d in detection_labels ]
+        true_index  = [torch.argmax(d.type(target_dtype), dim=1) for d in detection_labels ]
+        predicted_index = [torch.argmax(d.type(target_dtype), dim=1) for d in detection_logits ]
 
-        equal = [s == p for s, p in zip(selected_index, predicted_index)]
+        equal = [s == p for s, p in zip(true_index, predicted_index)]
 
         detection_accuracy = [ torch.mean(e.type(target_dtype)) for e in equal ]
+
+        print("Predicted: ", predicted_vertex)
+        print("Actual: ", label['xy_loc'])
+
 
         difference = (label['xy_loc'] - predicted_vertex)**2
 

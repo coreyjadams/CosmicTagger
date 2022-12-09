@@ -40,7 +40,7 @@ class LossCalculator(torch.nn.Module):
 
     def forward(self, labels_dict, network_dict):
 
-        loss   = self.segmentation_loss(labels_dict["segmentation"], network_dict["segmentation"])
+        loss   = 0.0*self.segmentation_loss(labels_dict["segmentation"], network_dict["segmentation"])
         loss_metrics = {
             "segmentation" : loss.detach()
         }
@@ -68,8 +68,10 @@ class LossCalculator(torch.nn.Module):
 
         target_dtype = logits[0].dtype
         # Weigh the loss:
-        weight_detection = torch.tensor(self.network_params.vertex.l_det, dtype=target_dtype, device=logits[0].device)
-        weight = torch.tensor(self.network_params.vertex.l_coord, dtype=target_dtype, device=logits[0].device)
+        weight_detection    = torch.tensor(self.network_params.vertex.l_det,
+            dtype=target_dtype, device=logits[0].device)
+        weight_localization = torch.tensor(self.network_params.vertex.l_coord,
+            dtype=target_dtype, device=logits[0].device)
 
         # This assumes channels first:
         detection_logits = [l[:,0,:,:] for l in logits]
@@ -77,12 +79,11 @@ class LossCalculator(torch.nn.Module):
 
         # Get the detection labels, and zero out any cosmic-only event
         detection_labels = labels['detection']
-
         # print("Min logit: ", [torch.min(l) for l in detection_logits])
         # print("Max logit: ", [torch.max(l) for l in detection_logits])
 
         # Compute pt, where CE=-log(pt)
-        pt = [ torch.where(logit == 1, logit, 1 - logit) for logit in detection_logits ]
+        pt = [ torch.where(label == 1, logit, 1 - logit) for label, logit in zip(detection_labels, detection_logits) ]
         focal_loss = [ - weight_detection *(1 - _pt)**2 * torch.log(_pt) for _pt in pt]
         # print("Min pt: ", [torch.min(l) for l in pt])
         # print("Max pt: ", [torch.max(l) for l in pt])
@@ -100,42 +101,49 @@ class LossCalculator(torch.nn.Module):
 
 
 
-        # Compute the weight * loss:
-        detection_loss = [ torch.sum(l) for l in focal_loss]
-        detection_loss = torch.sum(torch.stack(detection_loss))
-
-
-        # For localization, we first compute the index locations of active vertexes:
-        active_sites = [ d == 1 for d in detection_labels]
-
-        detection_localization_logits = [ l[:,1:,:,:] for l in logits ]
+        # Compute the loss, don't sum over the batch index:
+        detection_loss = [ torch.sum(l,dim=(1,2)) for l in focal_loss]
+        # This takes a mean over batches and over planes, scale it up so it's summing over planes:
+        detection_loss = 3*torch.mean(torch.stack(detection_loss))
 
         regression_labels = torch.chunk(labels['regression'], 3, dim=1)
         regression_labels = [torch.reshape(l, (-1, 2)) for l in regression_labels ]
 
-        labels_x = [rl[:,0][has_vertex] for rl in regression_labels]
-        labels_y = [rl[:,1][has_vertex] for rl in regression_labels]
+        detection_localization_logits = [ l[:,1:,:,:] for l in logits ]
+
+        # This is label - logit)**2 for every anchor box:
+        # Since the label ranges from 0 to 1, and the logit ranges
+        # from 0 to 1, this should map to 0 to 2.
+        regression_loss = [
+            (torch.reshape(label, (-1,2,1,1))  - logits)**2
+            for label, logits in zip(regression_labels, detection_localization_logits)
+            ]
 
 
+        # Sum over the channel axis to make it x^2 + y^2:
+        regression_loss = [
+            torch.sum(l, axis=1) for l in regression_loss
+        ]
 
+        # Scale each point by whether or not they have a label in them:
+        regression_loss = [
+            r_loss * d_label for r_loss, d_label in \
+            zip(regression_loss, detection_labels)
+        ]
 
-        # Split x and y, and then zero in on the active sites:
-        detection_localization_logits_x = [ l[:,1,:,:] for l in logits ]
-        detection_localization_logits_y = [ l[:,2,:,:] for l in logits ]
+        # Sum over all boxes:
+        regression_loss = [
+            torch.sum(r_loss, axis=(1,2))
+            for r_loss in regression_loss
+        ]
 
-        # Select the active sites in labels and logits:
-        active_localization_logits_x = [ d[a] for d, a in zip(detection_localization_logits_x, active_sites) ]
-        active_localization_logits_y = [ d[a] for d, a in zip(detection_localization_logits_y, active_sites) ]
+        print(regression_loss)
 
-        # Compute the loss in x and y:
-        loss_x = [ weight*torch.nn.functional.mse_loss(lx, alx) for lx, alx in zip(labels_x, active_localization_logits_x)]
-        loss_y = [ weight*torch.nn.functional.mse_loss(ly, aly) for ly, aly in zip(labels_y, active_localization_logits_y)]
+        # Finally, take the sum over planes and mean over batches:
+        regression_loss = torch.stack(regression_loss, axis=-1)
+        regression_loss = 3*weight_localization*torch.sum(regression_loss)
 
-        # Sum the losses:
-        localization_loss = [x + y for x, y in zip(loss_x, loss_y)]
-        localization_loss = torch.sum(torch.stack(localization_loss))
-
-        return detection_loss, localization_loss.nan_to_num()
+        return detection_loss, regression_loss
 
     def event_loss(self, labels, logits):
         # print(logits.shape)

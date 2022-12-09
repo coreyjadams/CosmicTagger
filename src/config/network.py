@@ -38,7 +38,7 @@ class Vertex:
     detach:   bool = True
     active:   bool = False
     depth:     int = 2
-    weight:  float = 1.0
+    weight:  float = 10.0
     n_layers:  int = 4
     n_filters: int = 128
     l_det:   float = 1e0

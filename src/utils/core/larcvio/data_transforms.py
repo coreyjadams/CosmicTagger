@@ -17,6 +17,7 @@ where N_features is 2 or 3 depending on whether or not values are included
 
 
 '''
+from src.config import DataFormatKind
 
 def event_label(neutrino_particles, n_neutrino_pixels, neutrino_threshold=10):
 
@@ -54,7 +55,7 @@ def larcvsparse_to_dense_2d(input_array, dense_shape, dataformat):
     batch_size = input_array.shape[0]
     n_planes   = input_array.shape[1]
 
-    if dataformat == "channels_first":
+    if dataformat == DataFormatKind.channels_first:
         output_array = numpy.zeros((batch_size, n_planes, dense_shape[0], dense_shape[1]), dtype=numpy.float32)
     else:
         output_array = numpy.zeros((batch_size, dense_shape[0], dense_shape[1], n_planes), dtype=numpy.float32)
@@ -85,7 +86,7 @@ def larcvsparse_to_dense_2d(input_array, dense_shape, dataformat):
     # Tensorflow expects format as either [batch, height, width, channel]
     # or [batch, channel, height, width]
     # Fill in the output tensor
-    if dataformat == "channels_first":
+    if dataformat == DataFormatKind.channels_first:
         # output_array[batch_index, plane_index, y_index, x_index] = values
         output_array[batch_index, plane_index, y_index, x_index] = values
     else:
@@ -237,7 +238,7 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
     vertex_output_space = tuple(d // 2**vertex_depth  for d in image_shape )
 
 
-    if dataformat == "channels_last":
+    if dataformat == DataFormatKind.channels_last:
         vertex_labels = numpy.transpose(vertex_channels_first,(0,2,1))
         vertex_presence_labels = numpy.zeros((batch_size,) + vertex_output_space + (3,), dtype="float32")
     else:
@@ -248,12 +249,19 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
     n_pixels_vertex = 2**vertex_depth
 
 
+    anchor_size = image_meta['size'] / vertex_output_space
+    print(anchor_size)
     # To create the right bounding box location, we have to map the vertex x/z/y to a set of pixels.
-
+    print(vertex_labels)
     corrected_vertex_position = vertex_labels + image_meta["origin"]
     fractional_vertex_position = corrected_vertex_position / image_meta["size"]
 
+    print(corrected_vertex_position / anchor_size)
 
+    print(corrected_vertex_position)
+    print(fractional_vertex_position)
+
+    exit()
     vertex_output_space_anchor_box_float = vertex_output_space * fractional_vertex_position
 
     vertex_output_space_anchor_box = vertex_output_space_anchor_box_float.astype("int")
@@ -268,7 +276,7 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
 
 
 
-    if dataformat == "channels_last":
+    if dataformat == DataFormatKind.channels_last:
         vertex_presence_labels[batch_index, h_index, w_index, plane_index] = 1.0
     else:
         vertex_presence_labels[batch_index, plane_index, h_index, w_index] = 1.0
@@ -290,7 +298,7 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
 
     bounding_box_location = bounding_box_location.astype("float32")
 
-    if dataformat == "channels_last":
+    if dataformat == DataFormatKind.channels_last:
         vertex_presence_labels = numpy.split(vertex_presence_labels, 3, axis=-1)
         vertex_presence_labels = [v.reshape((batch_size, ) + vertex_output_space) for v in vertex_presence_labels]
     else:

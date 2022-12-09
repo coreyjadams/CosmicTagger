@@ -10,8 +10,8 @@ class DataFormatKind(Enum):
 
 @dataclass
 class Data:
-    synthetic:   bool            = False
-    downsample:  int             = 1
+    synthetic:              bool = False
+    downsample:              int = 1
     data_format: DataFormatKind  = DataFormatKind.channels_last
     img_transform:          bool = False
     version:                 int = 2 # Pick 1 or two

@@ -4,14 +4,17 @@ defaults:
   - _self_
 data:
   downsample: 1
+  version: 2
 
 
 network:
   n_initial_filters: 64
   classification:
-    active: True
+    active: False
+    detach: True
   vertex:
     active: True
+    detach: False
   blocks_deepest_layer: 3
   blocks_final: 3
   depth: 5
