@@ -257,19 +257,11 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
     n_pixels_vertex = 2**vertex_depth
 
 
-    anchor_size = image_meta['size'] / vertex_output_space
-    print(anchor_size)
     # To create the right bounding box location, we have to map the vertex x/z/y to a set of pixels.
-    print(vertex_labels)
-    corrected_vertex_position = vertex_labels + image_meta["origin"]
+    corrected_vertex_position = vertex_labels - image_meta["origin"]
     fractional_vertex_position = corrected_vertex_position / image_meta["size"]
 
-    print(corrected_vertex_position / anchor_size)
 
-    print(corrected_vertex_position)
-    print(fractional_vertex_position)
-
-    exit()
     vertex_output_space_anchor_box_float = vertex_output_space * fractional_vertex_position
 
     vertex_output_space_anchor_box = vertex_output_space_anchor_box_float.astype("int")
@@ -281,8 +273,6 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
 
     h_index = numpy.concatenate(vertex_output_space_anchor_box[:,:,0])
     w_index = numpy.concatenate(vertex_output_space_anchor_box[:,:,1])
-
-
 
     if dataformat == DataFormatKind.channels_last:
         vertex_presence_labels[batch_index, h_index, w_index, plane_index] = 1.0
