@@ -40,7 +40,7 @@ class LossCalculator(torch.nn.Module):
 
     def forward(self, labels_dict, network_dict):
 
-        loss   = elf.segmentation_loss(labels_dict["segmentation"], network_dict["segmentation"])
+        loss   = self.segmentation_loss(labels_dict["segmentation"], network_dict["segmentation"])
         loss_metrics = {
             "segmentation" : loss.detach()
         }
@@ -84,16 +84,24 @@ class LossCalculator(torch.nn.Module):
 
         # Compute pt, where CE=-log(pt)
         pt = [ torch.where(label == 1, logit, 1 - logit) for label, logit in zip(detection_labels, detection_logits) ]
-        focal_loss = [ - weight_detection *(1 - _pt)**2 * torch.log(_pt) for _pt in pt]
-        # print("Min pt: ", [torch.min(l) for l in pt])
-        # print("Max pt: ", [torch.max(l) for l in pt])
-        # print("Min focal: ", [torch.min(l) for l in focal_loss])
-        # print("Max focal: ", [torch.max(l) for l in focal_loss])
+
+        # This is a computation of cross entropy
+        focus = [ weight_detection *(1 - _pt)**2 for _pt in pt]
+        bce_loss = [torch.nn.functional.binary_cross_entropy(logit, label, reduction="none")
+            for logit, label in zip(detection_logits, detection_labels)
+        ]
+        focal_loss = [ f * l for f, l in zip(focus, bce_loss)]
+        # if focal_loss[0].device.index == 3:
+            # print("label: ", detection_l?abels)
+            # print("Min pt: ", [torch.min(l) for l in pt])
+            # print("Max pt: ", [torch.max(l) for l in pt])
+            # print("Min focal: ", [torch.min(l) for l in focal_loss])
+            # print("Max focal: ", [torch.max(l) for l in focal_loss])
+            # print(pt)
 
         has_vertex = event_label != 3
 
         # print("has_vertex: ",has_vertex)
-
         ## TODO:
         # convert this to binary cross entropy loss per-pixel
         # Then, it will work with focal loss better.
@@ -101,12 +109,12 @@ class LossCalculator(torch.nn.Module):
 
         detection_labels = [ torch.reshape(has_vertex, (-1,1,1))*d for d in detection_labels]
 
-
-
         # Compute the loss, don't sum over the batch index:
         detection_loss = [ torch.sum(l,dim=(1,2)) for l in focal_loss]
         # This takes a mean over batches and over planes, scale it up so it's summing over planes:
         detection_loss = 3*torch.mean(torch.stack(detection_loss))
+        # if focal_loss[0].device.index == 3:
+        #     print("Detection Loss: ", detection_loss)
 
         regression_labels = torch.chunk(labels['regression'], 3, dim=1)
         regression_labels = [torch.reshape(l, (-1, 2)) for l in regression_labels ]
@@ -139,7 +147,6 @@ class LossCalculator(torch.nn.Module):
             for r_loss in regression_loss
         ]
 
-        print(regression_loss)
 
         # Finally, take the sum over planes and mean over batches:
         regression_loss = torch.stack(regression_loss, axis=-1)

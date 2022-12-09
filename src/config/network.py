@@ -41,8 +41,8 @@ class Vertex:
     weight:  float = 1.0
     n_layers:  int = 4
     n_filters: int = 128
-    l_det:   float = 1e0
-    l_coord: float = 1e0
+    l_det:   float = 1e-1
+    l_coord: float = 1e-1
 
 @dataclass
 class EventLabel:

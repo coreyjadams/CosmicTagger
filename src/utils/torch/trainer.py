@@ -13,6 +13,7 @@ import numpy
 
 
 import torch
+torch.autograd.set_detect_anomaly(True)
 try:
     import ipex
 except:
