@@ -54,9 +54,7 @@ class trainercore(object):
         self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
             mode        = args.mode.name.name,
             distributed = args.run.distributed,
-            downsample  = args.data.downsample,
-            dataformat  = args.data.data_format.name,
-            synthetic   = args.data.synthetic,
+            data_args   = args.data,
             sparse      = sparse,
             vtx_depth   = args.network.depth - args.network.vertex.depth )
 
@@ -167,7 +165,7 @@ class trainercore(object):
             learning_rate_schedule = {
                 'warm_up' : {
                     'function'      : 'linear',
-                    'start'         : 0,
+                    'start'         : 1e-4,
                     'n_epochs'      : 1,
                     'initial_rate'  : 0.00001,
                 },

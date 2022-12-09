@@ -179,11 +179,3 @@ class distributed_trainer(tf_trainer):
             reduced_metrics[key] = hvd.allreduce(metrics[key])
 
         return reduced_metrics
-
-
-    # def batch_process(self):
-
-    #     if hvd.rank() == 0:
-    #         tf_trainer.batch_process(self)
-    #     else:
-    #         tf_trainer.batch_process(self)

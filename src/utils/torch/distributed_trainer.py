@@ -109,7 +109,7 @@ class distributed_trainer(torch_trainer):
 
             self._rank = rank
             self._size = size
-            self._local_rank = int(local_rank)
+            self._local_rank = local_rank
 
             # It will want the master address too, which we'll broadcast:
             if rank == 0:
@@ -117,7 +117,7 @@ class distributed_trainer(torch_trainer):
                 sock = socket.socket()
                 sock.bind(('',0))
                 master_port  = sock.getsockname()[1]
-                master_port  = 2346
+                master_port  = 2345
             else:
                 master_addr = None
                 master_port = None
@@ -132,10 +132,10 @@ class distributed_trainer(torch_trainer):
                 # import torch_ccl
                 backend = 'ccl'
             elif self.args.run.compute_mode == ComputeMode.GPU:
-                backend = 'nccl'
-                if self.args.framework.oversubscribe != 1:
-                    # nccl can have only 1 rank per GPU
+                if self.args.framework.oversubscribe > 1:
                     backend = 'gloo'
+                else:
+                    backend = 'nccl'
             elif self.args.run.compute_mode == ComputeMode.CPU: backend = 'gloo'
 
             # init_method = 'file:///home/cadams/ddp_init/ddp_init.txt'
@@ -155,18 +155,7 @@ class distributed_trainer(torch_trainer):
         if self._rank == 0:
             torch_trainer.save_model(self)
 
-    def target_device(self):
-        if self.args.framework.oversubscribe != 1:
-            if self.args.run.compute_mode == ComputeMode.GPU:
-                n_local_devices = torch.cuda.device_count()
-                return self._local_rank // self.args.framework.oversubscribe
-        else:
-            return self._local_rank
-
     def default_device_context(self):
-
-        # In some cases, we map multiple ranks onto the same target device:
-        target_device = self.target_device()
 
         # Convert the input data to torch tensors
         if self.args.run.compute_mode == ComputeMode.GPU:
@@ -174,11 +163,11 @@ class distributed_trainer(torch_trainer):
                 # Then, it's manually set, use it
                 return torch.cuda.device(0)
             else:
-                return torch.cuda.device(int(target_device))
+                return torch.cuda.device(int(self._local_rank))
         elif self.args.run.compute_mode == ComputeMode.XPU:
             # return contextlib.nullcontext
             try:
-                return ipex.xpu.device(int(target_device))
+                return ipex.xpu.device(int(self._local_rank))
             except:
                 pass
             return contextlib.nullcontext
@@ -194,16 +183,14 @@ class distributed_trainer(torch_trainer):
 
     def default_device(self):
 
-        target_device = self.target_device()
-
         if self.args.run.compute_mode == ComputeMode.GPU:
             if 'CUDA_VISIBLE_DEVICES' in os.environ:
                 # Then, it's manually set, use it
                 return torch.device("cuda:0")
             else:
-                return torch.device(f"cuda:{target_device}")
+                return torch.device(f"cuda:{self._local_rank}")
         elif self.args.run.compute_mode == ComputeMode.XPU:
-            device = torch.device(f"xpu:{target_device}")
+            device = torch.device(f"xpu:{self._local_rank}")
         elif self.args.run.compute_mode == ComputeMode.DPCPP:
             device = torch.device("dpcpp")
         else:
@@ -215,11 +202,12 @@ class distributed_trainer(torch_trainer):
 
         # This takes the base optimizer (self._opt) and replaces
         # it with a distributed version
+
         torch_trainer.init_optimizer(self)
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
-            print(self._opt)
             self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
+            self._opt.param_groups[0]['capturable'] = True
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
 
@@ -302,63 +290,28 @@ class distributed_trainer(torch_trainer):
             torch_trainer.summary(self, metrics, saver)
         return
 
-    def store_parameters(self, metrics):
-
-        if self._rank == 0:
-            torch_trainer.store_parameters(self, metrics)
-        return
-
-    def close_savers(self):
-
-        if self._rank == 0:
-            torch_trainer.close_savers(self)
-        return
-
-
     def summary_images(self, logits_image, labels_image, saver=""):
         if self._rank == 0:
             torch_trainer.summary_images(self, logits_image, labels_image, saver)
         return
 
-    def flatten_metrics_dict(self, data_dict):
-        ''' Flatten all the metrics into just one tensor to make the allreduce a little faster at scale'''
-        real_shapes = [ data_dict[k].shape for k in data_dict]
-
-        flattened_cat_data = torch.stack([ data_dict[k] for k in data_dict], axis=0)
-
-        return flattened_cat_data , real_shapes
-
-    def _compute_metrics(self, logits, minibatch_data, loss):
+    def _compute_metrics(self, logits, minibatch_data, loss_dict):
 
         # This function calls the parent function which computes local metrics.
         # Then, it performs an all reduce on all metrics:
-        metrics = torch_trainer._compute_metrics(self, logits, minibatch_data, loss)
-
-        # Metrics is all scalars.  So grab the keys and then stack them to speed this up:
-        metric_keys = metrics.keys()
-        flat_metrics = torch.stack([ metrics[k] for k in metrics], axis=0)
-
-
+        metrics = torch_trainer._compute_metrics(self, logits, minibatch_data, loss_dict)
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
             for key in metrics:
                 metrics[key] = hvd.allreduce(metrics[key], name = key)
         elif self.args.framework.distributed_mode == DistributedMode.DDP:
-            # pre_device = metrics[key].device
             with self.default_device_context():
-                torch.distributed.reduce(flat_metrics, dst=0, op=torch.distributed.ReduceOp.SUM)
-                flat_metrics /= self._size
-                # for key in metrics:
-                #     torch.distributed.reduce(metrics[key], dst=0, op=torch.distributed.ReduceOp.SUM)
-                #     metrics[key] /= self._size
+                for key in metrics:
+                    torch.distributed.all_reduce(metrics[key])
+                    metrics[key] /= self._size
 
-        # split up the metrics again:
-        split_metrics = torch.split(flat_metrics, 1, dim=0)
-        metrics = { k : s.reshape(()) for k, s in zip(metric_keys, split_metrics)}
-        # print(f"Rank {self._rank} post rediced_metrics: ", reduced_metrics)
         return metrics
 
-        # return metrics
 
 
 

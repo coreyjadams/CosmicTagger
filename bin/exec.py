@@ -59,7 +59,8 @@ class exec(object):
             self.inference()
 
     def exit(self):
-        self.trainer.exit()
+        if hasattr(self, "trainer"):
+            self.trainer.exit()
 
     def init_mpi(self):
         if not self.args.run.distributed:

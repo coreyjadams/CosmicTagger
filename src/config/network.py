@@ -38,19 +38,19 @@ class Vertex:
     detach:   bool = True
     active:   bool = False
     depth:     int = 2
-    weight:  float = 1.0
-    n_layers:  int = 2
-    n_filters: int = 64
-    l_noobj: float = 1e-3
-    l_coord: float = 1e-1
+    weight:  float = 10.0
+    n_layers:  int = 4
+    n_filters: int = 128
+    l_det:   float = 1e0
+    l_coord: float = 1e0
 
 @dataclass
 class EventLabel:
     detach:   bool = True
-    active:   bool = True
+    active:   bool = False
     weight:  float = 0.01
-    n_filters: int = 64
-    n_layers:  int = 2
+    n_filters: int = 128
+    n_layers:  int = 4
 
 
 @dataclass
@@ -67,7 +67,7 @@ class Network:
     bottleneck_deepest:   int          = 256
     residual:             bool         = True
     block_concat:         bool         = False
-    weight_decay:         float        = 0.01
+    weight_decay:         float        = 0.00
     connections:          Connection   = Connection.concat
     conv_mode:            ConvMode     = ConvMode.conv_2D
     growth_rate:          GrowthRate   = GrowthRate.additive

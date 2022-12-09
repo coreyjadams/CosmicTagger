@@ -6,8 +6,9 @@ defaults:
   - override data: synthetic
   - _self_
 
-data: 
+data:
   downsample: 1
+  version: 1
 
 mode:
     no_summary_images: True
@@ -15,4 +16,8 @@ mode:
 run:
     distributed: False
 
-
+network:
+    classification:
+        active: False
+    vertex:
+        active: False
