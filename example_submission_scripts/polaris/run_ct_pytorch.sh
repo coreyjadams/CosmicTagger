@@ -1,5 +1,5 @@
 #!/bin/sh
-#PBS -l select=16:system=polaris
+#PBS -l select=32:system=polaris
 #PBS -l place=scatter
 #PBS -l walltime=3:30:00
 #PBS -q prod
@@ -39,14 +39,15 @@ export NCCL_NET_GDR_LEVEL=PHB
 mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind=none \
 python bin/exec.py \
 --config-name uresnet2 \
-run.id=uresnet2-${GLOBAL_BATCH_SIZE} \
+run.id=uresnet2-vd1-${GLOBAL_BATCH_SIZE} \
+output_dir=/lus/grand/projects/datascience/cadams/CosmicTaggerVertexEventID/ \
 data.downsample=2 \
 run.distributed=True \
 run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.iterations=20000 \
 network.depth=5 \
 network.vertex.detach=True \
-network.vertex.depth=0 \
+network.vertex.depth=1 \
 network.classification.detach=True \
 network.n_initial_filters=64 \
 framework=torch

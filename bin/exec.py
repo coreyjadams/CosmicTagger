@@ -36,6 +36,12 @@ class exec(object):
 
         rank = self.init_mpi()
 
+
+        # Add to the output dir:
+        self.args.output_dir += f"/{self.args.framework.name}/"
+        self.args.output_dir += f"/{self.args.network.name}/"
+        self.args.output_dir += f"/{self.args.run.id}/"
+
         # Create the output directory if needed:
         if rank == 0:
             outpath = pathlib.Path(self.args.output_dir)

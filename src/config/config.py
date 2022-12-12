@@ -74,7 +74,7 @@ class Config:
     data:       Any       = MISSING
     framework:  Framework = MISSING
     network:    Network   = MISSING
-    output_dir: str       = "output/${framework.name}/${network.name}/${run.id}/"
+    output_dir: str       = "output/"
 
 
 cs.store(name="base_config", node=Config)
