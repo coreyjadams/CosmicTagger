@@ -265,6 +265,8 @@ class larcv_fetcher(object):
                 minibatch_data["event_label"], self.data_args.data_format,
                 self.image_meta, self.ds)
 
+            minibatch_data["vertex"]["xyz_loc"] = minibatch_data["particle"]["_vtx"][:,0]
+
             # Get rid of the particle data now, we're done with it:
             minibatch_data.pop("particle")
 

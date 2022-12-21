@@ -155,9 +155,7 @@ class LossCalculator(torch.nn.Module):
         return detection_loss, regression_loss
 
     def event_loss(self, labels, logits):
-        # print(logits.shape)
-        # print(labels.shape)
-        event_label_loss = self.event_label_criterion(logits, labels.long())
+        event_label_loss = self.event_label_criterion(logits.float(), labels.long())
         return event_label_loss
 
     def segmentation_loss(self, labels, logits):

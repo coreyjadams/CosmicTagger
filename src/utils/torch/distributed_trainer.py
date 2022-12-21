@@ -295,20 +295,22 @@ class distributed_trainer(torch_trainer):
             torch_trainer.summary_images(self, logits_image, labels_image, saver)
         return
 
-    def _compute_metrics(self, logits, minibatch_data, loss_dict):
+    def _compute_metrics(self, logits, minibatch_data, loss_dict, batch_reduce=True):
 
         # This function calls the parent function which computes local metrics.
         # Then, it performs an all reduce on all metrics:
-        metrics = torch_trainer._compute_metrics(self, logits, minibatch_data, loss_dict)
+        metrics = torch_trainer._compute_metrics(self, logits, minibatch_data, loss_dict, batch_reduce)
 
-        if self.args.framework.distributed_mode == DistributedMode.horovod:
-            for key in metrics:
-                metrics[key] = hvd.allreduce(metrics[key], name = key)
-        elif self.args.framework.distributed_mode == DistributedMode.DDP:
-            with self.default_device_context():
+        if batch_reduce:
+            # Only perform the reduction if already reduced over the batch:
+            if self.args.framework.distributed_mode == DistributedMode.horovod:
                 for key in metrics:
-                    torch.distributed.all_reduce(metrics[key])
-                    metrics[key] /= self._size
+                    metrics[key] = hvd.allreduce(metrics[key], name = key)
+            elif self.args.framework.distributed_mode == DistributedMode.DDP:
+                with self.default_device_context():
+                    for key in metrics:
+                        torch.distributed.all_reduce(metrics[key])
+                        metrics[key] /= self._size
 
         return metrics
 

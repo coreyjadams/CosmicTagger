@@ -9,7 +9,7 @@ class AccuracyCalculator(object):
 
         self.network_params = params.network
 
-    def segmentation_accuracy(self, labels, logits):
+    def segmentation_accuracy(self, labels, logits, batch_reduce=True):
 
 
         accuracy = {}
@@ -72,11 +72,15 @@ class AccuracyCalculator(object):
 
             # Finally, we do average over the batch
 
-            cosmic_iou = torch.mean(cosmic_iou)
-            neutrino_iou = torch.mean(neutrino_iou)
-            non_zero_accuracy = torch.mean(non_zero_accuracy)
+            if batch_reduce:
+                cosmic_iou = torch.mean(cosmic_iou)
+                neutrino_iou = torch.mean(neutrino_iou)
+                non_zero_accuracy = torch.mean(non_zero_accuracy)
+                correct = torch.mean(correct)
+            else:
+                correct = torch.mean(correct, axis=(1,2))
 
-            accuracy[f'plane{plane}/Total_Accuracy']   = torch.mean(correct)
+            accuracy[f'plane{plane}/Total_Accuracy']   = correct
             accuracy[f'plane{plane}/Cosmic_IoU']       = cosmic_iou
             accuracy[f'plane{plane}/Neutrino_IoU']     = neutrino_iou
             accuracy[f'plane{plane}/Non_Bkg_Accuracy'] = non_zero_accuracy
@@ -91,15 +95,20 @@ class AccuracyCalculator(object):
 
         return accuracy
 
-    def event_accuracy(self, label, logits):
+    def event_accuracy(self, label, logits, batch_reduce=True):
 
-    	selected_class = torch.argmax(logits, axis=-1)
+        selected_class = torch.argmax(logits, axis=-1)
 
-    	event_accuracy = selected_class == label
+        event_accuracy = selected_class == label
 
-    	return {"Average/EventLabel" : torch.mean(event_accuracy.type(logits[0].dtype))}
+        event_accuracy = event_accuracy.type(logits[0].dtype)
 
-    def vertex_accuracy(self, label, logits, predicted_vertex, event_label):
+        if batch_reduce:
+            event_accuracy = torch.mean(event_accuracy)
+
+        return {"Average/EventLabel" : event_accuracy}
+
+    def vertex_accuracy(self, label, logits, predicted_vertex, event_label, batch_reduce=True):
 
         accuracy = {}
         target_dtype = logits[0].dtype
@@ -122,7 +131,9 @@ class AccuracyCalculator(object):
 
         equal = [s == p for s, p in zip(true_index, predicted_index)]
 
-        detection_accuracy = [ torch.mean(e.type(target_dtype)) for e in equal ]
+        detection_accuracy = [ e.type(target_dtype) for e in equal ]
+        if batch_reduce:
+            detection_accuracy = [ torch.mean(e) for e in detection_accuracy ]
 
         # print("Predicted: ", predicted_vertex)
         # print("Actual: ", label['xy_loc'])
@@ -134,31 +145,45 @@ class AccuracyCalculator(object):
 
         has_vertex = (event_label != 3).type(target_dtype)
 
+
         difference = difference * has_vertex.reshape((-1,1))
-        difference = torch.sum(difference, axis=0) / ( torch.sum(has_vertex) + 1e-5)
         difference = difference.type(target_dtype)
 
-        for p, d in enumerate(detection_accuracy):
-            accuracy[f"plane{p}/VertexDetection"] = d
-            accuracy[f"plane{p}/VertexResolution"] = difference[p]
-            accuracy["Average/VertexDetection"] += 0.3333333*d
-            accuracy["Average/VertexResolution"] += 0.3333333*difference[p]
+        # Average over batch:
+        if batch_reduce:
+            difference = torch.sum(difference, axis=0) / ( torch.sum(has_vertex) + 1e-5)
+
+
+        if batch_reduce:
+            for p, d in enumerate(detection_accuracy):
+                accuracy[f"plane{p}/VertexDetection"] = d
+                accuracy[f"plane{p}/VertexResolution"] = difference[p]
+                accuracy["Average/VertexDetection"] += 0.3333333*d
+                accuracy["Average/VertexResolution"] += 0.3333333*difference[p]
+
+        else:
+            for p, d in enumerate(detection_accuracy):
+                accuracy[f"plane{p}/VertexDetection"] = d
+                accuracy[f"plane{p}/VertexResolution"] = difference[:,p]
+                accuracy["Average/VertexDetection"] += 0.3333333*d
+                accuracy["Average/VertexResolution"] += 0.3333333*difference[:,p]
+
 
         return accuracy
 
-    def __call__(self, network_dict, labels_dict):
+    def __call__(self, network_dict, labels_dict, batch_reduce=True):
 
         with torch.no_grad():
 
-            accuracy = self.segmentation_accuracy(labels_dict["segmentation"], network_dict["segmentation"])
+            accuracy = self.segmentation_accuracy(labels_dict["segmentation"], network_dict["segmentation"], batch_reduce)
 
             if self.network_params.classification.active:
-                accuracy.update(self.event_accuracy(labels_dict["event_label"], network_dict["event_label"]))
+                accuracy.update(self.event_accuracy(labels_dict["event_label"], network_dict["event_label"], batch_reduce))
 
             if self.network_params.vertex.active:
                 accuracy.update(self.vertex_accuracy(
                     labels_dict["vertex"], network_dict["vertex"],
-                    network_dict["predicted_vertex"], labels_dict["event_label"]))
+                    network_dict["predicted_vertex"], labels_dict["event_label"], batch_reduce))
 
 
         return accuracy

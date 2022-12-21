@@ -1,0 +1,26 @@
+defaults:
+  - base_config
+  - override framework: torch
+  - override mode: inference
+  - _self_
+data:
+  downsample: 1
+  version: 2
+  file: cosmic_tagging_2_val.h5
+  aux_file: none
+
+network:
+  n_initial_filters: 64
+  classification:
+    active: True
+    detach: True
+  vertex:
+    active: True
+    detach: True
+  blocks_deepest_layer: 3
+  blocks_final: 3
+  depth: 6
+run:
+  iterations: 25
+  precision: float32
+  epoch: 1000
