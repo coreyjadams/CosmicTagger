@@ -45,6 +45,7 @@ class trainercore(object):
             io_dataformat = "channels_first"
         else:
             sparse = False
+            io_dataformat = args.data.data_format
 
         self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
             mode        = args.mode.name.name,
