@@ -78,8 +78,9 @@ def create_larcv_interface(random_access_mode, distributed, seed):
 
     return larcv_interface
 
-def prepare_cosmic_tagger_config(batch_size, data_args, name, event_id=False, vertex_depth=None):
-    input_file = data_args.path
+def prepare_cosmic_tagger_config(batch_size, input_file, data_args, name,
+                                 event_id=False, vertex_depth=None):
+    
 
     # First, verify the files exist:
     if not os.path.exists(input_file):
@@ -225,8 +226,11 @@ class synthetic_dataset(object):
 
 
     def init_data(self, shape):
-        self.synthetic_images = numpy.random.random_sample(shape).astype(numpy.float32)
-        self.synthetic_labels = numpy.random.randint(low=0, high=3, size=shape)
+
+        rng = numpy.random.default_rng()
+        self.synthetic_images = rng.random(shape, dtype = numpy.float32)
+        self.synthetic_labels = rng.integers(low=0, high=3, size=shape)
+
 
         # Should this include vertex and event id?  Yes if meta version is 2!
         # But also sometimes no, even in V2.0.  So flags are included.
@@ -258,7 +262,9 @@ class synthetic_dataset(object):
 
         return minibatch_data
 
-def create_larcv_dataset(data_args, batch_size, distributed=False, event_id=False, vertex_depth = None, sparse=False):
+def create_larcv_dataset(data_args, batch_size, input_file,
+                         distributed=False, event_id=False, 
+                         vertex_depth = None, sparse=False):
     """
     Create a new iterable dataset of the file specified in data_args
     pass
@@ -280,9 +286,10 @@ def create_larcv_dataset(data_args, batch_size, distributed=False, event_id=Fals
 
         # Next, prepare the config info for this interface:
         io_config, data_keys =  prepare_cosmic_tagger_config(
-            batch_size, 
-            data_args, 
-            name,
+            batch_size = batch_size, 
+            data_args = data_args, 
+            input_file = input_file,
+            name = name,
             event_id = event_id, 
             vertex_depth = vertex_depth)
 
@@ -295,7 +302,6 @@ def create_larcv_dataset(data_args, batch_size, distributed=False, event_id=Fals
             data_keys = data_keys)
 
         shape = image_shape(meta(data_args.version), 2**data_args.downsample)
-        print("Shape: ", shape)
 
         # Finally, create the iterable object to hold all of this:
         dataset = larcv_dataset(
@@ -402,7 +408,7 @@ class larcv_dataset(object):
             downsample_level = 2**self.data_args.downsample
 
             # Put together the YOLO labels:
-            minibatch_data["vertex"]  = data_transforms.form_yolo_targets(self.vtx_depth,
+            minibatch_data["vertex"]  = data_transforms.form_yolo_targets(self.vertex_depth,
                 minibatch_data["vertex"], minibatch_data["particle"],
                 minibatch_data["event_label"], 
                 self.data_args.data_format,

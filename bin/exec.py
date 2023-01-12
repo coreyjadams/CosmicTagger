@@ -23,8 +23,10 @@ network_dir = os.path.dirname(os.path.abspath(__file__))
 network_dir = os.path.dirname(network_dir)
 sys.path.insert(0,network_dir)
 
-from src.config import Config
+from src.config import Config, RunUnit
 from src.config.mode import ModeKind
+
+from src.utils.io import create_larcv_dataset
 
 import atexit
 
@@ -55,6 +57,12 @@ class exec(object):
         logger = logging.getLogger()
         logger.info("Dumping launch arguments.")
         logger.info(sys.argv)
+        logger.info(self.__str__())
+
+        logger.info("Configuring Datasets.")
+        self.datasets = self.configure_datasets()
+        logger.info("Data pipeline ready.")
+
 
     def run(self):
         if self.args.mode.name == ModeKind.train:
@@ -75,6 +83,50 @@ class exec(object):
             from mpi4py import MPI
             comm = MPI.COMM_WORLD
             return comm.Get_rank()
+
+
+    def configure_datasets(self):
+        """
+        This function creates the non-framework iterable datasets used in this app.
+
+        They get converted to framework specific tools, if needed, in the 
+        framework specific code.
+        """
+
+        # Check if we need vertex or eventID info:
+
+        if self.args.network.vertex.active:
+            vertex_depth = self.args.network.vertex.depth
+            event_id = True
+
+        if self.args.network.classification.active:
+            event_id = True
+
+        if self.args.data.synthetic:
+            datasets = { 
+                "synthetic" : create_larcv_dataset(
+                    data_args    = self.args.data, 
+                    batch_size   = self.args.run.minibatch_size, 
+                    input_file   = None,
+                    distributed  = False, 
+                    event_id     = event_id, 
+                    vertex_depth = vertex_depth, 
+                    sparse       = False) 
+            }
+        else:
+            datasets = {
+                name : create_larcv_dataset(
+                    data_args    = self.args.data, 
+                    batch_size   = self.args.run.minibatch_size, 
+                    input_file   = getattr(self.args.data.paths, name),
+                    distributed  = self.args.run.distributed, 
+                    event_id     = event_id, 
+                    vertex_depth = vertex_depth, 
+                    sparse       = self.args.framework.sparse) 
+                for name in self.args.data.paths.active
+            }
+
+        return datasets
 
 
     def configure_logger(self, rank):
@@ -111,7 +163,6 @@ class exec(object):
         logger = logging.getLogger()
 
         logger.info("Running Training")
-        logger.info(self.__str__())
 
         self.make_trainer()
 
@@ -121,14 +172,13 @@ class exec(object):
 
     def iotest(self):
 
-        self.make_trainer()
+        # self.make_trainer()
         logger = logging.getLogger()
 
         logger.info("Running IO Test")
-        logger.info(self.__str__())
 
 
-        self.trainer.initialize(io_only=True)
+        # self.trainer.initialize(io_only=True)
 
         if self.args.run.distributed:
             from mpi4py import MPI
@@ -136,22 +186,37 @@ class exec(object):
         else:
             rank = 0
 
-        # label_stats = numpy.zeros((36,))
-        global_start = time.time()
-        time.sleep(0.1)
-        for i in range(self.args.run.iterations):
+
+
+
+        for key, dataset in self.datasets.items():
+
+            global_start = time.time()
+            total_reads = 0 
+
+
+            # Determine the stopping point:
+            if self.args.run.run_units == RunUnit.epoch:
+                break_i = self.args.run.run_length * len(dataset)
+            else:
+                break_i = self.args.run.run_length
+
             start = time.time()
-            mb = self.trainer.larcv_fetcher.fetch_next_batch("train", force_pop=True)
+            for i, minibatch in enumerate(dataset):
+                # mb = self.trainer.larcv_fetcher.fetch_next_batch("train", force_pop=True)
 
-            end = time.time()
+                end = time.time()
+                if i >= break_i: break
 
-            logger.info(f"{i}: Time to fetch a minibatch of data: {end - start:.2f}s")
+                logger.info(f"{i}: Time to fetch a minibatch of data: {end - start:.2f}s")
+                start = time.time()
+                total_reads += 1
 
-        total_time = time.time() - global_start
-        images_read = self.args.run.iterations * self.args.run.minibatch_size
-        logger.info(f"Total IO Time: {total_time:.2f}s")
-        logger.info(f"Total images read per batch: {self.args.run.minibatch_size}")
-        logger.info(f"Average Image IO Throughput: { images_read / total_time:.3f}")
+            total_time = time.time() - global_start
+            images_read = total_reads * self.args.run.minibatch_size
+            logger.info(f"{key} - Total IO Time: {total_time:.2f}s")
+            logger.info(f"{key} - Total images read per batch: {self.args.run.minibatch_size}")
+            logger.info(f"{key} - Average Image IO Throughput: { images_read / total_time:.3f}")
 
     def make_trainer(self):
 
@@ -270,7 +335,7 @@ class exec(object):
 
 
 
-@hydra.main(version_base=None, config_path="../src/config", config_name="config")
+@hydra.main(version_base=None, config_path="../src/config/recipes/", config_name="config")
 def main(cfg : OmegaConf) -> None:
 
     s = exec(cfg)

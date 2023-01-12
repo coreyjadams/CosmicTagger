@@ -5,12 +5,14 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
 class DistributedMode(Enum):
-    DDP     = 0
-    horovod = 1
+    DDP       = 0
+    horovod   = 1
+    deepspeed = 2
 
 @dataclass
 class Framework:
-    name: str = MISSING
+    name:    str = MISSING
+    sparse: bool = False
 
 @dataclass
 class Tensorflow(Framework):
@@ -21,10 +23,16 @@ class Tensorflow(Framework):
 @dataclass
 class Torch(Framework):
     name:             str             = "torch"
-    sparse:           bool            = False
+    distributed_mode: DistributedMode = DistributedMode.DDP
+    oversubscribe:                int = 1
+
+@dataclass
+class Lightning(Framework):
+    name:             str             = "lightning"
     distributed_mode: DistributedMode = DistributedMode.DDP
     oversubscribe:                int = 1
 
 cs = ConfigStore.instance()
 cs.store(group="framework", name="tensorflow", node=Tensorflow)
 cs.store(group="framework", name="torch", node=Torch)
+cs.store(group="framework", name="lightning", node=Lightning)

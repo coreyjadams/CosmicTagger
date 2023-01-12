@@ -22,6 +22,10 @@ class Precision(Enum):
     bfloat16 = 2
     float16  = 3
 
+class RunUnit(Enum):
+    epoch     = 0
+    iteration = 1
+
 # @dataclass
 # class CosmicTagger:
 #     network:            Network     = Network()
@@ -33,8 +37,9 @@ class Precision(Enum):
 class Run:
     distributed:        bool        = True
     compute_mode:       ComputeMode = ComputeMode.GPU
-    iterations:         int         = 500
-    epoch:              int         = 1000
+    run_length:         int         = 20
+    run_units:          RunUnit     = RunUnit.epoch 
+    # epoch:              int         = 1000
     aux_iterations:     int         = 10
     minibatch_size:     int         = 2
     # aux_minibatch_size: int         = MISSING
@@ -71,7 +76,7 @@ class Config:
 
     run:        Run       = MISSING
     mode:       Mode      = MISSING
-    data:       Any       = MISSING
+    data:       Data      = MISSING
     framework:  Framework = MISSING
     network:    Network   = MISSING
     output_dir: str       = "output/"
