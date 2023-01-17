@@ -10,6 +10,7 @@ logger.propogate = False
 
 
 import numpy
+import pandas as pd
 
 
 import torch
@@ -57,7 +58,7 @@ class torch_trainer(trainercore):
     '''
     def __init__(self,args):
         trainercore.__init__(self, args)
-
+        self.local_df = []
 
     def init_network(self):
         from src.config import ConvMode
@@ -401,7 +402,7 @@ class torch_trainer(trainercore):
         return
 
 
-    def _calculate_accuracy(self, network_dict, labels_dict):
+    def _calculate_accuracy(self, network_dict, labels_dict, batch_reduce=True):
         ''' Calculate the accuracy.
 
             Images received here are not sparse but dense.
@@ -414,7 +415,7 @@ class torch_trainer(trainercore):
         if self.args.network.vertex.active:
             network_dict['predicted_vertex'] = self.predict_vertex(network_dict)
 
-        return self.acc_calc(network_dict, labels_dict)
+        return self.acc_calc(network_dict, labels_dict, batch_reduce)
 
     def predict_vertex(self, network_dict):
 
@@ -457,7 +458,7 @@ class torch_trainer(trainercore):
         return vertex_prediction
 
 
-    def _compute_metrics(self, network_dict, labels_dict, loss_dict):
+    def _compute_metrics(self, network_dict, labels_dict, loss_dict, batch_reduce=True):
 
         with torch.no_grad():
             # Call all of the functions in the metrics dictionary:
@@ -466,7 +467,7 @@ class torch_trainer(trainercore):
             if loss_dict is not None:
                 for key in loss_dict:
                     metrics[f'loss/{key}'] = loss_dict[key].data
-            accuracy = self._calculate_accuracy(network_dict, labels_dict)
+            accuracy = self._calculate_accuracy(network_dict, labels_dict, batch_reduce)
             accuracy.update(metrics)
 
         return accuracy
@@ -928,22 +929,70 @@ class torch_trainer(trainercore):
         with torch.no_grad():
             if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
                 with torch.cuda.amp.autocast():
-                    logits_image, labels_image = self.forward_pass(minibatch_data)
+                    logits_dict, labels_dict = self.forward_pass(minibatch_data)
             else:
-                logits_image, labels_image = self.forward_pass(minibatch_data)
+                logits_dict, labels_dict = self.forward_pass(minibatch_data)
 
 
 
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss
-            # loss = self.loss_calculator(labels_image, logits_image)
+            # loss = self.loss_calculator(labels_dict, logits_dict)
 
             # Compute the metrics for this iteration:
-            metrics = self._compute_metrics(logits_image, labels_image, loss_dict=None)
+            metrics = self._compute_metrics(logits_dict, labels_dict, loss_dict=None, batch_reduce=False)
+
+            # We can count the number of neutrino id'd pixels per plane:
+            n_neutrino_pixels = [ torch.sum(torch.argmax(p, axis=1) == 2, axis=(1,2)) for p in logits_dict["segmentation"]]
+            predicted_vertex = self.predict_vertex(logits_dict)
+            predicted_label = torch.softmax(logits_dict["event_label"],axis=1)
+            predicted_label = torch.argmax(predicted_label, axis=1)
+            prediction_score = torch.max(predicted_label)
+            additional_info = {
+                "index"            : numpy.asarray(minibatch_data["entries"]),
+                "event_id"         : numpy.asarray(minibatch_data["event_ids"]),
+                "energy"           : minibatch_data["vertex"]["energy"],
+                # "predicted_vertex" : predicted_vertex,
+                "predicted_vertex0h" : predicted_vertex[:,0,0],
+                "predicted_vertex0w" : predicted_vertex[:,0,1],
+                "predicted_vertex1h" : predicted_vertex[:,1,0],
+                "predicted_vertex1w" : predicted_vertex[:,1,1],
+                "predicted_vertex2h" : predicted_vertex[:,2,0],
+                "predicted_vertex2w" : predicted_vertex[:,2,1],
+                # "predicted_vertex2" : predicted_vertex[:,2,:],
+                # "true_vertex"      : labels_dict["vertex"]["xy_loc"],
+                "true_vertex0h"      : labels_dict["vertex"]["xy_loc"][:,0,0],
+                "true_vertex0w"      : labels_dict["vertex"]["xy_loc"][:,0,1],
+                "true_vertex1h"      : labels_dict["vertex"]["xy_loc"][:,1,0],
+                "true_vertex1w"      : labels_dict["vertex"]["xy_loc"][:,1,1],
+                "true_vertex2h"      : labels_dict["vertex"]["xy_loc"][:,2,0],
+                "true_vertex2w"      : labels_dict["vertex"]["xy_loc"][:,2,1],
+                "vertex_3dx"         : minibatch_data["vertex"]["xyz_loc"]["_x"],
+                "vertex_3dy"         : minibatch_data["vertex"]["xyz_loc"]["_y"],
+                "vertex_3dz"         : minibatch_data["vertex"]["xyz_loc"]["_z"],
+                "N_neut_pixels0"     : n_neutrino_pixels[0],
+                "N_neut_pixels1"     : n_neutrino_pixels[1],
+                "N_neut_pixels2"     : n_neutrino_pixels[2],
+                "predicted_label"  : predicted_label,
+                "prediction_score"  : prediction_score,
+                "true_label"       : labels_dict["event_label"],
+            }
+
+            # Move everything in the dictionary to CPU:
+            additional_info.update(metrics)
+            for key in additional_info.keys():
+                if type(additional_info[key]) == torch.Tensor:
+                    additional_info[key] = additional_info[key].cpu().numpy()
+
+            self.local_df.append(pd.DataFrame.from_dict(additional_info))
+
+            # Reduce the metrics over the batch size here:
+            metrics = { key : torch.mean(metrics[key], axis=0) for key in metrics.keys() }
+
             self.accumulate_metrics(metrics)
 
-
+            # print(minibatch_data)
             self.log(metrics, saver="ana")
 
         self._global_step += 1
@@ -962,6 +1011,13 @@ class torch_trainer(trainercore):
                 # self.inference_metrics[f"{key}_sq"] += metrics[key]**2
 
     def inference_report(self):
+
+        if hasattr(self, "local_df") and self.local_df is not None:
+            local_df = pd.concat(self.local_df)
+            outdir = self.args.output_dir
+            print(outdir)
+            local_df.to_csv(f"{outdir}/rank_{self._rank}_{self.args.run.id}.csv")
+
         if not hasattr(self, "inference_metrics"):
             return
         n = self.inference_metrics["n"]

@@ -18,7 +18,7 @@ NRANKS_PER_NODE=4
 
 let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 
-LOCAL_BATCH_SIZE=1
+LOCAL_BATCH_SIZE=12
 let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
 echo "Global batch size: ${GLOBAL_BATCH_SIZE}"
@@ -36,18 +36,19 @@ module load cray-hdf5/1.12.1.3
 export NCCL_COLLNET_ENABLE=1
 export NCCL_NET_GDR_LEVEL=PHB
 
+WEIGHTS_DIR=/lus/grand/projects/datascience/cadams/CosmicTaggerVertexEventID/torch/uresnet/uresnet2-vd5-ds1-128/checkpoints/
+VD=5
+
+# WEIGHTS_DIR=/lus/grand/projects/datascience/cadams/CosmicTaggerVertexEventID/torch/uresnet/uresnet2-vd1-ds1-128/checkpoints/
+# VD=1
+
 mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind=none \
 python bin/exec.py \
---config-name uresnet2 \
-run.id=uresnet2-vd3-ds1-${GLOBAL_BATCH_SIZE} \
-output_dir=/lus/grand/projects/datascience/cadams/CosmicTaggerVertexEventID/ \
-data.downsample=1 \
+--config-name uresnet2-inference \
+run.id=uresnet2-vd${VD}-ds1 \
+mode.weights_location=${WEIGHTS_DIR} \
 run.distributed=True \
 run.minibatch_size=${GLOBAL_BATCH_SIZE} \
-run.iterations=25000 \
+run.iterations=117 \
 network.depth=6 \
-network.vertex.detach=True \
-network.vertex.depth=3 \
-network.classification.detach=True \
-network.n_initial_filters=64 \
-framework=torch
+network.vertex.depth=${VD} \
