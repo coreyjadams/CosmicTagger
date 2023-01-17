@@ -15,10 +15,10 @@ class RandomMode(Enum):
 
 @dataclass
 class DatasetPaths:
-    train: str  = "/data/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_val.h5"
-    test:  str  = "/data/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_test.h5"
-    val:   str  = "/data/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_val.h5"
-    active: Tuple[str] =  field(default_factory=list) 
+    train: str  = "/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_train.h5"
+    test:  str  = "/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_test.h5"
+    val:   str  = "/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_val.h5"
+    active: Tuple[str] =  field(default_factory=list)
 
 
 @dataclass
@@ -27,7 +27,7 @@ class Data:
     downsample:              int = 1
     data_format: DataFormatKind  = DataFormatKind.channels_last
     version:                 int = 2 # Pick 1 or 2
-    
+
 @dataclass
 class Real(Data):
     random_mode:      RandomMode = RandomMode.random_blocks

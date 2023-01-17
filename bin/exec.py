@@ -105,12 +105,12 @@ class exec(object):
             )
 
         return lr_schedule
-    
+
     def configure_datasets(self):
         """
         This function creates the non-framework iterable datasets used in this app.
 
-        They get converted to framework specific tools, if needed, in the 
+        They get converted to framework specific tools, if needed, in the
         framework specific code.
         """
 
@@ -124,27 +124,27 @@ class exec(object):
             event_id = True
 
         if self.args.data.synthetic:
-            datasets = { 
+            datasets = {
                 "synthetic" : create_larcv_dataset(
-                    data_args    = self.args.data, 
-                    batch_size   = self.args.run.minibatch_size, 
+                    data_args    = self.args.data,
+                    batch_size   = self.args.run.minibatch_size,
                     input_file   = None,
-                    distributed  = False, 
-                    event_id     = event_id, 
-                    vertex_depth = vertex_depth, 
-                    sparse       = False) 
+                    distributed  = False,
+                    event_id     = event_id,
+                    vertex_depth = vertex_depth,
+                    sparse       = False)
             }
         else:
             datasets = {
                 name : create_larcv_dataset(
-                    data_args    = self.args.data, 
-                    batch_size   = self.args.run.minibatch_size, 
+                    data_args    = self.args.data,
+                    batch_size   = self.args.run.minibatch_size,
                     input_file   = getattr(self.args.data.paths, name),
                     name         = name,
-                    distributed  = self.args.run.distributed, 
-                    event_id     = event_id, 
-                    vertex_depth = vertex_depth, 
-                    sparse       = self.args.framework.sparse) 
+                    distributed  = self.args.run.distributed,
+                    event_id     = event_id,
+                    vertex_depth = vertex_depth,
+                    sparse       = self.args.framework.sparse)
                 for name in self.args.data.paths.active
             }
 
@@ -188,8 +188,6 @@ class exec(object):
 
         self.make_trainer()
 
-
-
         if self.args.framework.name == "lightning":
             from src.utils.torch.lightning import train
             train(self.args, self.trainer, self.datasets)
@@ -200,7 +198,7 @@ class exec(object):
 
     def iotest(self):
 
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
 
         logger.info("Running IO Test")
 
@@ -217,9 +215,9 @@ class exec(object):
 
 
         for key, dataset in self.datasets.items():
-
+            logger.info(f"Reading dataset {key}")
             global_start = time.time()
-            total_reads = 0 
+            total_reads = 0
 
 
             # Determine the stopping point:
@@ -230,7 +228,6 @@ class exec(object):
 
             start = time.time()
             for i, minibatch in enumerate(dataset):
-                # mb = self.trainer.larcv_fetcher.fetch_next_batch("train", force_pop=True)
 
                 end = time.time()
                 if i >= break_i: break
@@ -355,8 +352,8 @@ class exec(object):
         elif self.args.framework.name == "lightning":
             from src.utils.torch import create_lightning_module
             self.trainer = create_lightning_module(
-                self.args, 
-                self.datasets, 
+                self.args,
+                self.datasets,
                 lr_schedule,
                 log_keys     = self.log_keys(),
                 hparams_keys = self.hparams_keys())

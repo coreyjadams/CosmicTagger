@@ -84,6 +84,9 @@ class LRSchedule:
             else:
                 return segment[local_index]
 
+        # Default return value:
+        return 0.0
+        
     def __call__(self, idx):
         return self.__getitem__(idx)
 
@@ -103,7 +106,7 @@ class WarmupFlatDecay(LRSchedule):
 
         segments = [
             Linear(
-                start_value = 0.0, 
+                start_value = 0.0,
                 stop_value  = self.peak_learning_rate,
                 length      = self.epoch_length
             ),
@@ -113,8 +116,8 @@ class WarmupFlatDecay(LRSchedule):
             ),
             Decay(
                 start_value = self.peak_learning_rate,
-                floor       = self.decay_floor, 
-                length      = self.epoch_length * self.decay_epochs, 
+                floor       = self.decay_floor,
+                length      = self.epoch_length * self.decay_epochs,
                 decay_rate  = 0.01,
             )
         ]
@@ -125,7 +128,7 @@ class WarmupFlatDecay(LRSchedule):
 
 class OneCycle(LRSchedule):
 
-    def __init__(self, min_learning_rate, peak_learning_rate, decay_floor, 
+    def __init__(self, min_learning_rate, peak_learning_rate, decay_floor,
                        epoch_length, decay_epochs, total_epochs):
         self.min_learning_rate = min_learning_rate
         self.peak_learning_rate = peak_learning_rate
@@ -143,7 +146,7 @@ class OneCycle(LRSchedule):
 
         self.segments = [
             Linear(
-                start_value = min_learning_rate, 
+                start_value = min_learning_rate,
                 stop_value  = self.peak_learning_rate,
                 length      = up_length
             ),
@@ -154,7 +157,7 @@ class OneCycle(LRSchedule):
             ),
             Decay(
                 start_value = self.min_learning_rate,
-                floor       = self.decay_floor, 
+                floor       = self.decay_floor,
                 length      = decay_length,
                 decay_rate  = 0.01,
             )

@@ -1,6 +1,8 @@
 import os
 import time
 
+import json
+
 from . import data_transforms
 import tempfile
 
@@ -179,7 +181,7 @@ def prepare_cosmic_tagger_config(batch_size, input_file, data_args, name,
     return io_config, data_keys
 
 
-def prepare_interface(batch_size, storage_name, larcv_interface, io_config, data_keys, color=None):
+def prepare_interface(batch_size, storage_name, larcv_interface, io_config, data_keys, color=0):
 
     """
     Not a pure function!  it changes state of the larcv_interface
@@ -294,10 +296,11 @@ def create_larcv_dataset(data_args, batch_size, input_file, name,
         # Now, fire up the interface:
         prepare_interface(
             batch_size,
-            storage_name = name,
+            storage_name    = name,
             larcv_interface = interface,
-            io_config = io_config,
-            data_keys = data_keys)
+            io_config       = io_config,
+            data_keys       = data_keys
+        )
 
         shape = image_shape(meta(data_args.version), 2**data_args.downsample)
 
@@ -348,7 +351,6 @@ class larcv_dataset(object):
 
 
     def __iter__(self):
-
         while True:
             batch = self.fetch_next_batch(self.storage_name, force_pop=True)
             yield batch
@@ -373,7 +375,6 @@ class larcv_dataset(object):
         pop = True
         if not force_pop:
             pop = False
-
 
         minibatch_data = self.larcv_interface.fetch_minibatch_data(self.storage_name,
             pop=pop,fetch_meta_data=metadata)
@@ -412,9 +413,9 @@ class larcv_dataset(object):
                 minibatch_data["event_label"],
                 self.data_args.data_format,
                 self.image_meta,
-
                 downsample_level)
-            minibatch_data["vertex"]["xyz_loc"] = minibatch_data["particle"]["_vtx"][:,0]
+            # print(minibatch_data["particle"]["_vtx"][:,0])
+            # minibatch_data["vertex"]["xyz_loc"] = numpy.copy(minibatch_data["particle"]["_vtx"][:,0])
 
 
 

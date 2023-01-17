@@ -87,7 +87,7 @@ class lightning_trainer(pl.LightningModule):
     a NotImplemented error.
 
     '''
-    def __init__(self, args, model, loss_calc, 
+    def __init__(self, args, model, loss_calc,
         acc_calc, lr_scheduler=None, log_keys = [], hparams_keys = [], vertex_meta = None):
         super().__init__()
 
@@ -166,8 +166,10 @@ class lightning_trainer(pl.LightningModule):
             opt = torch.optim.Adadelta(self.parameters(), learning_rate, eps=1e-6)
         else:
             opt = torch.optim.SGD(self.parameters(), learning_rate)
-        
-        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(opt, self.lr_scheduler, last_epoch=-1)
+
+        lr_fn = lambda x : self.lr_scheduler[x]
+
+        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(opt, lr_fn, last_epoch=-1)
 
         return [opt],[{"scheduler" : lr_scheduler, "interval": "step"}]
 
@@ -444,7 +446,7 @@ def create_lightning_module(args, datasets, lr_scheduler=None, log_keys = [], hp
     acc_calc = AccuracyCalculator(args)
 
 
-    model = lightning_trainer(args, network, loss_calc, 
+    model = lightning_trainer(args, network, loss_calc,
         acc_calc, lr_scheduler,
         log_keys     = log_keys,
         hparams_keys = hparams_keys,
@@ -490,7 +492,7 @@ def train(args, lightning_model, datasets):
 
     trainer = pl.Trainer(
         accelerator             = args.run.compute_mode.name.lower(),
-        devices                 = -1,
+        devices                 = 1,
         auto_select_gpus        = True,
         default_root_dir        = args.output_dir,
         precision               = precision,
@@ -505,6 +507,6 @@ def train(args, lightning_model, datasets):
     )
 
     trainer.fit(
-        lightning_model, 
+        lightning_model,
         train_dataloaders=datasets["train"],
     )
