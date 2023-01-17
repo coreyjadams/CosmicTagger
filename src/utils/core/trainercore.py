@@ -11,7 +11,7 @@ from collections import OrderedDict
 import numpy
 
 # larcv_fetcher can also do synthetic IO without any larcv installation
-from . larcvio   import larcv_fetcher
+# from . larcvio   import larcv_fetcher
 
 import datetime
 import pathlib
@@ -114,148 +114,6 @@ class trainercore(object):
     def initialize(self, io_only=True):
         self._initialize_io(color=0)
 
-    def _initialize_io(self, color=None):
-
-        if self.args.mode == "build_net": return
-
-
-        if not self.args.data.synthetic:
-            f = pathlib.Path(self.args.data.data_directory + self.args.data.file)
-            aux_f = pathlib.Path(self.args.data.data_directory + self.args.data.aux_file)
-        else:
-            f = None; aux_f = None
-
-        # Check that the training file exists:
-        if not self.args.data.synthetic and not f.exists():
-            raise Exception(f"Can not continue with file {f} - does not exist.")
-        if not self.args.data.synthetic and not aux_f.exists():
-            if self.is_training():
-                logger.warning("WARNING: Aux file does not exist.  Setting to None for training")
-                self.args.data.aux_file = ""
-            else:
-                # In inference mode, we are creating the aux file.  So we need to check
-                # that the directory exists.  Otherwise, no writing.
-                if not aux_f.parent.exists():
-                    logger.warning("WARNING: Aux file's directory does not exist.")
-                    self.args.data.aux_file = ""
-                elif self.args.data.aux_file is None or str(self.args.data.aux_file).lower() == "none":
-                    logger.warning("WARNING: no aux file set, so not writing inference results.")
-                    self.args.data.aux_file = ""
-
-
-        self._train_data_size = self.larcv_fetcher.prepare_cosmic_sample(
-            "train", f, self.args.run.minibatch_size, color)
-
-        if not self.args.data.synthetic and self.args.data.aux_file != "":
-            if self.is_training():
-                # Fetching data for on the fly testing:
-                self._aux_data_size = self.larcv_fetcher.prepare_cosmic_sample(
-                    "aux", aux_f, self.args.run.minibatch_size, color)
-            elif self.args.mode == ModeKind.inference:
-                self._aux_data_size = self.larcv_fetcher.prepare_writer(
-                    input_file = f, output_file = str(aux_f))
-
-
-    def build_lr_schedule(self, learning_rate_schedule = None):
-        # Define the learning rate sequence:
-
-
-
-        if learning_rate_schedule is None:
-            learning_rate_schedule = {
-                'warm_up' : {
-                    'function'      : 'linear',
-                    'start'         : 1e-4,
-                    'n_epochs'      : 1,
-                    'initial_rate'  : 0.00001,
-                },
-                'flat' : {
-                    'function'      : 'flat',
-                    'start'         : 1,
-                    'n_epochs'      : 6,
-                },
-                'decay' : {
-                    'function'      : 'decay',
-                    'start'         : 7,
-                    'n_epochs'      : 5,
-                        'floor'         : 0.1*self.args.mode.optimizer.learning_rate,
-                    'decay_rate'    : 0.99999
-                },
-            }
-
-        # one_cycle_schedule = {
-        #     'ramp_up' : {
-        #         'function'      : 'linear',
-        #         'start'         : 0,
-        #         'n_epochs'      : 10,
-        #         'initial_rate'  : 0.00001,
-        #         'final_rate'    : 0.001,
-        #     },
-        #     'ramp_down' : {
-        #         'function'      : 'linear',
-        #         'start'         : 10,
-        #         'n_epochs'      : 10,
-        #         'initial_rate'  : 0.001,
-        #         'final_rate'    : 0.00001,
-        #     },
-        #     'decay' : {
-        #         'function'      : 'decay',
-        #         'start'         : 20,
-        #         'n_epochs'      : 5,
-        #         'rate'          : 0.00001
-        #         'floor'         : 0.00001,
-        #         'decay_rate'    : 0.99
-        #     },
-        # }
-        # learning_rate_schedule = one_cycle_schedule
-
-        # We build up the functions we need piecewise:
-        func_list = []
-        cond_list = []
-
-        for i, key in enumerate(learning_rate_schedule):
-
-            # First, create the condition for this stage
-            start    = learning_rate_schedule[key]['start']
-            length   = learning_rate_schedule[key]['n_epochs']
-
-            if i +1 == len(learning_rate_schedule):
-                # Make sure the condition is open ended if this is the last stage
-                condition = lambda x, s=start, l=length: x >= s
-            else:
-                # otherwise bounded
-                condition = lambda x, s=start, l=length: x >= s and x < s + l
-
-
-            if learning_rate_schedule[key]['function'] == 'linear':
-
-                initial_rate = learning_rate_schedule[key]['initial_rate']
-                if 'final_rate' in learning_rate_schedule[key]: final_rate = learning_rate_schedule[key]['final_rate']
-                else: final_rate = self.args.mode.optimizer.learning_rate
-
-                function = lambda x, s=start, l=length, i=initial_rate, f=final_rate : numpy.interp(x, [s, s + l] ,[i, f] )
-
-            elif learning_rate_schedule[key]['function'] == 'flat':
-                if 'rate' in learning_rate_schedule[key]: rate = learning_rate_schedule[key]['rate']
-                else: rate = self.args.mode.optimizer.learning_rate
-
-                function = lambda x : rate
-
-            elif learning_rate_schedule[key]['function'] == 'decay':
-                decay    = learning_rate_schedule[key]['decay_rate']
-                floor    = learning_rate_schedule[key]['floor']
-                if 'rate' in learning_rate_schedule[key]: rate = learning_rate_schedule[key]['rate']
-                else: rate = self.args.mode.optimizer.learning_rate
-
-                function = lambda x, s=start, d=decay, f=floor: (rate-f) * numpy.exp( -(d * (x - s))) + f
-
-            cond_list.append(condition)
-            func_list.append(function)
-
-        self.lr_calculator = lambda x: numpy.piecewise(
-            x  / self.args.run.epoch,
-            [c(x  / self.args.run.epoch) for c in cond_list], func_list)
-
 
     def init_network(self):
         pass
@@ -349,9 +207,6 @@ class trainercore(object):
 
 
 
-    def store_parameters(self, metrics):
-
-        return
 
     def exit(self):
         self._exit = True

@@ -15,19 +15,11 @@ class RandomMode(Enum):
 
 @dataclass
 class DatasetPaths:
-    train: str  = "/data/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_train.h5"
+    train: str  = "/data/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_val.h5"
     test:  str  = "/data/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_test.h5"
     val:   str  = "/data/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_val.h5"
     active: Tuple[str] =  field(default_factory=list) 
 
-
-defaults = [
-    {"run"       : "base_run"},
-    {"mode"      : "train"},
-    {"data"      : ["train","val"]},
-    {"framework" : "tensorflow"},
-    {"network"   : "uresnet"}
-]
 
 @dataclass
 class Data:

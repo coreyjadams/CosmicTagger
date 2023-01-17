@@ -19,34 +19,33 @@ class OptimizerKind(Enum):
     adagrad  = 3
     adadelta = 4
 
-# class LRUnit(Enum):
-#     iteration = 0
-#     epoch     = 1
+@dataclass
+class LRScheduleConfig:
+    name:                 str = ""
+    peak_learning_rate: float = 1e-2
 
-# class LRFunction(Enum):
-#     linear    = 0
-#     flat      = 1
-#     decay     = 2
+@dataclass
+class OneCycleConfig(LRScheduleConfig):
+    name:                 str = "one_cycle"
+    min_learning_rate:  float = 1e-3
+    decay_floor:        float = 1e-4
+    decay_epochs:         int = 5 
 
-# @dataclass
-# class LRSegment():
-#     length: int  = 1
-#     start: float = 0.0
-#     end:   float = 0.0
-#     function: LRFunction = LRFunction.linear
-
-# @dataclass
-# class LRSchedule():
-#     units: LRUnit = LRUnit.iteration
-#     schedule: List(LRSegment) = list(LRSegment())
-
+@dataclass
+class WarmupFlatDecayConfig(LRScheduleConfig):
+    name:                 str = "standard"
+    decay_floor:        float = 1e-4
+    decay_epochs:         int = 5 
 
 @dataclass
 class Optimizer:
-    learning_rate:         float             = 1e-3
-    loss_balance_scheme:   LossBalanceScheme = LossBalanceScheme.focal
-    name:                  OptimizerKind     = OptimizerKind.adam
-    gradient_accumulation: int               = 1
+    lr_schedule:          LRScheduleConfig = WarmupFlatDecayConfig()
+    loss_balance_scheme: LossBalanceScheme = LossBalanceScheme.focal
+    name:                    OptimizerKind = OptimizerKind.adam
+    gradient_accumulation:             int = 1
 
 cs = ConfigStore.instance()
+
+cs.store(group="lr_schedule", name="one_cycle", node=OneCycleConfig)
+cs.store(group="lr_schedule", name="standard",  node=WarmupFlatDecayConfig)
 cs.store(name="optimizer", node=Optimizer)

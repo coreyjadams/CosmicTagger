@@ -12,7 +12,7 @@ from .data      import Data
 
 class ComputeMode(Enum):
     CPU   = 0
-    GPU   = 1
+    CUDA  = 1
     DPCPP = 2
     XPU   = 3
 
@@ -36,7 +36,7 @@ class RunUnit(Enum):
 @dataclass
 class Run:
     distributed:        bool        = True
-    compute_mode:       ComputeMode = ComputeMode.GPU
+    compute_mode:       ComputeMode = ComputeMode.CUDA
     run_length:         int         = 20
     run_units:          RunUnit     = RunUnit.epoch 
     # epoch:              int         = 1000

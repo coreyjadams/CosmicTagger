@@ -184,10 +184,8 @@ def prepare_interface(batch_size, storage_name, larcv_interface, io_config, data
     """
     Not a pure function!  it changes state of the larcv_interface
     """
-
     larcv_interface.prepare_manager(
         storage_name, io_config, batch_size, data_keys, color=color)
-
     # This queues up the next data
     # self._larcv_interface.prepare_next(name)
 
@@ -262,7 +260,7 @@ class synthetic_dataset(object):
 
         return minibatch_data
 
-def create_larcv_dataset(data_args, batch_size, input_file,
+def create_larcv_dataset(data_args, batch_size, input_file, name,
                          distributed=False, event_id=False, 
                          vertex_depth = None, sparse=False):
     """
@@ -282,7 +280,7 @@ def create_larcv_dataset(data_args, batch_size, input_file,
             seed=data_args.seed)
 
         # name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        name = data_args.__class__.__name__
+        # name = data_args.__class__.__name__
 
         # Next, prepare the config info for this interface:
         io_config, data_keys =  prepare_cosmic_tagger_config(
@@ -352,7 +350,7 @@ class larcv_dataset(object):
     def __iter__(self):
         
         while True:
-            batch = self.fetch_next_batch(self.storage_name)
+            batch = self.fetch_next_batch(self.storage_name, force_pop=True)
             yield batch
 
             if self.stop:
@@ -365,7 +363,8 @@ class larcv_dataset(object):
         return self.shape
 
     def batch_shape(seld):
-        return 
+        return batch_dims(self.data_args.data_format, self.image_meta, downsample, batch_size)
+
 
     def fetch_next_batch(self, name, force_pop=False):
 
@@ -440,25 +439,3 @@ class larcv_dataset(object):
 
 
         return minibatch_data
-
-# class larcv_fetcher(object):
-
-
-#     def __init__(self, mode, distributed, data_args, sparse, seed=None, vtx_depth=None):
-
-#         if mode not in ['train', 'inference', 'iotest']:
-#             raise Exception("Larcv Fetcher can't handle mode ", mode)
-
-
-
-#         self.data_args = data_args
-#         self.mode       = mode
-#         self.sparse     = sparse
-#         self.vtx_depth  = vtx_depth
-#         self.writer     = None
-
-
-
-#     def __iter__(self):
-#         yield self.fetch_next_batch(name=)
-

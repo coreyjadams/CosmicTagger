@@ -243,26 +243,32 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
 
 
     # First, determine the dimensionality of the output space of the vertex yolo network:
-    vertex_output_space = tuple(d // 2**vertex_depth  for d in image_shape )
+    vertex_output_space =tuple(d // 2**vertex_depth  for d in image_shape )
 
 
     if dataformat == DataFormatKind.channels_last:
-        vertex_labels = numpy.transpose(vertex_channels_first,(0,2,1))
+        # print(vertex_labels.shape)
+        vertex_labels = numpy.transpose(vertex_labels,(0,2,1))
+        origin = numpy.transpose(image_meta["origin"])
+        size   = numpy.transpose(image_meta["size"])
         vertex_presence_labels = numpy.zeros((batch_size,) + vertex_output_space + (3,), dtype="float32")
+        vertex_output_space_a  = numpy.reshape(numpy.asarray(vertex_output_space), (2,1))
     else:
         # Nimages, 3 planes, shape-per-plane
         vertex_presence_labels = numpy.zeros((batch_size, 3,) + vertex_output_space, dtype="float32")
-
+        origin = image_meta["origin"]
+        size   = image_meta["size"]
+        vertex_output_space_a  = numpy.asarray(vertex_output_space)
 
     n_pixels_vertex = 2**vertex_depth
 
 
     # To create the right bounding box location, we have to map the vertex x/z/y to a set of pixels.
-    corrected_vertex_position = vertex_labels - image_meta["origin"]
-    fractional_vertex_position = corrected_vertex_position / image_meta["size"]
+    corrected_vertex_position = vertex_labels - origin
+    fractional_vertex_position = corrected_vertex_position / size
 
-
-    vertex_output_space_anchor_box_float = vertex_output_space * fractional_vertex_position
+    # print(vertex_output_space.shape)
+    vertex_output_space_anchor_box_float = vertex_output_space_a * fractional_vertex_position
 
     vertex_output_space_anchor_box = vertex_output_space_anchor_box_float.astype("int")
 
@@ -271,8 +277,12 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
     batch_index = numpy.arange(batch_size).repeat(3) # 3 for 3 planes
     plane_index = numpy.tile(numpy.arange(3), batch_size) # Tile 3 times for 3 planes
 
-    h_index = numpy.concatenate(vertex_output_space_anchor_box[:,:,0])
-    w_index = numpy.concatenate(vertex_output_space_anchor_box[:,:,1])
+    if dataformat == DataFormatKind.channels_last:
+        h_index = numpy.concatenate(vertex_output_space_anchor_box[:,0,:])
+        w_index = numpy.concatenate(vertex_output_space_anchor_box[:,1,:])
+    else:
+        h_index = numpy.concatenate(vertex_output_space_anchor_box[:,:,0])
+        w_index = numpy.concatenate(vertex_output_space_anchor_box[:,:,1])
 
     if dataformat == DataFormatKind.channels_last:
         vertex_presence_labels[batch_index, h_index, w_index, plane_index] = 1.0

@@ -43,6 +43,7 @@ class exec(object):
         self.args.output_dir += f"/{self.args.framework.name}/"
         self.args.output_dir += f"/{self.args.network.name}/"
         self.args.output_dir += f"/{self.args.run.id}/"
+        self.args.output_dir += f"/ds{self.args.data.downsample}/"
 
         # Create the output directory if needed:
         if rank == 0:
@@ -54,7 +55,7 @@ class exec(object):
         self.validate_arguments()
 
         # Print the command line args to the log file:
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
         logger.info("Dumping launch arguments.")
         logger.info(sys.argv)
         logger.info(self.__str__())
@@ -63,6 +64,7 @@ class exec(object):
         self.datasets = self.configure_datasets()
         logger.info("Data pipeline ready.")
 
+        logger.handlers[0].flush()
 
     def run(self):
         if self.args.mode.name == ModeKind.train:
@@ -84,7 +86,26 @@ class exec(object):
             comm = MPI.COMM_WORLD
             return comm.Get_rank()
 
+    def configure_lr_schedule(self, epoch_length, max_epochs):
 
+
+
+        if self.args.mode.optimizer.lr_schedule.name == "one_cycle":
+            from src.utils.core import OneCycle
+            lr_schedule = OneCycle(self.args.mode.optimizer.lr_schedule)
+        elif self.args.mode.optimizer.lr_schedule.name == "standard":
+            from src.utils.core import WarmupFlatDecay
+            schedule_args = self.args.mode.optimizer.lr_schedule
+            lr_schedule = WarmupFlatDecay(
+                peak_learning_rate = schedule_args.peak_learning_rate,
+                decay_floor  = schedule_args.decay_floor,
+                epoch_length = epoch_length,
+                decay_epochs = schedule_args.decay_epochs,
+                total_epochs = max_epochs
+            )
+
+        return lr_schedule
+    
     def configure_datasets(self):
         """
         This function creates the non-framework iterable datasets used in this app.
@@ -119,6 +140,7 @@ class exec(object):
                     data_args    = self.args.data, 
                     batch_size   = self.args.run.minibatch_size, 
                     input_file   = getattr(self.args.data.paths, name),
+                    name         = name,
                     distributed  = self.args.run.distributed, 
                     event_id     = event_id, 
                     vertex_depth = vertex_depth, 
@@ -131,7 +153,7 @@ class exec(object):
 
     def configure_logger(self, rank):
 
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
         # Create a handler for STDOUT, but only on the root rank.
         # If not distributed, we still get 0 passed in here.
         if rank == 0:
@@ -166,13 +188,18 @@ class exec(object):
 
         self.make_trainer()
 
-        self.trainer.initialize()
-        self.trainer.batch_process()
+
+
+        if self.args.framework.name == "lightning":
+            from src.utils.torch.lightning import train
+            train(self.args, self.trainer, self.datasets)
+        else:
+            self.trainer.initialize()
+            self.trainer.batch_process(train_loaders=self.datasets["train"])
 
 
     def iotest(self):
 
-        # self.make_trainer()
         logger = logging.getLogger()
 
         logger.info("Running IO Test")
@@ -207,7 +234,6 @@ class exec(object):
 
                 end = time.time()
                 if i >= break_i: break
-
                 logger.info(f"{i}: Time to fetch a minibatch of data: {end - start:.2f}s")
                 start = time.time()
                 total_reads += 1
@@ -218,17 +244,79 @@ class exec(object):
             logger.info(f"{key} - Total images read per batch: {self.args.run.minibatch_size}")
             logger.info(f"{key} - Average Image IO Throughput: { images_read / total_time:.3f}")
 
-    def make_trainer(self):
+    def log_keys(self):
 
+        log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
+        if self.args.network.classification.active:
+            log_keys += ['Average/EventLabel',]
+        if self.args.network.vertex.active:
+            log_keys += ['Average/VertexDetection',]
+        if self.args.mode.name == ModeKind.train:
+            log_keys.append("loss/total")
+
+        return log_keys
+
+    def hparams_keys(self):
+
+        # Copy these:
+        hparams_keys = [ lk for lk in  self.log_keys()]
+        # Add to it
+        hparams_keys += ["Average/Neutrino_IoU"]
+        hparams_keys += ["Average/Cosmic_IoU"]
+        hparams_keys += ["Average/Total_Accuracy"]
+        hparams_keys += ["loss/segmentation"]
+        if self.args.network.classification.active:
+            hparams_keys += ['loss/event_label',]
+        if self.args.network.vertex.active:
+            hparams_keys += ['Average/VertexResolution',]
+            hparams_keys += ['loss/vertex/detection',]
+            hparams_keys += ['loss/vertex/localization',]
+
+        return hparams_keys
+
+
+    def set_run_length_info(self, dataset_length):
+        """
+        Compute the total number of epochs, and length per epoch
+
+        Sets state variables self.max_epochs and self.epoch_length
+        """
+
+
+        # Need to configure epoch length and number of epochs for the scheduler and trainer:
+        from src.config import RunUnit
+        if self.args.run.run_units == RunUnit.epoch:
+            self.max_epochs   = self.args.run.run_length
+            self.epoch_length = int(dataset_length / args.run.minibatch_size)
+            self.max_steps    = self.max_epochs * self.epoch_length
+        elif self.args.run.run_units == RunUnit.iteration:
+            # Max steps is easy:
+            self.max_steps    = self.args.run.run_length
+
+            self.epoch_length = int(self.max_steps / dataset_length)
+
+            # This is totally arbitrary but meant to ensure there are enough
+            # epochs in the lr scheduler
+            # It's not recommended to use this mode unless benchmarking.
+            self.max_epochs = None
+
+        return
+
+    def make_trainer(self):
 
         if 'environment_variables' in self.args.framework:
             for env in self.args.framework.environment_variables.keys():
                 os.environ[env] = self.args.framework.environment_variables[env]
 
-        if self.args.mode.name == ModeKind.iotest:
-            from src.utils.core import trainercore
-            self.trainer = trainercore.trainercore(self.args)
-            return
+        dataset_length = max([len(ds) for ds in self.datasets.values()])
+
+        self.set_run_length_info(dataset_length)
+
+
+        if self.args.mode.name == ModeKind.train:
+            lr_schedule = self.configure_lr_schedule(self.epoch_length, self.max_epochs)
+        else:
+            lr_schedule = None
 
         if self.args.framework.name == "tensorflow":
 
@@ -263,6 +351,15 @@ class exec(object):
             else:
                 from src.utils.torch import trainer
                 self.trainer = trainer.torch_trainer(self.args)
+
+        elif self.args.framework.name == "lightning":
+            from src.utils.torch import create_lightning_module
+            self.trainer = create_lightning_module(
+                self.args, 
+                self.datasets, 
+                lr_schedule,
+                log_keys     = self.log_keys(),
+                hparams_keys = self.hparams_keys())
 
 
     def inference(self):

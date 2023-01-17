@@ -7,6 +7,7 @@ data:
   version: 2
   paths:
     active:
+      - train
       - val
 
 
@@ -26,4 +27,4 @@ run:
   run_units: iteration
   precision: float32
   # epoch: 1000
-output_dir: "output/${framework.name}/${network.name}/${run.id}/ds${data.downsample}"
+output_dir: "output/"
