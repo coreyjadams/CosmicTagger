@@ -7,14 +7,16 @@ from collections import OrderedDict
 
 import logging
 logger = logging.getLogger("CosmicTagger")
-logger.propogate = False
+# logger.propogate = False
 
 import numpy
 
 
 import torch
 import pytorch_lightning as pl
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
+# logging.getLogger("lightning").setLevel(logging.ERROR)
+# logging.getLogger("torch").setLevel(logging.ERROR)
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -124,7 +126,6 @@ class lightning_trainer(pl.LightningModule):
         return labels_dict
 
     def forward(self, batch):
-
         network_dict = self.model(batch)
 
         return network_dict
@@ -384,6 +385,47 @@ class lightning_trainer(pl.LightningModule):
             logger.info(f"  {key}: {value:.4f}")
 
 
+from pytorch_lightning.plugins.environments import ClusterEnvironment
+class MPIClusterEnvironment(ClusterEnvironment):
+
+    @property
+    def creates_processes_externally(self) -> bool:
+        """Return True if the cluster is managed (you don't launch processes yourself)"""
+        return True
+
+    def world_size(self) -> int:
+        return int(os.environ["WORLD_SIZE"])
+
+    def set_world_size(self, size: int) -> None:
+        pass
+
+    def global_rank(self) -> int:
+        return int(os.environ["RANK"])
+
+    def set_global_rank(self, rank: int) -> None:
+        pass
+
+    def local_rank(self) -> int:
+        return int(os.environ["LOCAL_RANK"])
+
+    def node_rank(self) -> int:
+        return int(os.environ["NODE_RANK"])
+
+    @property
+    def main_address(self) -> str:
+        return os.environ["MASTER_ADDR"]
+
+
+
+    @property
+    def main_port(self) -> int:
+        return int(os.environ["MASTER_PORT"])
+
+    @staticmethod
+    def detect() -> bool:
+        return "WORLD_SIZE" in os.environ
+
+
 def build_network(args, image_size):
 
     from src.config import ConvMode
@@ -402,24 +444,8 @@ def build_network(args, image_size):
 
     return net
 
-def create_vertex_meta(args, image_meta, image_shape):
-
-    # To predict the vertex, we first figure out the size of each bounding box:
-    # Vertex comes out with shape :
-    # [batch_size, channels, max_boxes, 2*ndim (so 4, in this case)]
-    vertex_depth = args.network.depth - args.network.vertex.depth
-    vertex_output_space = tuple(d // 2**vertex_depth  for d in image_shape )
-    anchor_size = image_meta['size'] / vertex_output_space
-
-    origin = image_meta['origin']
-
-    return {
-        "origin"              : origin,
-        "vertex_output_space" : vertex_output_space,
-        "anchor_size"         : anchor_size
-    }
-
 from . data import create_torch_larcv_dataloader
+from src.networks.torch import create_vertex_meta
 
 def create_lightning_module(args, datasets, lr_scheduler=None, log_keys = [], hparams_keys = []):
 
@@ -477,22 +503,35 @@ def train(args, lightning_model, datasets):
         if args.framework.distributed_mode == DistributedMode.horovod:
             strategy = "horovod"
         elif args.framework.distributed_mode == DistributedMode.DDP:
-            strategy = "ddp"
+            from pytorch_lightning.strategies import DDPStrategy
+            strategy = DDPStrategy(
+                cluster_environment = MPIClusterEnvironment()
+            )
         elif args.framework.distributed_mode == DistributedMode.deepspeed:
             strategy = "deepspeed"
+
+        devices   = int(os.environ['LOCAL_SIZE'])
+        num_nodes = int(os.environ['N_NODES'])
+        plugins   = []
+        # if args.run.compute_mode == ComputeMode.CUDA:
+        #     os.environ['CUDA_VISIBLE_DEVICES'] = os.environ['LOCAL_RANK']
+        #     devices=1
     else:
-        strategy = None
+        plugins   = []
+        strategy  = None
+        devices   = 1
+        num_nodes = 1
 
     # Configure the logger:
     from pytorch_lightning.loggers import TensorBoardLogger
 
     tb_logger = TensorBoardLogger(args.output_dir + "/train/")
 
-    print(len(datasets["train"]))
 
     trainer = pl.Trainer(
         accelerator             = args.run.compute_mode.name.lower(),
-        devices                 = 1,
+        devices                 = devices,
+        num_nodes               = num_nodes,
         auto_select_gpus        = True,
         default_root_dir        = args.output_dir,
         precision               = precision,
@@ -502,6 +541,7 @@ def train(args, lightning_model, datasets):
         replace_sampler_ddp     = True,
         logger                  = tb_logger,
         max_epochs              = 2,
+        plugins                 = plugins,
         # benchmark               = True,
         accumulate_grad_batches = args.mode.optimizer.gradient_accumulation,
     )

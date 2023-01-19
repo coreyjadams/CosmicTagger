@@ -38,9 +38,9 @@ class Run:
     distributed:        bool        = True
     compute_mode:       ComputeMode = ComputeMode.CUDA
     run_length:         int         = 20
-    run_units:          RunUnit     = RunUnit.epoch 
+    run_units:          RunUnit     = RunUnit.epoch
     # epoch:              int         = 1000
-    aux_iterations:     int         = 10
+    val_iteration:      int         = 10
     minibatch_size:     int         = 2
     # aux_minibatch_size: int         = MISSING
     id:                 str         = MISSING

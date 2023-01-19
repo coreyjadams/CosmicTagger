@@ -1,5 +1,24 @@
 import torch
 
+
+def create_vertex_meta(args, image_meta, image_shape):
+
+    # To predict the vertex, we first figure out the size of each bounding box:
+    # Vertex comes out with shape :
+    # [batch_size, channels, max_boxes, 2*ndim (so 4, in this case)]
+    vertex_depth = args.network.depth - args.network.vertex.depth
+    vertex_output_space = tuple(d // 2**vertex_depth  for d in image_shape )
+    anchor_size = image_meta['size'] / vertex_output_space
+
+    origin = image_meta['origin']
+
+    return {
+        "origin"              : origin,
+        "vertex_output_space" : vertex_output_space,
+        "anchor_size"         : anchor_size
+    }
+
+
 def predict_vertex(network_dict, vertex_meta):
 
     # We also flatten to make the argmax operation easier:

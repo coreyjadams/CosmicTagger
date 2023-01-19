@@ -21,8 +21,7 @@ except:
     pass
 
 import logging
-logger = logging.getLogger()
-logger.propogate = False
+
 
 
 # set IPEX XPU device before importing IPEX
@@ -41,6 +40,7 @@ from .trainer import torch_trainer
 
 from src.config import DistributedMode, ComputeMode
 
+# class CTDeepSpeedEngine(deepspeed.DeepSpeedEngine)
 
 class distributed_trainer(torch_trainer):
     '''
@@ -49,10 +49,10 @@ class distributed_trainer(torch_trainer):
     a NotImplemented error.
 
     '''
-    def __init__(self, args):
+    def __init__(self, *args, **kwargs):
 
 
-        torch_trainer.__init__(self, args)
+        torch_trainer.__init__(self, *args, **kwargs)
         # Rely on the base class for most standard parameters, only
         # search for parameters relevant for distributed computing here
 
@@ -67,71 +67,27 @@ class distributed_trainer(torch_trainer):
             self._size            = hvd.size()
         else:
 
-            import socket
+            # In the exec.py file, I call a script that sets MPI
+            # variables in the environment for every rank.  So a lot of this
+            # is simpler than it used to be.
             import torch.distributed as dist
             from torch.nn.parallel import DistributedDataParallel as DDP
 
-            rank = MPI.COMM_WORLD.Get_rank()
+            rank       = int(os.environ['RANK'])
+            local_rank = int(os.environ['LOCAL_RANK'])
+            size       = int(os.environ['WORLD_SIZE'])
 
-
-            # look for these envariables:
-
-            local_rank_key_options = [
-                    'OMPI_COMM_WORLD_LOCAL_RANK',
-                    'MV2_COMM_WORLD_LOCAL_RANK',
-                    'MPI_LOCALRANKID',
-                    'PMI_LOCAL_RANK',
-                    ]
-            # testable default value:
-            local_rank = None
-            for key in local_rank_key_options:
-                if key in os.environ:
-                    local_rank = os.environ[key]
-                    logger.info(f"Determined local rank through environment variable {key}")
-                    break
-            if local_rank is None:
-                # Try the last-ditch effort of home-brewed local rank deterimination
-                from src.utils.core.mpi_utils import local_rank as lr
-                # This needs to be a collective call!
-                try:
-                    local_rank = lr()
-                except:
-                    logger.error("Can not determine local rank for DDP")
-                    raise Exception("DDP failed to initialize due to local rank issue")
-
-            size = MPI.COMM_WORLD.Get_size()
-            rank = MPI.COMM_WORLD.Get_rank()
-
-
-            os.environ["RANK"] = str(rank)
-            os.environ["WORLD_SIZE"] = str(size)
             # os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
 
             self._rank = rank
             self._size = size
             self._local_rank = local_rank
 
-            # It will want the master address too, which we'll broadcast:
-            if rank == 0:
-                master_addr = socket.gethostname()
-                sock = socket.socket()
-                sock.bind(('',0))
-                master_port  = sock.getsockname()[1]
-                master_port  = 2345
-            else:
-                master_addr = None
-                master_port = None
-            logger.info(f"DDP Using master IP {master_addr}")
-            master_addr = MPI.COMM_WORLD.bcast(master_addr, root=0)
-            master_port = MPI.COMM_WORLD.bcast(master_port, root=0)
-            os.environ["MASTER_ADDR"] = master_addr
-            os.environ["MASTER_PORT"] = str(master_port)
-
             # What backend?  nccl on GPU, gloo on CPU
             if self.args.run.compute_mode == ComputeMode.XPU:
                 # import torch_ccl
                 backend = 'ccl'
-            elif self.args.run.compute_mode == ComputeMode.GPU:
+            elif self.args.run.compute_mode == ComputeMode.CUDA:
                 if self.args.framework.oversubscribe > 1:
                     backend = 'gloo'
                 else:
@@ -158,7 +114,7 @@ class distributed_trainer(torch_trainer):
     def default_device_context(self):
 
         # Convert the input data to torch tensors
-        if self.args.run.compute_mode == ComputeMode.GPU:
+        if self.args.run.compute_mode == ComputeMode.CUDA:
             if 'CUDA_VISIBLE_DEVICES' in os.environ:
                 # Then, it's manually set, use it
                 return torch.cuda.device(0)
@@ -183,7 +139,7 @@ class distributed_trainer(torch_trainer):
 
     def default_device(self):
 
-        if self.args.run.compute_mode == ComputeMode.GPU:
+        if self.args.run.compute_mode == ComputeMode.CUDA:
             if 'CUDA_VISIBLE_DEVICES' in os.environ:
                 # Then, it's manually set, use it
                 return torch.device("cuda:0")
@@ -200,15 +156,15 @@ class distributed_trainer(torch_trainer):
 
     def init_optimizer(self):
 
-        # This takes the base optimizer (self._opt) and replaces
+        # This takes the base optimizer (self.opt) and replaces
         # it with a distributed version
 
         torch_trainer.init_optimizer(self)
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
-            self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
-            self._opt.param_groups[0]['capturable'] = True
-        self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
+            self.opt = hvd.DistributedOptimizer(self.opt, named_parameters=self._net.named_parameters())
+            self.opt.param_groups[0]['capturable'] = True
+        # self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.opt, self.lr_calculator, last_epoch=-1)
 
 
     def init_saver(self):
@@ -247,11 +203,11 @@ class distributed_trainer(torch_trainer):
             hvd.broadcast_parameters(self._net.state_dict(), root_rank = 0)
 
             # Broadcast the optimizer state:
-            hvd.broadcast_optimizer_state(self._opt, root_rank = 0)
+            hvd.broadcast_optimizer_state(self.opt, root_rank = 0)
 
             # Horovod doesn't actually move the optimizer onto a GPU:
-            if self.args.run.compute_mode == ComputeMode.GPU:
-                for state in self._opt.state.values():
+            if self.args.run.compute_mode == ComputeMode.CUDA:
+                for state in self.opt.state.values():
                     for k, v in state.items():
                         if torch.is_tensor(v):
                             state[k] = v.cuda()
@@ -267,7 +223,7 @@ class distributed_trainer(torch_trainer):
             if self.args.run.compute_mode == ComputeMode.XPU:
                 devices = ["xpu:{}".format(self._local_rank)]
                 self._net.to(devices[0])
-            elif self.args.run.compute_mode == ComputeMode.GPU:
+            elif self.args.run.compute_mode == ComputeMode.CUDA:
                 self._net.cuda()
 
             # print(self._net.parameters)
@@ -279,6 +235,10 @@ class distributed_trainer(torch_trainer):
             self._global_step = MPI.COMM_WORLD.bcast(self._global_step, root=0)
             if self.is_training():
                 state_dict = MPI.COMM_WORLD.bcast(self.lr_scheduler.state_dict(), root=0)
+
+        elif self.args.framework.distributed_mode == DistributedMode.DeepSpeed:
+
+            model_engine, optimizer
 
         # Load the state dict:
         if self.is_training():
@@ -317,7 +277,7 @@ class distributed_trainer(torch_trainer):
 
 
 
-    def log(self, metrics, saver=""):
+    def log(self, metrics, log_keys, saver):
 
         if self._rank == 0:
-            torch_trainer.log(self, metrics, saver)
+            torch_trainer.log(self, metrics, log_keys, saver)

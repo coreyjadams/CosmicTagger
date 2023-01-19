@@ -7,6 +7,13 @@ from logging import handlers
 
 import numpy
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+try:
+    import tensorflow as tf
+    tf.get_logger().setLevel('INFO')
+except:
+    pass
+
 # For configuration:
 from omegaconf import DictConfig, OmegaConf
 import hydra
@@ -55,7 +62,7 @@ class exec(object):
         self.validate_arguments()
 
         # Print the command line args to the log file:
-        logger = logging.getLogger("CosmicTagger")
+        logger = logging.getLogger()
         logger.info("Dumping launch arguments.")
         logger.info(sys.argv)
         logger.info(self.__str__())
@@ -82,9 +89,10 @@ class exec(object):
         if not self.args.run.distributed:
             return 0
         else:
-            from mpi4py import MPI
-            comm = MPI.COMM_WORLD
-            return comm.Get_rank()
+            from src.utils.core import mpi_init_and_local_rank
+            local_rank = mpi_init_and_local_rank(set_env=True, verbose=False)
+
+            return int(os.environ["RANK"])
 
     def configure_lr_schedule(self, epoch_length, max_epochs):
 
@@ -115,13 +123,16 @@ class exec(object):
         """
 
         # Check if we need vertex or eventID info:
+        event_id = False
+        if self.args.network.classification.active:
+            event_id = True
 
         if self.args.network.vertex.active:
             vertex_depth = self.args.network.vertex.depth
             event_id = True
+        else:
+            vertex_depth = None
 
-        if self.args.network.classification.active:
-            event_id = True
 
         if self.args.data.synthetic:
             datasets = {
@@ -153,7 +164,8 @@ class exec(object):
 
     def configure_logger(self, rank):
 
-        logger = logging.getLogger("CosmicTagger")
+        logger = logging.getLogger()
+        logger.propogate=False
         # Create a handler for STDOUT, but only on the root rank.
         # If not distributed, we still get 0 passed in here.
         if rank == 0:
@@ -161,6 +173,7 @@ class exec(object):
             formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
             stream_handler.setFormatter(formatter)
             handler = handlers.MemoryHandler(capacity = 0, target=stream_handler)
+            handler.setLevel(logging.INFO)
             logger.addHandler(handler)
 
             # Add a file handler too:
@@ -168,6 +181,7 @@ class exec(object):
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(formatter)
             file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
+            file_handler.setLevel(logging.INFO)
             logger.addHandler(file_handler)
 
             logger.setLevel(logging.INFO)
@@ -177,7 +191,7 @@ class exec(object):
             handler = logging.NullHandler()
             logger.addHandler(handler)
             logger.setLevel(logging.INFO)
-
+            # logging.getLogger().setLevel(logging.ERROR)
 
 
     def train(self):
@@ -192,13 +206,13 @@ class exec(object):
             from src.utils.torch.lightning import train
             train(self.args, self.trainer, self.datasets)
         else:
-            self.trainer.initialize()
-            self.trainer.batch_process(train_loaders=self.datasets["train"])
+            self.trainer.initialize(self.datasets)
+            self.trainer.batch_process(self.datasets, self.max_epochs, self.max_steps)
 
 
     def iotest(self):
 
-        logger = logging.getLogger("CosmicTagger")
+        logger = logging.getLogger()
 
         logger.info("Running IO Test")
 
@@ -344,10 +358,22 @@ class exec(object):
         elif self.args.framework.name == "torch":
             if self.args.run.distributed:
                 from src.utils.torch import distributed_trainer
-                self.trainer = distributed_trainer.distributed_trainer(self.args)
+                self.trainer = distributed_trainer.distributed_trainer(
+                    self.args,
+                    self.datasets,
+                    lr_schedule,
+                    log_keys     = self.log_keys(),
+                    hparams_keys = self.hparams_keys()
+                    )
             else:
                 from src.utils.torch import trainer
-                self.trainer = trainer.torch_trainer(self.args)
+                self.trainer = trainer.torch_trainer(
+                    self.args,
+                    self.datasets,
+                    lr_schedule,
+                    log_keys     = self.log_keys(),
+                    hparams_keys = self.hparams_keys()
+                    )
 
         elif self.args.framework.name == "lightning":
             from src.utils.torch import create_lightning_module
@@ -411,11 +437,11 @@ class exec(object):
 
         from src.config.data import DataFormatKind
 
-        logger = logging.getLogger()
 
         if self.args.framework.name == "torch":
             # In torch, only option is channels first:
             if self.args.data.data_format == DataFormatKind.channels_last:
+                logger = logging.getLogger()
                 logger.warning("Torch requires channels_first, switching automatically")
                 self.args.data.data_format = DataFormatKind.channels_first
 

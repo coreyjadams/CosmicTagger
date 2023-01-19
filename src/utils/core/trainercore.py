@@ -18,14 +18,21 @@ import pathlib
 
 
 import logging
-logger = logging.getLogger()
+# logger = logging.getLogger()
+# logger.critical("TEST 1")
+# logger.propogate = True
+# print(logger)
+# print(logger.handlers)
+# logger.critical("TEST 2")
+# logger.handlers[0].flush()
+# exit()
 
 import contextlib
 
 import tensorboardX
 
 
-from src.config import DataFormatKind, ModeKind
+from src.config import DataFormatKind, ModeKind, RunUnit
 
 class trainercore(object):
     '''
@@ -42,24 +49,23 @@ class trainercore(object):
         self._iteration     = 0
         self._global_step   = 0
         self.args           = args
-        self._rank          = None
+        self.rank           = None
         self._exit          = False
         self.latest_metrics = {}
 
-        if args.framework.name == "torch":
-            sparse = args.framework.sparse
-        else:
-            sparse = False
 
-        self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
-            mode        = args.mode.name.name,
-            distributed = args.run.distributed,
-            data_args   = args.data,
-            sparse      = sparse,
-            vtx_depth   = args.network.depth - args.network.vertex.depth )
-
-        if args.data.data_format == DataFormatKind.channels_first: self._channels_dim = 1
-        if args.data.data_format == DataFormatKind.channels_last : self._channels_dim = -1
+        # Just for benchmarking measurements:
+        self.post_one_time   = None
+        self.post_two_time   = None
+        self.iteration_start = None
+        self.times           = []
+        # if args.framework.name == "torch":
+        #     sparse = args.framework.sparse
+        # else:
+        #     sparse = False
+        #
+        # if args.data.data_format == DataFormatKind.channels_first: self._channels_dim = 1
+        # if args.data.data_format == DataFormatKind.channels_last : self._channels_dim = -1
 
         # Define a datatype for a profiling array.
         # It is going to be mostly 64bit timestamps for a number of points
@@ -81,29 +87,29 @@ class trainercore(object):
         ])
 
         # Create the baseline array:
-        self.profiling_array = numpy.zeros((args.run.iterations,), dtype=self.profiling_dtype)
-
-        self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
-        if self.args.network.classification.active:
-            self._log_keys += ['Average/EventLabel',]
-        if self.args.network.vertex.active:
-            self._log_keys += ['Average/VertexDetection',]
-        if self.is_training():
-            self._log_keys.append("loss/total")
-
-        # Copy these:
-        self._hparams_keys = [ lk for lk in  self._log_keys]
-        # Add to it
-        self._hparams_keys += ["Average/Neutrino_IoU"]
-        self._hparams_keys += ["Average/Cosmic_IoU"]
-        self._hparams_keys += ["Average/Total_Accuracy"]
-        self._hparams_keys += ["loss/segmentation"]
-        if self.args.network.classification.active:
-            self._hparams_keys += ['loss/event_label',]
-        if self.args.network.vertex.active:
-            self._hparams_keys += ['Average/VertexResolution',]
-            self._hparams_keys += ['loss/vertex/detection',]
-            self._hparams_keys += ['loss/vertex/localization',]
+        self.profiling_array = numpy.zeros((500,), dtype=self.profiling_dtype)
+        #
+        # self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
+        # if self.args.network.classification.active:
+        #     self._log_keys += ['Average/EventLabel',]
+        # if self.args.network.vertex.active:
+        #     self._log_keys += ['Average/VertexDetection',]
+        # if self.is_training():
+        #     self._log_keys.append("loss/total")
+        #
+        # # Copy these:
+        # self._hparams_keys = [ lk for lk in  self._log_keys]
+        # # Add to it
+        # self._hparams_keys += ["Average/Neutrino_IoU"]
+        # self._hparams_keys += ["Average/Cosmic_IoU"]
+        # self._hparams_keys += ["Average/Total_Accuracy"]
+        # self._hparams_keys += ["loss/segmentation"]
+        # if self.args.network.classification.active:
+        #     self._hparams_keys += ['loss/event_label',]
+        # if self.args.network.vertex.active:
+        #     self._hparams_keys += ['Average/VertexResolution',]
+        #     self._hparams_keys += ['loss/vertex/detection',]
+        #     self._hparams_keys += ['loss/vertex/localization',]
 
     def now(self):
         return numpy.datetime64(datetime.datetime.now())
@@ -124,33 +130,37 @@ class trainercore(object):
     def set_compute_parameters(self):
         pass
 
+    def log(self, metrics, log_keys=[], saver=''):
 
-    def log(self, metrics, kind, step):
+        if self._global_step % self.args.mode.logging_iteration == 0:
 
-        log_string = ""
+            self._current_log_time = datetime.datetime.now()
 
-        log_string += "{} Global Step {}: ".format(kind, step)
+            # Build up a string for logging:
+            if log_keys != []:
+                s = ", ".join(["{0}: {1:.3}".format(key, metrics[key]) for key in log_keys])
+            else:
+                s = ", ".join(["{0}: {1:.3}".format(key, metrics[key]) for key in metrics])
 
+            time_string = []
 
-        for key in metrics:
-            if key in self._log_keys and key != "global_step":
-                log_string += "{}: {:.3}, ".format(key, metrics[key])
+            if hasattr(self, "_previous_log_time"):
+            # try:
+                total_images = self.args.run.minibatch_size
+                images_per_second = total_images / (self._current_log_time - self._previous_log_time).total_seconds()
+                time_string.append("{:.2} Img/s".format(images_per_second))
 
-        if kind == "Train":
-            log_string += "Img/s: {:.2} ".format(metrics["images_per_second"])
-            log_string += "IO: {:.2} ".format(metrics["io_fetch_time"])
-        else:
-            log_string.rstrip(", ")
+            if 'io_fetch_time' in metrics.keys():
+                time_string.append("{:.2} IOs".format(metrics['io_fetch_time']))
 
-        logger.info(log_string)
+            if 'step_time' in metrics.keys():
+                time_string.append("{:.2} (Step)(s)".format(metrics['step_time']))
 
-        return
+            if len(time_string) > 0:
+                s += " (" + " / ".join(time_string) + ")"
 
-    def on_step_end(self):
-        pass
-
-    def on_epoch_end(self):
-        pass
+            self._previous_log_time = self._current_log_time
+            logging.getLogger().info("{} Step {} metrics: {}".format(saver, self._global_step, s))
 
     def metrics(self, metrics):
         # This function looks useless, but it is not.
@@ -169,22 +179,22 @@ class trainercore(object):
 
         top_dir = self.args.output_dir + "/profiles/"
 
-        if self._rank is None or self._rank == 0:
+        if self.rank is None or self.rank == 0:
             os.makedirs(top_dir, exist_ok=True)
-            name = top_dir + "profiling_info_rank_0"
+            name = top_dir + "profiling_inforank_0"
         else:
-            name = top_dir + f"profiling_info_rank_{self._rank}"
+            name = top_dir + f"profiling_inforank_{self.rank}"
 
         # This barrier enforces the root rank has made the folder before
         # anyone tries to write.
-        logger.info("Saving run profile information.")
+        logging.getLogger().info("Saving run profile information.")
 
         self.barrier()
 
         # If the file already exists, remove it:
 
         # Save the arguments too:
-        if self._rank is None or self._rank == 0:
+        if self.rank is None or self.rank == 0:
             with open(top_dir + "args.pkl", "wb") as f:
                 pickle.dump(self.args, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -224,56 +234,141 @@ class trainercore(object):
     def close_savers(self):
         pass
 
-    def batch_process(self):
+    def extend_profiling_array(self):
+        # Resize the profiling array if needed:
+        if self.profiling_index > len(self.profiling_array) - 1:
+            # Add 500 more rows:
+            self.profiling_array.resize((self.profiling_index + 500))
 
-        start = time.time()
-        post_one_time = None
-        post_two_time = None
+        return
 
-        times = []
+    def on_step_start(self):
+        self.extend_profiling_array()
+        self.profiling_array[self.profiling_index]["i"] = self._iteration
+        self.profiling_array[self.profiling_index]["start"] = self.now()
+        self.iteration_start = time.time()
 
-        # This is the 'master' function, so it controls a lot
+    def on_step_end(self):
+        if self.post_one_time is None:
+            self.post_one_time = time.time()
+        elif self.post_two_time is None:
+            self.post_two_time = time.time()
+        self.times.append(time.time() - self.iteration_start)
+        self.profiling_index += 1
+
+        # Checkpoint after every step
+        # (Not really, this function has logic to decide if it checkpoints)
+        with self.timing_context("checkpoint"):
+            self.checkpoint()
+
+    def on_epoch_start(self):
+        pass
+
+    def on_epoch_end(self):
+
+        self._epoch += 1
+        self._epoch_end = True
+        with self.timing_context("checkpoint"):
+            self.checkpoint()
+        self._epoch_end = False
 
 
-        self.profiling_index = 0
+    def train_one_epoch(self, train_loader, val_loader=None, max_steps=None):
+        self.on_epoch_start()
+        for i, batch in enumerate(train_loader):
 
-        # Run iterations
-        for self._iteration in range(self.args.run.iterations):
+            # Check step end condition:
+            if max_steps is not None:
+                 if self._iteration > max_steps: self._exit = True
 
             if self._exit: break
 
-            # Resize the profiling array if needed:
-            if self.profiling_index > len(self.profiling_array) - 1:
-                # Add 500 more rows:
-                self.profiling_array.resize((self.profiling_index + 500))
+            self.on_step_start()
+            with self.timing_context("train"):
+                self.train_step(batch)
+            # Validate one batch if using iterations as a measure:
+            if self.args.run.run_units == RunUnit.iteration and  self._iteration % self.args.run.val_iteration == 0:
+                if val_loader is not None: self.validate(val_loader, max_steps=1)
 
-            self.profiling_array[self.profiling_index]["i"] = self._iteration
-            self.profiling_array[self.profiling_index]["start"] = self.now()
-            with self.timing_context("iteration"):
-                iteration_start = time.time()
-                if self.is_training() and self._iteration >= self.args.run.iterations:
+            self.on_step_end()
+            self._iteration += 1
 
-                    logger.info('Finished training (iteration %d)' % self._iteration)
-                    self.checkpoint()
-                    break
+        if self.args.run.run_units == RunUnit.epoch:
+            # Validate an entire epoch if we're using epochs:
+            if val_loader is not None: self.validate(val_loader, max_steps = None)
+        self.on_epoch_end()
+
+    def validate(self, val_loader, max_steps):
+
+        metrics_list = []
+        # Print out on every iteration or none?
+        store = False
+        if max_steps is not None: store=True
+
+        for i, batch in enumerate(val_loader):
+            if max_steps is not None and i >= max_steps:
+                break
+            with self.timing_context("val"):
+                metrics_list.append(self.val_step(batch, store))
 
 
-                if self.is_training():
-                    with self.timing_context("val"):
-                        self.val_step()
-                    with self.timing_context("train"):
-                        self.train_step()
-                    with self.timing_context("checkpoint"):
-                        self.checkpoint()
-                else:
-                    self.ana_step()
+        self.finalize_metrics(metrics_list)
 
-                if post_one_time is None:
-                    post_one_time = time.time()
-                elif post_two_time is None:
-                    post_two_time = time.time()
-                times.append(time.time() - iteration_start)
-            self.profiling_index += 1
+    def finalize_metrics(self, metrics_list):
+        pass
+
+    def batch_process(self, data_loaders, max_epochs=None, max_steps=None):
+
+        logger = logging.getLogger()
+
+
+        start = time.time()
+        print("Logger?")
+        logger.info("Test 1")
+
+        # This is the 'master' function, so it controls a lot
+
+        self.profiling_index = 0
+
+        # Start looping:
+
+        self._iteration = 0
+        self._epoch     = 0
+
+        val_loader = data_loaders['val'] if 'val' in data_loaders else None
+        logger.info("Test 2")
+
+        if self.is_training():
+            while not self._exit:
+                if max_epochs is not None:
+                    if self._epoch > max_epochs: self._exit = True
+                self.train_one_epoch(data_loaders["train"], data_loaders["val"], max_steps)
+
+
+            self.checkpoint()
+
+        else:
+            self.analyze(data_loaders["test"])
+
+        # Check step end condition:
+        if max_steps is not None:
+            if self._iteration > max_steps: self._exit = True
+
+
+        # # Run iterations
+        # for self._iteration in range(self.args.run.iterations):
+        #
+        #
+        #
+        #     with self.timing_context("iteration"):
+        #         if self.is_training() and self._iteration >= self.args.run.iterations:
+        #
+        #             logger.info('Finished training (iteration %d)' % self._iteration)
+        #             break
+        #
+        #
+        #
+
 
 
         self.write_profiling_info()
@@ -292,22 +387,24 @@ class trainercore(object):
         if self.args.mode.name == ModeKind.inference:
             self.inference_report()
 
+        print(logger)
+        print(logger.handlers)
         logger.info(f"Total time to batch_process: {end - start:.4f}")
-        if post_one_time is not None:
-            throughput = (self.args.run.iterations - 1) * total_images_per_batch
-            throughput /= (end - post_one_time)
+        if self.post_one_time is not None:
+            throughput = (self._iteration - 1) * total_images_per_batch
+            throughput /= (end - self.post_one_time)
             logger.info("Total time to batch process except first iteration: "
-                        f"{end - post_one_time:.4f}"
+                        f"{end - self.post_one_time:.4f}"
                         f", throughput: {throughput:.4f}")
-        if post_two_time is not None:
-            throughput = (self.args.run.iterations - 2) * total_images_per_batch
-            throughput /= (end - post_two_time)
+        if self.post_two_time is not None:
+            throughput = (self._iteration - 2) * total_images_per_batch
+            throughput /= (end - self.post_two_time)
             logger.info("Total time to batch process except first two iterations: "
-                        f"{end - post_two_time:.4f}"
+                        f"{end - self.post_two_time:.4f}"
                         f", throughput: {throughput:.4f}")
-        if len(times) > 40:
+        if len(self.times) > 40:
             throughput = (40) * total_images_per_batch
-            throughput /= (numpy.sum(times[-40:]))
+            throughput /= (numpy.sum(self.times[-40:]))
             logger.info("Total time to batch process last 40 iterations: "
-                        f"{numpy.sum(times[-40:]):.4f}"
+                        f"{numpy.sum(self.times[-40:]):.4f}"
                         f", throughput: {throughput:.4f}" )
