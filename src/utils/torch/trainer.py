@@ -16,7 +16,7 @@ import pandas as pd
 import torch
 torch.autograd.set_detect_anomaly(True)
 try:
-    import ipex
+    import intel_extension_for_pytorch as ipex
 except:
     pass
 
@@ -45,9 +45,8 @@ except:
     from tensorboardX import SummaryWriter
 
 import datetime
+from src.config import ComputeMode, Precision, ConvMode, ModeKind, DataFormatKind
 
-
-from src.config import ComputeMode, Precision, ConvMode, ModeKind
 
 class torch_trainer(trainercore):
     '''
@@ -75,7 +74,9 @@ class torch_trainer(trainercore):
 
             self._raw_net = UResNet3D(self.args.network, self.larcv_fetcher.image_size())
 
-
+        if self.args.data.data_format == DataFormatKind.channels_last:
+            if self.args.run.compute_mode == ComputeMode.XPU:
+                self._raw_net = self._raw_net.to("xpu").to(memory_format=torch.channels_last)
 
 
         if self.is_training():
@@ -681,6 +682,11 @@ class torch_trainer(trainercore):
 
             if self.args.data.synthetic:
                 minibatch_data['image'] = minibatch_data['image'].type(target_precision)
+
+            if self.args.run.compute_mode == ComputeMode.XPU:
+                if self.args.data.data_format == DataFormatKind.channels_last:
+                    minibatch_data["image"] == minibatch_data['image'].to(memory_format=torch.channels_last)
+                    minibatch_data["label"] == minibatch_data['label'].to(memory_format=torch.channels_last)
 
         return minibatch_data
 

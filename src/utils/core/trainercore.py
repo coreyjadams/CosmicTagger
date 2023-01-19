@@ -48,13 +48,18 @@ class trainercore(object):
 
         if args.framework.name == "torch":
             sparse = args.framework.sparse
+            io_dataformat = DataFormatKind.channels_first
         else:
             sparse = False
+            io_dataformat = args.data.data_format
+        # Intervene here to make sure we use the right data format:
+        data_args = copy.copy(args.data)
+        data_args.data_format = io_dataformat
 
         self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
             mode        = args.mode.name.name,
             distributed = args.run.distributed,
-            data_args   = args.data,
+            data_args   = data_args,
             sparse      = sparse,
             vtx_depth   = args.network.depth - args.network.vertex.depth )
 

@@ -16,7 +16,7 @@ from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
 try:
-    import torch_ipex as ipex
+    import intel_extension_for_pytorch as ipex
 except:
     pass
 
@@ -129,7 +129,7 @@ class distributed_trainer(torch_trainer):
 
             # What backend?  nccl on GPU, gloo on CPU
             if self.args.run.compute_mode == ComputeMode.XPU:
-                # import torch_ccl
+                import oneccl_bindings_for_pytorch
                 backend = 'ccl'
             elif self.args.run.compute_mode == ComputeMode.GPU:
                 if self.args.framework.oversubscribe > 1:
