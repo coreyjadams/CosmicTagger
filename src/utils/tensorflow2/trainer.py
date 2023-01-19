@@ -25,8 +25,8 @@ tf.get_logger().setLevel('INFO')
 floating_point_format = tf.float32
 integer_format = tf.int64
 
-import logging
-logger = logging.getLogger()
+from src.utils import logging
+logger = logging.getLogger("CosmicTagger")
 
 from src.config import Precision, ComputeMode, ModeKind
 

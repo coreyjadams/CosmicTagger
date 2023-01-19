@@ -4,7 +4,7 @@ import time
 import tempfile
 from collections import OrderedDict
 
-import logging
+from src.utils import logging
 
 
 import numpy
@@ -190,7 +190,7 @@ class torch_trainer(trainercore):
 
 
     def print_network_info(self, verbose=False):
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
         if verbose:
             for name, var in self._net.named_parameters():
                 logger.info(f"{name}: {var.shape}")
@@ -244,7 +244,7 @@ class torch_trainer(trainercore):
         ''' This function attempts to restore the model from file
         '''
 
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
         def check_inference_weights_path(file_path):
 
             # Look for the "checkpoint" file:
@@ -967,7 +967,7 @@ class torch_trainer(trainercore):
                 # self.inference_metrics[f"{key}_sq"] += metrics[key]**2
 
     def inference_report(self):
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
 
         if hasattr(self, "local_df") and self.local_df is not None:
             local_df = pd.concat(self.local_df)
