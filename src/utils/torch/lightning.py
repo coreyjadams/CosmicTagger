@@ -5,7 +5,7 @@ import tempfile
 import datetime
 from collections import OrderedDict
 
-import logging
+from src.utils import logging
 logger = logging.getLogger("CosmicTagger")
 # logger.propogate = False
 
@@ -41,45 +41,6 @@ from src.networks.torch         import LossCalculator, AccuracyCalculator, predi
 
 
 from src.config import ComputeMode, Precision, ConvMode, ModeKind, OptimizerKind
-
-from pytorch_lightning.loggers.logger import Logger
-from pytorch_lightning.utilities import rank_zero_only
-
-# class CTLogger(Logger):
-
-#     @property
-#     def name(self):
-#         return "CosmicTagger"
-
-#     @property
-#     def version(self):
-#         # Return the experiment version, int or str.
-#         return "0.1"
-
-#     @rank_zero_only
-#     def log_hyperparams(self, params):
-#         # params is an argparse.Namespace
-#         # your code to record hyperparameters goes here
-#         pass
-
-#     @rank_zero_only
-#     def log_metrics(self, metrics, step):
-#         # metrics is a dictionary of metric names and values
-#         # your code to record metrics goes here
-#         pass
-
-#     @rank_zero_only
-#     def save(self):
-#         # Optional. Any code necessary to save logger data goes here
-#         pass
-
-#     @rank_zero_only
-#     def finalize(self, status):
-#         # Optional. Any code that needs to be run after training
-#         # finishes goes here
-#         pass
-
-
 
 
 class lightning_trainer(pl.LightningModule):
@@ -127,7 +88,6 @@ class lightning_trainer(pl.LightningModule):
 
     def forward(self, batch):
         network_dict = self.model(batch)
-
         return network_dict
 
 

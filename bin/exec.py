@@ -2,8 +2,8 @@
 import os,sys,signal
 import time
 import pathlib
-import logging
-from logging import handlers
+# import logging
+# from logging import handlers
 
 import numpy
 
@@ -35,6 +35,9 @@ from src.config.mode import ModeKind
 
 from src.utils.io import create_larcv_dataset
 
+# Custom logger:
+from src.utils import logging
+
 import atexit
 
 class exec(object):
@@ -62,7 +65,7 @@ class exec(object):
         self.validate_arguments()
 
         # Print the command line args to the log file:
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
         logger.info("Dumping launch arguments.")
         logger.info(sys.argv)
         logger.info(self.__str__())
@@ -71,7 +74,6 @@ class exec(object):
         self.datasets = self.configure_datasets()
         logger.info("Data pipeline ready.")
 
-        logger.handlers[0].flush()
 
     def run(self):
         if self.args.mode.name == ModeKind.train:
@@ -164,39 +166,46 @@ class exec(object):
 
     def configure_logger(self, rank):
 
-        logger = logging.getLogger()
-        logger.propogate=False
-        # Create a handler for STDOUT, but only on the root rank.
-        # If not distributed, we still get 0 passed in here.
+        logger = logging.getLogger("CosmicTagger")
         if rank == 0:
-            stream_handler = logging.StreamHandler(sys.stdout)
-            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-            stream_handler.setFormatter(formatter)
-            handler = handlers.MemoryHandler(capacity = 0, target=stream_handler)
-            handler.setLevel(logging.INFO)
-            logger.addHandler(handler)
-
-            # Add a file handler too:
-            log_file = self.args.output_dir + "/process.log"
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setFormatter(formatter)
-            file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
-            file_handler.setLevel(logging.INFO)
-            logger.addHandler(file_handler)
-
+            logger.setFile(self.args.output_dir + "/process.log")
             logger.setLevel(logging.INFO)
         else:
-            # in this case, MPI is available but it's not rank 0
-            # create a null handler
-            handler = logging.NullHandler()
-            logger.addHandler(handler)
-            logger.setLevel(logging.INFO)
-            # logging.getLogger().setLevel(logging.ERROR)
+            logger.setLevel(999)
+
+        # logger = logging.getLogger("CosmicTagger")
+        # logger.propogate=False
+        # # Create a handler for STDOUT, but only on the root rank.
+        # # If not distributed, we still get 0 passed in here.
+        # if rank == 0:
+        #     stream_handler = logging.StreamHandler(sys.stdout)
+        #     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        #     stream_handler.setFormatter(formatter)
+        #     handler = handlers.MemoryHandler(capacity = 0, target=stream_handler)
+        #     handler.setLevel(logging.INFO)
+        #     logger.addHandler(handler)
+        #
+        #     # Add a file handler too:
+        #     log_file = self.args.output_dir + "/process.log"
+        #     file_handler = logging.FileHandler(log_file)
+        #     file_handler.setFormatter(formatter)
+        #     file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
+        #     file_handler.setLevel(logging.INFO)
+        #     logger.addHandler(file_handler)
+        #
+        #     logger.setLevel(logging.INFO)
+        # else:
+        #     # in this case, MPI is available but it's not rank 0
+        #     # create a null handler
+        #     handler = logging.NullHandler()
+        #     logger.addHandler(handler)
+        #     logger.setLevel(logging.INFO)
+        #     # logging.getLogger("CosmicTagger").setLevel(logging.ERROR)
 
 
     def train(self):
 
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
 
         logger.info("Running Training")
 
@@ -212,7 +221,7 @@ class exec(object):
 
     def iotest(self):
 
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
 
         logger.info("Running IO Test")
 
@@ -388,7 +397,7 @@ class exec(object):
     def inference(self):
 
 
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
 
         logger.info("Running Inference")
         logger.info(self.__str__())
@@ -441,7 +450,7 @@ class exec(object):
         if self.args.framework.name == "torch":
             # In torch, only option is channels first:
             if self.args.data.data_format == DataFormatKind.channels_last:
-                logger = logging.getLogger()
+                logger = logging.getLogger("CosmicTagger")
                 logger.warning("Torch requires channels_first, switching automatically")
                 self.args.data.data_format = DataFormatKind.channels_first
 
