@@ -26,6 +26,8 @@ class TorchLarcvDataset(data.IterableDataset):
         for i, batch in enumerate(self.ds):
             if i < len(self.ds):
                 yield batch
+            else:
+                i = 0
 
     def image_size(self):
         return self.ds.image_size()
@@ -34,7 +36,6 @@ class TorchLarcvDataset(data.IterableDataset):
         return self.ds.image_meta
 
     def __len__(self):
-        return 10
         return int(len(self.ds) / self.global_batch_size)
 
 
@@ -85,7 +86,7 @@ def create_torch_larcv_dataloader(larcv_ds, global_batch_size, device=None):
         target_collate_fn = data.default_convert
 
     torch_dl = data.DataLoader(ids,
-        num_workers    = 0,
+        num_workers   = 0,
         batch_size    = None,
         batch_sampler = None,
         pin_memory    = False,

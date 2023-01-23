@@ -1,4 +1,4 @@
-import os
+import sys, os
 import time
 
 import json
@@ -44,8 +44,7 @@ def meta(dataset_version):
 
 def image_shape(meta, downsample):
     """ downsample is the full number, aka 2**2 = 4"""
-
-    return [ int(i / downsample) for i in meta['full_pixels'][0] ]
+    return [ i // 2**downsample for i in meta['full_pixels'][0] ]
 
 
 def batch_dims(data_format, meta, downsample, batch_size):
@@ -224,6 +223,8 @@ class synthetic_dataset(object):
 
         self.init_data(shape)
 
+        self.image_meta = meta(data_args.version)
+
 
     def init_data(self, shape):
 
@@ -241,11 +242,13 @@ class synthetic_dataset(object):
             yield self.get_batch()
 
     def __len__(self):
-        return self.synthetic_labels.shape[0]
+        return sys.maxsize -1
 
-    def image_shape(self): return i_shape
+    def image_size(self): return self.image_shape()
 
-    def batch_shape(self): return b_shape
+    def image_shape(self): return self.i_shape
+
+    def batch_shape(self): return self.b_shape
 
     def get_batch(self):
         minibatch_data = {}

@@ -15,9 +15,6 @@ mode:
 
 run:
     distributed: False
+    run_length: 500
+    run_units: iteration
 
-network:
-    classification:
-        active: False
-    vertex:
-        active: False

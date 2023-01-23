@@ -74,14 +74,15 @@ class Network:
     downsampling:         DownSampling = DownSampling.max_pooling
     upsampling:           UpSampling   = UpSampling.interpolation
     data_format:          str          = MISSING
-    classification:       EventLabel   = EventLabel()
     vertex:               Vertex       = Vertex()
+    classification:       EventLabel   = EventLabel()
 
 
 @dataclass
 class UResNet(Network):
     name:                 str          = "uresnet"
     normalization:        Norm         = Norm.none
+
 
 @dataclass
 class A21(Network):

@@ -69,7 +69,8 @@ class torch_trainer(trainercore):
         # Take the first dataset:
         example_ds = next(iter(datasets.values()))
 
-        self.vertex_meta = create_vertex_meta(args, example_ds.image_meta, example_ds.image_size())
+        if self.args.network.vertex.active:
+            self.vertex_meta = create_vertex_meta(args, example_ds.image_meta, example_ds.image_size())
 
         self.latest_metrics = {}
 
@@ -101,11 +102,6 @@ class torch_trainer(trainercore):
             self._net = torch.quantization.prepare_qat(self._raw_net)
         else:
             self._net = self._raw_net
-
-
-        # To predict the vertex, we first figure out the size of each bounding box:
-        # Vertex comes out with shape [batch_size, channels, max_boxes, 2*ndim (so 4, in this case)]
-        vertex_meta = create_vertex_meta(self.args, image_meta, image_size)
 
 
 
@@ -461,6 +457,8 @@ class torch_trainer(trainercore):
                     metrics[f'loss/{key}'] = loss_dict[key].data
             accuracy = self._calculate_accuracy(network_dict, labels_dict, batch_reduce)
             accuracy.update(metrics)
+
+            ## TODO - add vertex resolution????
 
         return accuracy
 

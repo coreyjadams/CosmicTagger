@@ -1,4 +1,3 @@
-from mpi4py import MPI
 import socket
 import numpy
 import sys, os
@@ -18,6 +17,8 @@ def mpi_init_and_local_rank(set_env=True, port=2345, verbose=False):
     NODE_RANK   - the index of this particular node (0 to N/n - 1)
     N_NODES     - the total number of unique nodes.
     '''
+    from mpi4py import MPI
+    
     # Get the global communicator:
     COMM_WORLD = MPI.COMM_WORLD
 

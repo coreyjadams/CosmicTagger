@@ -126,22 +126,24 @@ class exec(object):
 
         # Check if we need vertex or eventID info:
         event_id = False
-        if self.args.network.classification.active:
-            event_id = True
+        if hasattr(self.args.network, "classification"):
+            if self.args.network.classification.active:
+                event_id = True
 
-        if self.args.network.vertex.active:
-            vertex_depth = self.args.network.vertex.depth
-            event_id = True
-        else:
-            vertex_depth = None
+        vertex_depth = None
+        if hasattr(self.args.network, "vertex"):
+            if self.args.network.vertex.active:
+                vertex_depth = self.args.network.vertex.depth
+                event_id = True
 
 
         if self.args.data.synthetic:
             datasets = {
-                "synthetic" : create_larcv_dataset(
+                "train" : create_larcv_dataset(
                     data_args    = self.args.data,
                     batch_size   = self.args.run.minibatch_size,
                     input_file   = None,
+                    name         = "train",
                     distributed  = False,
                     event_id     = event_id,
                     vertex_depth = vertex_depth,
@@ -251,7 +253,7 @@ class exec(object):
 
             start = time.time()
             for i, minibatch in enumerate(dataset):
-
+                print(minibatch['image'].shape)
                 end = time.time()
                 if i >= break_i: break
                 logger.info(f"{i}: Time to fetch a minibatch of data: {end - start:.2f}s")
@@ -267,10 +269,12 @@ class exec(object):
     def log_keys(self):
 
         log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
-        if self.args.network.classification.active:
-            log_keys += ['Average/EventLabel',]
-        if self.args.network.vertex.active:
-            log_keys += ['Average/VertexDetection',]
+        if hasattr(self.args.network, "classification"):
+            if self.args.network.classification.active:
+                log_keys += ['Average/EventLabel',]
+        if hasattr(self.args.network, "vertex"):
+            if self.args.network.vertex.active:
+                log_keys += ['Average/VertexDetection',]
         if self.args.mode.name == ModeKind.train:
             log_keys.append("loss/total")
 
@@ -285,12 +289,14 @@ class exec(object):
         hparams_keys += ["Average/Cosmic_IoU"]
         hparams_keys += ["Average/Total_Accuracy"]
         hparams_keys += ["loss/segmentation"]
-        if self.args.network.classification.active:
-            hparams_keys += ['loss/event_label',]
-        if self.args.network.vertex.active:
-            hparams_keys += ['Average/VertexResolution',]
-            hparams_keys += ['loss/vertex/detection',]
-            hparams_keys += ['loss/vertex/localization',]
+        if hasattr(self.args.network, "classification"):
+            if self.args.network.classification.active:
+                hparams_keys += ['loss/event_label',]
+        if hasattr(self.args.network, "vertex"):
+            if self.args.network.vertex.active:
+                hparams_keys += ['Average/VertexResolution',]
+                hparams_keys += ['loss/vertex/detection',]
+                hparams_keys += ['loss/vertex/localization',]
 
         return hparams_keys
 
@@ -307,7 +313,7 @@ class exec(object):
         from src.config import RunUnit
         if self.args.run.run_units == RunUnit.epoch:
             self.max_epochs   = self.args.run.run_length
-            self.epoch_length = int(dataset_length / args.run.minibatch_size)
+            self.epoch_length = int(dataset_length / self.args.run.minibatch_size)
             self.max_steps    = self.max_epochs * self.epoch_length
         elif self.args.run.run_units == RunUnit.iteration:
             # Max steps is easy:

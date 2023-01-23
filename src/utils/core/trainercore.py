@@ -17,7 +17,7 @@ import datetime
 import pathlib
 
 
-import logging
+from src.utils import logging
 # logger = logging.getLogger()
 # logger.critical("TEST 1")
 # logger.propogate = True
@@ -160,7 +160,7 @@ class trainercore(object):
                 s += " (" + " / ".join(time_string) + ")"
 
             self._previous_log_time = self._current_log_time
-            logging.getLogger().info("{} Step {} metrics: {}".format(saver, self._global_step, s))
+            logging.getLogger("CosmicTagger""CosmicTagger").info("{} Step {} metrics: {}".format(saver, self._global_step, s))
 
     def metrics(self, metrics):
         # This function looks useless, but it is not.
@@ -187,7 +187,7 @@ class trainercore(object):
 
         # This barrier enforces the root rank has made the folder before
         # anyone tries to write.
-        logging.getLogger().info("Saving run profile information.")
+        logging.getLogger("CosmicTagger").info("Saving run profile information.")
 
         self.barrier()
 
@@ -236,7 +236,7 @@ class trainercore(object):
 
     def extend_profiling_array(self):
         # Resize the profiling array if needed:
-        if self.profiling_index > len(self.profiling_array) - 1:
+        if self.profiling_index >= len(self.profiling_array) - 1:
             # Add 500 more rows:
             self.profiling_array.resize((self.profiling_index + 500))
 
@@ -319,12 +319,10 @@ class trainercore(object):
 
     def batch_process(self, data_loaders, max_epochs=None, max_steps=None):
 
-        logger = logging.getLogger()
+        logger = logging.getLogger("CosmicTagger")
 
 
         start = time.time()
-        print("Logger?")
-        logger.info("Test 1")
 
         # This is the 'master' function, so it controls a lot
 
@@ -336,13 +334,13 @@ class trainercore(object):
         self._epoch     = 0
 
         val_loader = data_loaders['val'] if 'val' in data_loaders else None
-        logger.info("Test 2")
+
 
         if self.is_training():
             while not self._exit:
                 if max_epochs is not None:
                     if self._epoch > max_epochs: self._exit = True
-                self.train_one_epoch(data_loaders["train"], data_loaders["val"], max_steps)
+                self.train_one_epoch(data_loaders["train"], val_loader, max_steps)
 
 
             self.checkpoint()
@@ -387,8 +385,6 @@ class trainercore(object):
         if self.args.mode.name == ModeKind.inference:
             self.inference_report()
 
-        print(logger)
-        print(logger.handlers)
         logger.info(f"Total time to batch_process: {end - start:.4f}")
         if self.post_one_time is not None:
             throughput = (self._iteration - 1) * total_images_per_batch

@@ -1,1 +1,4 @@
-from . lightning import create_lightning_module, train
+try:
+    from . lightning import create_lightning_module, train
+except:
+    pass
