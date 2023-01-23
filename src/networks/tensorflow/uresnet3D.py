@@ -538,7 +538,7 @@ class UNetCore3D(tf.keras.models.Model):
 
 class UResNet3D(tf.keras.models.Model):
 
-    def __init__(self, params):
+    def __init__(self, params, image_shape):
 
         tf.keras.models.Model.__init__(self)
 

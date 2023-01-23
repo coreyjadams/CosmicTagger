@@ -355,20 +355,22 @@ class exec(object):
             # Import tensorflow and see what the version is.
             import tensorflow as tf
 
-            if tf.__version__.startswith("2"):
-                if self.args.run.distributed:
-                    from src.utils.tensorflow2 import distributed_trainer
-                    self.trainer = distributed_trainer.distributed_trainer(self.args)
-                else:
-                    from src.utils.tensorflow2 import trainer
-                    self.trainer = trainer.tf_trainer(self.args)
+            if self.args.run.distributed:
+                from src.utils.tensorflow2 import distributed_trainer
+                self.trainer = distributed_trainer.distributed_trainer(self.args,
+                    self.datasets,
+                    lr_schedule,
+                    log_keys     = self.log_keys(),
+                    hparams_keys = self.hparams_keys()
+                )
             else:
-                if self.args.run.distributed:
-                    from src.utils.tensorflow1 import distributed_trainer
-                    self.trainer = distributed_trainer.distributed_trainer(self.args)
-                else:
-                    from src.utils.tensorflow1 import trainer
-                    self.trainer = trainer.tf_trainer(self.args)
+                from src.utils.tensorflow2 import trainer
+                self.trainer = trainer.tf_trainer(self.args,
+                    self.datasets,
+                    lr_schedule,
+                    log_keys     = self.log_keys(),
+                    hparams_keys = self.hparams_keys()
+                )
 
         elif self.args.framework.name == "torch":
             if self.args.run.distributed:

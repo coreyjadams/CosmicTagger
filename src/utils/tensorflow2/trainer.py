@@ -28,7 +28,7 @@ integer_format = tf.int64
 from src.utils import logging
 logger = logging.getLogger("CosmicTagger")
 
-from src.config import Precision, ComputeMode, ModeKind
+from src.config import Precision, ComputeMode, ModeKind, DataFormatKind
 
 class tf_trainer(trainercore):
     '''
@@ -36,8 +36,19 @@ class tf_trainer(trainercore):
 
     '''
 
-    def __init__(self, args):
+    def __init__(self, args, datasets, lr_schedule, log_keys, hparams_keys):
         trainercore.__init__(self, args)
+
+        self.datasets = datasets
+        self.lr_schedule = lr_schedule
+        self.log_keys = log_keys
+        self.hparams_keys  = hparams_keys
+
+        self._channels_dim = -1
+        if self.args.data.data_format == DataFormatKind.channels_first:
+            self._channels_dim = 1
+
+        self.initialize()
 
     def local_batch_size(self):
         return self.args.run.minibatch_size
@@ -61,24 +72,20 @@ class tf_trainer(trainercore):
             self.policy = mixed_precision.Policy('mixed_bfloat16')
             mixed_precision.set_global_policy(self.policy)
 
-        batch_dims = self.larcv_fetcher.batch_dims(1)
-
-        # We compute the
-        batch_dims[0] = self.local_batch_size()
-
         #
         self._global_step = tf.Variable(0, dtype=tf.int64)
 
 
         # Add the dataformat for the network construction:
 
+        example_dataset = next(iter(self.datasets.values()))
 
         from src.config import ConvMode
         # Build the network object, forward pass only:
         if self.args.network.conv_mode == ConvMode.conv_2D:
-            self._net = uresnet2D.UResNet(self.args.network, self.larcv_fetcher.image_size())
+            self._net = uresnet2D.UResNet(self.args.network, example_dataset.image_size)
         else:
-            self._net = uresnet3D.UResNet3D(self.args.network, self.larcv_fetcher.image_size())
+            self._net = uresnet3D.UResNet3D(self.args.network, example_dataset.image_size)
 
         self._net.trainable = True
 
@@ -93,7 +100,7 @@ class tf_trainer(trainercore):
 
 
         # TO PROPERLY INITIALIZE THE NETWORK, NEED TO DO A FORWARD PASS
-        minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=False)
+        minibatch_data = next(iter(example_dataset))
         image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
         self.forward_pass(image, label, training=False)
@@ -138,8 +145,10 @@ class tf_trainer(trainercore):
         if self.args.run.compute_mode == ComputeMode.CPU:
             self._config.inter_op_parallelism_threads = self.args.framework.inter_op_parallelism_threads
             self._config.intra_op_parallelism_threads = self.args.framework.intra_op_parallelism_threads
-        elif self.args.run.compute_mode == ComputeMode.GPU:
-            gpus = tf.config.experimental.list_physical_devices('GPU')
+        elif self.args.run.compute_mode == ComputeMode.CUDA:
+            gpus = tf.config.experimental.list_physical_devices('CUDA')
+        elif self.args.run.compute_mode == ComputeMode.XPU:
+            gpus = tf.config.experimental.list_physical_devices('XPU')
 
 
             # The code below is for MPS mode.  It is a bit of a hard-coded
@@ -147,13 +156,13 @@ class tf_trainer(trainercore):
             ####################################################################
             # print(gpus)
             # if gpus:
-            #   # Restrict TensorFlow to only allocate 1GB of memory on the first GPU
+            #   # Restrict TensorFlow to only allocate 1GB of memory on the first CUDA
             #   try:
             #     tf.config.experimental.set_virtual_device_configuration(
             #         gpus[0],
             #         [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15000)])
             #     # tf.config.experimental.set_memory_growth(gpus[0], True)
-            #     logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+            #     logical_gpus = tf.config.experimental.list_logical_devices('CUDA')
             #     # print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
             #   except RuntimeError as e:
             #     # Virtual devices must be set before GPUs have been initialized
@@ -185,14 +194,9 @@ class tf_trainer(trainercore):
     def initialize(self, io_only=False):
 
 
-        self._initialize_io(color=0)
-
 
         if io_only:
             return
-
-        if self.is_training():
-            self.build_lr_schedule()
 
         start = time.time()
 
@@ -203,7 +207,7 @@ class tf_trainer(trainercore):
 
         self.print_network_info()
 
-        if self.args.mode.name != "inference":
+        if self.args.mode.name == ModeKind.train:
             self.init_optimizer()
 
         self.init_saver()
@@ -221,9 +225,12 @@ class tf_trainer(trainercore):
 
     def init_learning_rate(self):
         # Use a place holder for the learning rate :
-        self._learning_rate = tf.Variable(initial_value=0.0, trainable=False, dtype=floating_point_format, name="lr")
-
-
+        self._learning_rate = tf.Variable(
+            initial_value=0.0, 
+            trainable=False, 
+            dtype=floating_point_format, 
+            name="lr"
+        )
 
     def restore_model(self):
         ''' This function attempts to restore the model from file
@@ -456,7 +463,7 @@ class tf_trainer(trainercore):
         # It allows a handle to the distributed network to allreduce metrics.
         return metrics
 
-    def val_step(self):
+    def val_step(self, minibatch_data):
 
 
         if not hasattr(self, "_aux_data_size"):
@@ -471,9 +478,6 @@ class tf_trainer(trainercore):
         gs = self.current_step()
 
         if gs % self.args.run.aux_iterations == 0:
-
-            # Fetch the next batch of data with larcv
-            minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
 
             image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
@@ -525,7 +529,7 @@ class tf_trainer(trainercore):
         return logits, labels, prediction, loss, gradients, reg_loss
         # return logits, labels, prediction, loss - reg_loss, gradients, reg_loss
 
-    def train_step(self):
+    def train_step(self, minibatch_data):
 
         global_start_time = datetime.datetime.now()
 
@@ -539,8 +543,6 @@ class tf_trainer(trainercore):
 
             # Fetch the next batch of data with larcv
             io_start_time = datetime.datetime.now()
-            with self.timing_context("io"):
-                minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=True)
 
             image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
@@ -621,7 +623,7 @@ class tf_trainer(trainercore):
         # Update the global step:
         self._global_step.assign_add(1)
         # Update the learning rate:
-        self._learning_rate.assign(self.lr_calculator(int(self._global_step.numpy())))
+        self._learning_rate.assign(self.lr_schedule(int(self._global_step.numpy())))
         return self.current_step()
 
 
@@ -635,7 +637,7 @@ class tf_trainer(trainercore):
         pass
 
 
-    def ana_step(self):
+    def ana_step(self, minibatch_data):
 
 
         global_start_time = datetime.datetime.now()

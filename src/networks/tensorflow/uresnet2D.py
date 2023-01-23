@@ -553,7 +553,7 @@ class UNetCore(tf.keras.models.Model):
 
 class UResNet(tf.keras.models.Model):
 
-    def __init__(self, params):
+    def __init__(self, params, image_shape):
 
         tf.keras.models.Model.__init__(self)
 
@@ -590,7 +590,7 @@ class UResNet(tf.keras.models.Model):
                 params      = params)
 
 
-        self.classification_subnet = tf.keras.layers.Sequential
+        # self.classification_subnet = tf.keras.layers.Sequential
 
 
         self.bottleneck = tf.keras.layers.Conv2D(
