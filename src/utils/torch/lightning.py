@@ -64,14 +64,7 @@ class lightning_trainer(pl.LightningModule):
         self.log_keys     = log_keys
         self.hparams_keys = hparams_keys
 
-        # Just for benchmarking measurements:
-        self.post_one_time   = None
-        self.post_two_time   = None
-        self.iteration_start = None
-        self.times           = []
-        self.start_time      = None
-        self.end_time        = None
-        self.n_iteration     = 0
+        self.initialize_throughput_parameters()
 
     def prep_labels(self, minibatch_data):
 
@@ -95,33 +88,70 @@ class lightning_trainer(pl.LightningModule):
 
         return labels_dict
 
+    ####################################################################
+    # Starting here, the following functions are purely for benchmarking
+    ####################################################################
+
+    def initialize_throughput_parameters(self):
+        # Just for benchmarking measurements:
+        self.post_one_time   = None
+        self.post_two_time   = None
+        self.iteration_start = None
+        self.times           = []
+        self.start_time      = None
+        self.end_time        = None
+        self.n_iteration     = 0
+
     def on_fit_start(self):
         super().on_fit_start()
+        self.record_start_time()
+
+    def on_test_start(self):
+        super().on_test_start()
+        self.record_start_time()
+
+    def record_start_time(self):
         self.start_time = time.time()
 
     def on_fit_end(self):
         super().on_fit_end()
+        self.record_end_time()
+        
+    def on_test_end(self):
+        super().on_test_end()
+        self.record_end_time()
+
+    def record_end_time(self):
+        print("Record end time?")
         self.end_time = time.time()
         self.throughput_report()
 
     def on_train_batch_start(self, batch, batch_idx):
         super().on_train_batch_start(batch, batch_idx)
-        self.iteration_start = time.time()
+        self.record_iteration_start_time()
 
+    def on_test_batch_start(self, batch, batch_idx, dataloader_idx=0):
+        super().on_test_batch_start(batch, batch_idx, dataloader_idx)
+        self.record_iteration_start_time()
+
+    def record_iteration_start_time(self):
+        self.iteration_start = time.time()
 
     def on_train_batch_end(self, outputs, batch, batch_idx):
         super().on_train_batch_end(outputs, batch, batch_idx)
+        self.record_iteration_end_time()
 
+    def on_test_batch_end(self, outputs, batch, batch_idx, dataloader_idx):
+        super().on_test_batch_end(outputs, batch, batch_idx, dataloader_idx)
+        self.record_iteration_end_time()
+
+    def record_iteration_end_time(self):
         if self.post_one_time is None:
             self.post_one_time = time.time()
         elif self.post_two_time is None:
             self.post_two_time = time.time()
         self.times.append(time.time() - self.iteration_start)
         self.n_iteration += 1
-
-    def forward(self, batch):
-        network_dict = self.model(batch)
-        return network_dict
 
     def throughput_report(self):
         total_images_per_batch = self.args.run.minibatch_size
@@ -151,6 +181,27 @@ class lightning_trainer(pl.LightningModule):
             throughput /= time
             logger.info("Total time to batch process last 40 iterations: "
                         f"{time:.4f}, throughput: {throughput:.4f}" )
+
+
+    ####################################################################
+    # This concludes the section of functions for benchmarking only
+    ####################################################################
+
+
+    def forward(self, batch):
+        network_dict = self.model(batch)
+        return network_dict
+
+
+    def test_step(self, batch, batch_idx):
+        network_dict = self(batch['image'])
+        prepped_labels = self.prep_labels(batch)
+
+        acc_metrics  = self.calculate_accuracy(network_dict, prepped_labels)
+    
+        self.print_log(acc_metrics, mode="test")
+        self.summary(acc_metrics)
+        # self.log_dict(acc_metrics)
 
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
@@ -485,12 +536,16 @@ def create_lightning_module(args, datasets, lr_scheduler=None, log_keys = [], hp
     # Next, create the network:
     network = build_network(args, example_ds.image_size())
 
-    if args.network.classification.active:
-        weight = torch.tensor([0.16, 0.1666, 0.16666, 0.5])
-        loss_calc = LossCalculator(args, weight=weight)
+    if args.mode.name == ModeKind.train:
+        if args.network.classification.active:
+            weight = torch.tensor([0.16, 0.1666, 0.16666, 0.5])
+            loss_calc = LossCalculator(args, weight=weight)
+        else:
+            loss_calc = LossCalculator(args)
+        acc_calc = AccuracyCalculator(args)
     else:
-        loss_calc = LossCalculator(args)
-    acc_calc = AccuracyCalculator(args)
+        loss_calc = None
+        acc_calc  = AccuracyCalculator(args)
 
 
     model = lightning_trainer(args, network, loss_calc,
@@ -548,6 +603,15 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
 
     tb_logger = TensorBoardLogger(args.output_dir + "/train/")
 
+    # Hooks specific to training:
+    if args.mode.name == ModeKind.train:
+        accumulate = args.mode.optimizer.gradient_accumulation
+    else:
+        # Limit the prediction steps, in this case, to what is specified:
+        if max_steps is None:
+            max_steps = len(dataloaders["test"]) * max_epochs
+        accumulate = None
+
 
     trainer = pl.Trainer(
         accelerator             = args.run.compute_mode.name.lower(),
@@ -561,14 +625,22 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
         enable_progress_bar     = False,
         replace_sampler_ddp     = True,
         logger                  = tb_logger,
-        max_epochs              = 2,
+        max_epochs              = max_epochs,
         max_steps               = max_steps,
         plugins                 = plugins,
-        # benchmark               = True,
-        accumulate_grad_batches = args.mode.optimizer.gradient_accumulation,
+        benchmark               = True,
+        accumulate_grad_batches = accumulate,
+        limit_test_batches      = max_steps
     )
 
-    trainer.fit(
-        lightning_model,
-        train_dataloaders=datasets["train"],
-    )
+    if args.mode.name == ModeKind.train:
+
+        trainer.fit(
+            lightning_model,
+            train_dataloaders=datasets["train"],
+        )
+    elif args.mode.name == ModeKind.inference:
+        trainer.test(
+            lightning_model,
+            dataloaders=datasets["test"],
+        )

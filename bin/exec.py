@@ -76,13 +76,11 @@ class exec(object):
 
 
     def run(self):
-        if self.args.mode.name == ModeKind.train:
-            self.train()
         if self.args.mode.name == ModeKind.iotest:
             self.iotest()
-        if self.args.mode.name == ModeKind.inference:
-            self.inference()
-
+        else:
+            self.batch_process()
+        
     def exit(self):
         if hasattr(self, "trainer"):
             self.trainer.exit()
@@ -138,12 +136,16 @@ class exec(object):
 
 
         if self.args.data.synthetic:
+            if self.args.mode == ModeKind.train:
+                name = "train"
+            else:
+                name = "test"
             datasets = {
-                "train" : create_larcv_dataset(
+                name : create_larcv_dataset(
                     data_args    = self.args.data,
                     batch_size   = self.args.run.minibatch_size,
                     input_file   = None,
-                    name         = "train",
+                    name         = name,
                     distributed  = False,
                     event_id     = event_id,
                     vertex_depth = vertex_depth,
@@ -205,11 +207,11 @@ class exec(object):
         #     # logging.getLogger("CosmicTagger").setLevel(logging.ERROR)
 
 
-    def train(self):
+    def batch_process(self):
 
         logger = logging.getLogger("CosmicTagger")
 
-        logger.info("Running Training")
+        logger.info(f"Running in mode: {self.args.mode.name.name}")
 
         self.make_trainer()
 
@@ -401,19 +403,6 @@ class exec(object):
                 log_keys     = self.log_keys(),
                 hparams_keys = self.hparams_keys())
 
-
-    def inference(self):
-
-
-        logger = logging.getLogger("CosmicTagger")
-
-        logger.info("Running Inference")
-        logger.info(self.__str__())
-
-        self.make_trainer()
-
-        self.trainer.initialize()
-        self.trainer.batch_process()
 
     def dictionary_to_str(self, in_dict, indentation = 0):
         substr = ""
