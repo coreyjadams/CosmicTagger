@@ -242,7 +242,7 @@ class synthetic_dataset(object):
             yield self.get_batch()
 
     def __len__(self):
-        return sys.maxsize -1
+        return int(1e7)
 
     def image_size(self): return self.image_shape()
 

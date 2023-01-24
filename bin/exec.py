@@ -215,7 +215,7 @@ class exec(object):
 
         if self.args.framework.name == "lightning":
             from src.utils.torch.lightning import train
-            train(self.args, self.trainer, self.datasets)
+            train(self.args, self.trainer, self.datasets, self.max_epochs, self.max_steps)
         else:
             self.trainer.initialize(self.datasets)
             self.trainer.batch_process(self.datasets, self.max_epochs, self.max_steps)

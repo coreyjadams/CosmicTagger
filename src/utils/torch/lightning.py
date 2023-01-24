@@ -64,6 +64,15 @@ class lightning_trainer(pl.LightningModule):
         self.log_keys     = log_keys
         self.hparams_keys = hparams_keys
 
+        # Just for benchmarking measurements:
+        self.post_one_time   = None
+        self.post_two_time   = None
+        self.iteration_start = None
+        self.times           = []
+        self.start_time      = None
+        self.end_time        = None
+        self.n_iteration     = 0
+
     def prep_labels(self, minibatch_data):
 
         # Always have segmentation labels:
@@ -86,10 +95,62 @@ class lightning_trainer(pl.LightningModule):
 
         return labels_dict
 
+    def on_fit_start(self):
+        super().on_fit_start()
+        self.start_time = time.time()
+
+    def on_fit_end(self):
+        super().on_fit_end()
+        self.end_time = time.time()
+        self.throughput_report()
+
+    def on_train_batch_start(self, batch, batch_idx):
+        super().on_train_batch_start(batch, batch_idx)
+        self.iteration_start = time.time()
+
+
+    def on_train_batch_end(self, outputs, batch, batch_idx):
+        super().on_train_batch_end(outputs, batch, batch_idx)
+
+        if self.post_one_time is None:
+            self.post_one_time = time.time()
+        elif self.post_two_time is None:
+            self.post_two_time = time.time()
+        self.times.append(time.time() - self.iteration_start)
+        self.n_iteration += 1
+
     def forward(self, batch):
         network_dict = self.model(batch)
         return network_dict
 
+    def throughput_report(self):
+        total_images_per_batch = self.args.run.minibatch_size
+        if self.args.data.synthetic and self.args.run.distributed:
+            total_images_per_batch = self.args.run.minibatch_size * self._size
+
+
+        # if self.args.mode.name == ModeKind.inference:
+        #     self.inference_report()
+
+        logger.info(f"Total time to batch_process: {self.end_time - self.start_time:.4f}")
+        if self.post_one_time is not None:
+            throughput = (self.n_iteration - 1) * total_images_per_batch
+            time       = (self.end_time - self.post_one_time)
+            throughput /= time
+            logger.info("Total time to batch process except first iteration: "
+                        f"{time:.4f}, throughput: {throughput:.4f}")
+        if self.post_two_time is not None:
+            throughput = (self.n_iteration - 2) * total_images_per_batch
+            time       = (self.end_time - self.post_two_time)
+            throughput /= time
+            logger.info("Total time to batch process except first two iterations: "
+                        f"{time:.4f}, throughput: {throughput:.4f}")
+        if len(self.times) > 40:
+            throughput = (40) * total_images_per_batch
+            time       = (numpy.sum(self.times[-40:]))
+            throughput /= time
+            logger.info("Total time to batch process last 40 iterations: "
+                        f"{time:.4f}, throughput: {throughput:.4f}" )
 
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
@@ -439,7 +500,7 @@ def create_lightning_module(args, datasets, lr_scheduler=None, log_keys = [], hp
         vertex_meta  = vertex_meta)
     return model
 
-def train(args, lightning_model, datasets):
+def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
 
     from src.config import Precision
 
@@ -501,6 +562,7 @@ def train(args, lightning_model, datasets):
         replace_sampler_ddp     = True,
         logger                  = tb_logger,
         max_epochs              = 2,
+        max_steps               = max_steps,
         plugins                 = plugins,
         # benchmark               = True,
         accumulate_grad_batches = args.mode.optimizer.gradient_accumulation,
