@@ -17,6 +17,12 @@ for i, p in enumerate(sys.path):
 import horovod.tensorflow as hvd
 hvd.init()
 
+
+try:
+    import intel_extension_for_tensorflow as itex
+except:
+    pass
+
 # from horovod.tensorflow.keras import DistributedOptimizer
 
 from src.config import ModeKind, ComputeMode
@@ -38,6 +44,9 @@ class distributed_trainer(tf_trainer):
         if self.args.run.compute_mode == ComputeMode.GPU:
             gpus = tf.config.list_physical_devices('GPU')
             tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
+        elif self.args.run.compute_mode == ComputeMode.XPU:
+            gpus = tf.config.list_physical_devices('XPU')
+            tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'XPU')
 
             # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
@@ -69,6 +78,7 @@ class distributed_trainer(tf_trainer):
             self._val_writer = None
 
     def barrier(self):
+        from mpi4py import MPI
         MPI.COMM_WORLD.Barrier()
 
 
