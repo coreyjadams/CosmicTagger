@@ -80,7 +80,7 @@ class larcv_fetcher(object):
         if self.synthetic:
             self.synthetic_index = 0
             self.batch_size = batch_size
-            shape = self.batch_dims(1024)
+            shape = self.batch_dims(numpy.max([12, batch_size]))
 
             self.synthetic_images = numpy.random.random_sample(shape).astype(numpy.float32)
             self.synthetic_labels = numpy.random.randint(low=0, high=3, size=shape)
