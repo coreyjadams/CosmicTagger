@@ -304,9 +304,7 @@ def create_larcv_dataset(data_args, batch_size, input_file, name,
             io_config       = io_config,
             data_keys       = data_keys
         )
-
-        shape = image_shape(meta(data_args.version), 2**data_args.downsample)
-
+        shape = image_shape(meta(data_args.version), data_args.downsample)
         # Finally, create the iterable object to hold all of this:
         dataset = larcv_dataset(
             larcv_interface = interface,

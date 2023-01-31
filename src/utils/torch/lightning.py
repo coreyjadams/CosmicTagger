@@ -36,7 +36,6 @@ torch.backends.cudnn.benchmark = True
 
 # from torch.jit import trace
 
-from src.utils.core.trainercore import trainercore
 from src.networks.torch         import LossCalculator, AccuracyCalculator, predict_vertex
 
 
@@ -65,6 +64,7 @@ class lightning_trainer(pl.LightningModule):
         self.hparams_keys = hparams_keys
 
         self.initialize_throughput_parameters()
+
 
     def prep_labels(self, minibatch_data):
 
@@ -116,13 +116,12 @@ class lightning_trainer(pl.LightningModule):
     def on_fit_end(self):
         super().on_fit_end()
         self.record_end_time()
-        
+
     def on_test_end(self):
         super().on_test_end()
         self.record_end_time()
 
     def record_end_time(self):
-        print("Record end time?")
         self.end_time = time.time()
         self.throughput_report()
 
@@ -156,7 +155,7 @@ class lightning_trainer(pl.LightningModule):
     def throughput_report(self):
         total_images_per_batch = self.args.run.minibatch_size
         if self.args.data.synthetic and self.args.run.distributed:
-            total_images_per_batch = self.args.run.minibatch_size * self._size
+            total_images_per_batch = self.args.run.minibatch_size * int(os.environ["WORLD_SIZE"])
 
 
         # if self.args.mode.name == ModeKind.inference:
@@ -198,15 +197,13 @@ class lightning_trainer(pl.LightningModule):
         prepped_labels = self.prep_labels(batch)
 
         acc_metrics  = self.calculate_accuracy(network_dict, prepped_labels)
-    
+
         self.print_log(acc_metrics, mode="test")
-        self.summary(acc_metrics)
+        # self.summary(acc_metrics)
         # self.log_dict(acc_metrics)
 
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
-
-
         network_dict = self(batch["image"])
         prepped_labels = self.prep_labels(batch)
 
@@ -218,11 +215,10 @@ class lightning_trainer(pl.LightningModule):
             f"loss/{key}" : loss_metrics[key] for key in loss_metrics
         })
 
-        # print(loggers)
 
         self.print_log(acc_metrics, mode="train")
-        self.summary(acc_metrics)
-        self.log_dict(acc_metrics)
+        # self.summary(acc_metrics)
+        # self.log_dict(acc_metrics, on_step=False, sync_dist=True)
         return loss
 
     def configure_optimizers(self):
@@ -259,6 +255,9 @@ class lightning_trainer(pl.LightningModule):
         for name, var in self._net.named_parameters():
             n_trainable_parameters += numpy.prod(var.shape)
         return n_trainable_parameters
+
+    def transfer_batch_to_device(self, batch, device, dataloader_idx):
+        return batch
 
 
     def store_parameters(self, metrics,):
@@ -341,6 +340,8 @@ class lightning_trainer(pl.LightningModule):
             self._previous_log_time = self._current_log_time
             logger.info("{} Step {} metrics: {}".format(mode, self.global_step, s))
 
+    def exit(self): pass
+
     def summary(self, metrics):
         if self.global_step % self.args.mode.summary_iteration == 0:
             saver = self.logger.experiment
@@ -360,79 +361,6 @@ class lightning_trainer(pl.LightningModule):
             except:
                 pass
             return
-
-
-    def summary_images(self, logits_image, labels_image, saver=""):
-
-        # if self.global_step % 1 * self.args.mode.summary_iteration == 0:
-        if self.global_step % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:
-
-            for plane in range(3):
-                val, prediction = torch.max(logits_image[plane][0], dim=0)
-                # This is a reshape to add the required channels dimension:
-                prediction = prediction.view(
-                    [1, prediction.shape[-2], prediction.shape[-1]]
-                    ).float()
-
-
-                labels = labels_image[plane][0]
-                labels =labels.view(
-                    [1,labels.shape[-2],labels.shape[-1]]
-                    ).float()
-
-                # The images are in the format (Plane, H, W)
-                # Need to transpose the last two dims in order to meet the (CHW) ordering
-                # of tensorboardX
-
-
-                # Values get mapped to gray scale, so put them in the range (0,1)
-                labels[labels == 1] = 0.5
-                labels[labels == 2] = 1.0
-
-
-                prediction[prediction == 1] = 0.5
-                prediction[prediction == 2] = 1.0
-
-
-                if saver == "test":
-                    self._aux_saver.add_image("prediction/plane_{}".format(plane),
-                        prediction, self._global_step)
-                    self._aux_saver.add_image("label/plane_{}".format(plane),
-                        labels, self._global_step)
-
-                else:
-                    self._saver.add_image("prediction/plane_{}".format(plane),
-                        prediction, self._global_step)
-                    self._saver.add_image("label/plane_{}".format(plane),
-                        labels, self._global_step)
-
-        return
-
-    def graph_summary(self):
-
-        if self._global_step % 1 * self.args.mode.summary_iteration == 0:
-        # if self._global_step % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:
-            for name, param in self._net.named_parameters():
-
-                self._saver.add_histogram(f"{name}/weights",
-                    param, self._global_step)
-                self._saver.add_histogram(f"{name}/grad",
-                    param.grad, self._global_step)
-                # self._saver.add_histogram(f"{name}/ratio",
-                #     param.grad / param, self._global_step)
-
-        return
-
-
-    def increment_global_step(self):
-
-        self._global_step += 1
-
-        self.on_step_end()
-
-
-    def exit(self):
-        pass
 
     def accumulate_metrics(self, metrics):
 
@@ -456,47 +384,46 @@ class lightning_trainer(pl.LightningModule):
             value = self.inference_metrics[key] / n
             logger.info(f"  {key}: {value:.4f}")
 
-
-from pytorch_lightning.plugins.environments import ClusterEnvironment
-class MPIClusterEnvironment(ClusterEnvironment):
-
-    @property
-    def creates_processes_externally(self) -> bool:
-        """Return True if the cluster is managed (you don't launch processes yourself)"""
-        return True
-
-    def world_size(self) -> int:
-        return int(os.environ["WORLD_SIZE"])
-
-    def set_world_size(self, size: int) -> None:
-        pass
-
-    def global_rank(self) -> int:
-        return int(os.environ["RANK"])
-
-    def set_global_rank(self, rank: int) -> None:
-        pass
-
-    def local_rank(self) -> int:
-        return int(os.environ["LOCAL_RANK"])
-
-    def node_rank(self) -> int:
-        return int(os.environ["NODE_RANK"])
-
-    @property
-    def main_address(self) -> str:
-        return os.environ["MASTER_ADDR"]
-
-
-
-    @property
-    def main_port(self) -> int:
-        return int(os.environ["MASTER_PORT"])
-
-    @staticmethod
-    def detect() -> bool:
-        return "WORLD_SIZE" in os.environ
-
+from lightning_fabric.plugins.environments import MPIEnvironment
+# class MPIClusterEnvironment(ClusterEnvironment):
+#
+#     @property
+#     def creates_processes_externally(self) -> bool:
+#         """Return True if the cluster is managed (you don't launch processes yourself)"""
+#         return True
+#
+#     def world_size(self) -> int:
+#         return int(os.environ["WORLD_SIZE"])
+#
+#     def set_world_size(self, size: int) -> None:
+#         pass
+#
+#     def global_rank(self) -> int:
+#         return int(os.environ["RANK"])
+#
+#     def set_global_rank(self, rank: int) -> None:
+#         pass
+#
+#     def local_rank(self) -> int:
+#         return int(os.environ["LOCAL_RANK"])
+#
+#     def node_rank(self) -> int:
+#         return int(os.environ["NODE_RANK"])
+#
+#     @property
+#     def main_address(self) -> str:
+#         return os.environ["MASTER_ADDR"]
+#
+#
+#
+#     @property
+#     def main_port(self) -> int:
+#         return int(os.environ["MASTER_PORT"])
+#
+#     @staticmethod
+#     def detect() -> bool:
+#         return "WORLD_SIZE" in os.environ
+#
 
 def build_network(args, image_size):
 
@@ -527,11 +454,6 @@ def create_lightning_module(args, datasets, lr_scheduler=None, log_keys = [], hp
     example_ds = next(iter(datasets.values()))
 
     vertex_meta = create_vertex_meta(args, example_ds.image_meta, example_ds.image_size())
-
-    # Turn the datasets into dataloaders:
-    for key in datasets.keys():
-        datasets[key] = create_torch_larcv_dataloader(
-            datasets[key], args.run.minibatch_size)
 
     # Next, create the network:
     network = build_network(args, example_ds.image_size())
@@ -577,12 +499,19 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
     if args.run.distributed:
         from src.config import DistributedMode
         if args.framework.distributed_mode == DistributedMode.horovod:
-            strategy = "horovod"
+            from pytorch_lightning.strategies import DataParallelStrategy
+            strategy = DataParallelStrategy(
+                cluster_environment = MPIEnvironment()
+
+            )
         elif args.framework.distributed_mode == DistributedMode.DDP:
             from pytorch_lightning.strategies import DDPStrategy
             strategy = DDPStrategy(
-                cluster_environment = MPIClusterEnvironment()
+                cluster_environment = MPIEnvironment()
             )
+        elif False:
+            from pytorch_lightning.strategies import DDPFullyShardedStrategy
+            strategy = DDPFullyShardedStrategy(cluster_environment = MPIEnvironment())
         elif args.framework.distributed_mode == DistributedMode.deepspeed:
             strategy = "deepspeed"
 
@@ -598,10 +527,25 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
         devices   = 1
         num_nodes = 1
 
-    # Configure the logger:
-    from pytorch_lightning.loggers import TensorBoardLogger
+    # Move data to the device in the data loader:
+    if args.run.compute_mode == ComputeMode.CUDA:
+        target_device = torch.device(f"cuda:{os.environ['LOCAL_RANK']}")
+        # from lightning.pytorch.accelerators import find_usable_cuda_devices
+        # lightning_devices = find_usable_cuda_devices(int(os.environ['LOCAL_RANK']))
+        # print(lightning_devices)
+    else:
+        target_device = None
 
-    tb_logger = TensorBoardLogger(args.output_dir + "/train/")
+    # Turn the datasets into dataloaders:
+    for key in datasets.keys():
+        datasets[key] = create_torch_larcv_dataloader(
+            datasets[key], args.run.minibatch_size, device=target_device)
+
+
+    # Configure the logger:
+    # from pytorch_lightning.loggers import TensorBoardLogger
+
+    # tb_logger = TensorBoardLogger(args.output_dir + "/train/")
 
     # Hooks specific to training:
     if args.mode.name == ModeKind.train:
@@ -615,26 +559,25 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
 
     trainer = pl.Trainer(
         accelerator             = args.run.compute_mode.name.lower(),
-        devices                 = devices,
-        num_nodes               = num_nodes,
-        auto_select_gpus        = True,
+        # num_nodes               = num_nodes,
         default_root_dir        = args.output_dir,
         precision               = precision,
         profiler                = profiler,
         strategy                = strategy,
         enable_progress_bar     = False,
-        replace_sampler_ddp     = True,
-        logger                  = tb_logger,
+        replace_sampler_ddp     = False,
+        logger                  = False,
         max_epochs              = max_epochs,
         max_steps               = max_steps,
         plugins                 = plugins,
-        benchmark               = True,
+        # benchmark               = True,
         accumulate_grad_batches = accumulate,
         limit_test_batches      = max_steps
     )
 
-    if args.mode.name == ModeKind.train:
 
+
+    if args.mode.name == ModeKind.train:
         trainer.fit(
             lightning_model,
             train_dataloaders=datasets["train"],

@@ -98,7 +98,7 @@ class logger():
 
     def print(self, msg, level : int):
         if level >= self.level:
-            print(msg)
+            print(msg, flush=True)
             if hasattr(self, "file"):
                 self.file.write(msg)
 

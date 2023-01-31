@@ -335,7 +335,6 @@ class trainercore(object):
 
         val_loader = data_loaders['val'] if 'val' in data_loaders else None
 
-
         if self.is_training():
             while not self._exit:
                 if max_epochs is not None:

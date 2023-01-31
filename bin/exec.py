@@ -136,10 +136,11 @@ class exec(object):
 
 
         if self.args.data.synthetic:
-            if self.args.mode == ModeKind.train:
+            if self.args.mode.name == ModeKind.train:
                 name = "train"
             else:
                 name = "test"
+
             datasets = {
                 name : create_larcv_dataset(
                     data_args    = self.args.data,
