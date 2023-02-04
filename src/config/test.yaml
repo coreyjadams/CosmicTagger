@@ -1,0 +1,17 @@
+
+
+defaults:
+  - base_config
+  - override network: polaris
+  - override framework: torch
+  - _self_
+
+data: 
+  downsample: 1
+  # synthetic: True
+  aux_file: cosmic_tagging_light.h5
+  data_directory: /CosmicTagger/example_data/
+  file: cosmic_tagging_light.h5
+
+run:
+    distributed: True

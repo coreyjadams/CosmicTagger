@@ -260,8 +260,8 @@ class exec(object):
 
 
 
-
-@hydra.main(version_base=None, config_path="../src/config", config_name="config")
+@hydra.main(config_path="../src/config", config_name="config")
+#@hydra.main(version_base=None, config_path="../src/config", config_name="config")
 def main(cfg : OmegaConf) -> None:
 
     s = exec(cfg)
