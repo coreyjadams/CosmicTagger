@@ -385,45 +385,7 @@ class lightning_trainer(pl.LightningModule):
             logger.info(f"  {key}: {value:.4f}")
 
 from lightning_fabric.plugins.environments import MPIEnvironment
-# class MPIClusterEnvironment(ClusterEnvironment):
-#
-#     @property
-#     def creates_processes_externally(self) -> bool:
-#         """Return True if the cluster is managed (you don't launch processes yourself)"""
-#         return True
-#
-#     def world_size(self) -> int:
-#         return int(os.environ["WORLD_SIZE"])
-#
-#     def set_world_size(self, size: int) -> None:
-#         pass
-#
-#     def global_rank(self) -> int:
-#         return int(os.environ["RANK"])
-#
-#     def set_global_rank(self, rank: int) -> None:
-#         pass
-#
-#     def local_rank(self) -> int:
-#         return int(os.environ["LOCAL_RANK"])
-#
-#     def node_rank(self) -> int:
-#         return int(os.environ["NODE_RANK"])
-#
-#     @property
-#     def main_address(self) -> str:
-#         return os.environ["MASTER_ADDR"]
-#
-#
-#
-#     @property
-#     def main_port(self) -> int:
-#         return int(os.environ["MASTER_PORT"])
-#
-#     @staticmethod
-#     def detect() -> bool:
-#         return "WORLD_SIZE" in os.environ
-#
+
 
 def build_network(args, image_size):
 
@@ -513,7 +475,19 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
             from pytorch_lightning.strategies import DDPFullyShardedStrategy
             strategy = DDPFullyShardedStrategy(cluster_environment = MPIEnvironment())
         elif args.framework.distributed_mode == DistributedMode.deepspeed:
-            strategy = "deepspeed"
+            from pytorch_lightning.strategies import DeepSpeedStrategy
+            strategy = DeepSpeedStrategy(
+                zero_optimization   = True,
+                stage               = 3,
+                sub_group_size      = 100000000000,
+                offload_optimizer   = True,
+                cluster_environment = MPIEnvironment()
+            )
+        elif args.framework.distributed_mode == DistributedMode.sharded:
+            from pytorch_lightning.strategies import DDPShardedStrategy
+            strategy = DDPShardedStrategy(
+                cluster_environment = MPIEnvironment()
+            )
 
         devices   = int(os.environ['LOCAL_SIZE'])
         num_nodes = int(os.environ['N_NODES'])
@@ -555,7 +529,6 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
         if max_steps is None:
             max_steps = len(dataloaders["test"]) * max_epochs
         accumulate = None
-
 
     trainer = pl.Trainer(
         accelerator             = args.run.compute_mode.name.lower(),

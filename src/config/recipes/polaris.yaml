@@ -6,5 +6,7 @@ defaults:
   - override framework: torch
   - _self_
 
-data: 
+data:
   downsample: 0
+  paths:
+    active: [train,val]

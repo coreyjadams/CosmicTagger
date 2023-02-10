@@ -7,7 +7,8 @@ from omegaconf import MISSING
 class DistributedMode(Enum):
     DDP       = 0
     horovod   = 1
-    DeepSpeed = 2
+    deepspeed = 2
+    sharded   = 3
 
 @dataclass
 class Framework:
