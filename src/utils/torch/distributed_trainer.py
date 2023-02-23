@@ -155,11 +155,12 @@ class distributed_trainer(torch_trainer):
 
         # Convert the input data to torch tensors
         if self.args.run.compute_mode == ComputeMode.GPU:
-            if 'CUDA_VISIBLE_DEVICES' in os.environ:
+            #if 'CUDA_VISIBLE_DEVICES' in os.environ:
                 # Then, it's manually set, use it
-                return torch.cuda.device(0)
-            else:
-                return torch.cuda.device(int(self._local_rank))
+            #    return torch.cuda.device(0)
+            #else:
+            logger.info(f"Setting default_device_context to {int(self._local_rank)} for rank {self._local_rank}")
+            return torch.cuda.device(int(self._local_rank))
         elif self.args.run.compute_mode == ComputeMode.XPU:
             # return contextlib.nullcontext
             try:
@@ -180,11 +181,12 @@ class distributed_trainer(torch_trainer):
     def default_device(self):
 
         if self.args.run.compute_mode == ComputeMode.GPU:
-            if 'CUDA_VISIBLE_DEVICES' in os.environ:
-                # Then, it's manually set, use it
-                return torch.device("cuda:0")
-            else:
-                return torch.device(f"cuda:{self._local_rank}")
+            #if 'CUDA_VISIBLE_DEVICES' in os.environ:
+            #    # Then, it's manually set, use it
+            #    return torch.device("cuda:0")
+            #else:
+            logger.info(f"Get default_device_context to {int(self._local_rank)} for rank {self._local_rank}")
+            return torch.device(f"cuda:{self._local_rank}")
         elif self.args.run.compute_mode == ComputeMode.XPU:
             device = torch.device(f"xpu:{self._local_rank}")
         elif self.args.run.compute_mode == ComputeMode.DPCPP:

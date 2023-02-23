@@ -284,6 +284,8 @@ class torch_trainer(trainercore):
 
         self._global_step = state['global_step']
 
+        # Torch 1.12.0 - 375668cd96bc3c22d59a4da6fc9214c208acaf30
+        self._opt.param_groups[0]["capturable"] = True
         # If using GPUs, move the model to GPU:
         if self.args.run.compute_mode == ComputeMode.GPU and self.is_training():
             for state in self._opt.state.values():
@@ -878,7 +880,6 @@ class torch_trainer(trainercore):
             return
 
     def checkpoint(self):
-
         if self._global_step % self.args.mode.checkpoint_iteration == 0 and self._global_step != 0:
             # Save a checkpoint, but don't do it on the first pass
             self.save_model()

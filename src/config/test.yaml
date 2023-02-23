@@ -8,10 +8,11 @@ defaults:
 
 data: 
   downsample: 1
-  # synthetic: True
+  synthetic: True
   aux_file: cosmic_tagging_light.h5
-  data_directory: /CosmicTagger/example_data/
+  data_directory: /nfs/anoop/code/CosmicTagger/example_data/
   file: cosmic_tagging_light.h5
 
 run:
     distributed: True
+    minibatch_size: 8
