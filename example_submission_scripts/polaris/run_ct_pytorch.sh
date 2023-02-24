@@ -39,7 +39,7 @@ export NCCL_NET_GDR_LEVEL=PHB
 mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind=none \
 python bin/exec.py \
 --config-name uresnet2 \
-run.id=uresnet2-vd3-ds1-${GLOBAL_BATCH_SIZE} \
+run.id=uresnet2-vd5-ds1-${GLOBAL_BATCH_SIZE} \
 output_dir=/lus/grand/projects/datascience/cadams/CosmicTaggerVertexEventID/ \
 data.downsample=1 \
 run.distributed=True \
@@ -47,7 +47,7 @@ run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.iterations=25000 \
 network.depth=6 \
 network.vertex.detach=True \
-network.vertex.depth=3 \
+network.vertex.depth=5 \
 network.classification.detach=True \
 network.n_initial_filters=64 \
 framework=torch
