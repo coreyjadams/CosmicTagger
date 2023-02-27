@@ -216,6 +216,7 @@ def merge_config_from_determined(cfg):
     if "override_config" in hparams:
         updated_values = OmegaConf.create(dict(hparams["override_config"]))
         cfg = OmegaConf.merge(cfg, updated_values)
+        return cfg
             
 
 @hydra.main(config_path="../src/config", config_name="config")
@@ -223,7 +224,7 @@ def merge_config_from_determined(cfg):
 def main(cfg : OmegaConf) -> None:
 
     # override config(args) from our yaml files
-    merge_config_from_determined(cfg)
+    cfg = merge_config_from_determined(cfg)
     
     from mpi4py import MPI
     comm = MPI.COMM_WORLD

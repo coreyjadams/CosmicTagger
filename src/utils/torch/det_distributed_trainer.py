@@ -38,6 +38,11 @@ class det_distributed_trainer(torch_trainer):
             # Save a checkpoint, but don't do it on the first pass
             self.save_model()
 
+        # check for pre-emption and break 
+        if self.determined_context.preempt.should_preempt():
+            logger.info('pre-emption singal receiving breaking training loop')
+            return 1
+
     def save_model(self):
         if self._rank == 0:
             checkpoint_metadata = {"steps_completed": self._global_step}
