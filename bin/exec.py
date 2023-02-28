@@ -273,3 +273,4 @@ if __name__ == '__main__':
     if "--help" not in sys.argv and "--hydra-help" not in sys.argv:
         sys.argv += ['hydra/job_logging=disabled']
     main()
+    
