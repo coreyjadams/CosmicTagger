@@ -291,3 +291,4 @@ if __name__ == '__main__':
             'hydra/hydra_logging=disabled',
         ]
     main()
+    

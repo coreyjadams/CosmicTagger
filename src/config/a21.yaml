@@ -15,6 +15,7 @@ mode:
 
 run:
     distributed: False
+    compute_mode: XPU
 
 network:
     classification:

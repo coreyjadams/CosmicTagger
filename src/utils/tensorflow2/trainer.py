@@ -548,12 +548,12 @@ class tf_trainer(trainercore):
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
             if self.args.run.profile:
-                if not self.args.distributed or self._rank == 0:
+                if not self.args.run.distributed or self._rank == 0:
                     tf.profiler.experimental.start(self.args.output_dir + "/train/")
             logits, labels, prediction, loss, internal_gradients, reg_loss = self.gradient_step(image, label)
 
             if self.args.run.profile:
-                if not self.args.distributed or self._rank == 0:
+                if not self.args.run.distributed or self._rank == 0:
                     tf.profiler.experimental.stop()
 
             # Accumulate gradients if necessary
