@@ -1,0 +1,46 @@
+name: Neutrino-hpo
+debug: true
+entrypoint: >-
+  python -m determined.launch.horovod
+  python /nfs/USERNAME/code/CosmicTagger/bin/det_exec.py --config-name test run.id=1 run.distributed=True +run.output_dir=/nfs/USERNAME/scratch
+environment:
+  environment_variables:
+    - OMP_NUM_THREADS=1
+    - NCCL_DEBUG=ERROR
+  image:
+    cuda: anoophpe/neutrino:1.0
+slurm:
+  gpu_type: nvidia_a100
+  slots_per_node: 1 #8
+
+resources:
+  resource_pool: mlde_cuda
+  slots_per_trial: 1 #8
+max_restarts: 0
+searcher:
+  name: adaptive_asha
+  metric: loss
+  smaller_is_better: true
+  max_trials: 16 #16
+  max_concurrent_trials: 1
+  max_length:
+    batches: 100
+hyperparameters:
+  override_config:
+    mode:
+      checkpoint_iteration: 20
+      optimizer:
+        learning_rate:
+          type: double
+          minval: 0.00015
+          maxval: 0.0003
+    network:
+      n_initial_filters:
+        type: int
+        minval: 8
+        maxval: 16
+bind_mounts:
+  - container_path: /nfs
+    host_path: /nfs
+    propagation: rprivate
+    read_only: false
