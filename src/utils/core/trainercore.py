@@ -321,7 +321,6 @@ class trainercore(object):
 
     def batch_process(self):
 
-
         start = time.time()
         post_one_time = None
         post_two_time = None
