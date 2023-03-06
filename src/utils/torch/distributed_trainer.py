@@ -24,16 +24,9 @@ import logging
 logger = logging.getLogger()
 logger.propogate = False
 
-
-# set IPEX XPU device before importing IPEX
 try:
     import horovod.torch as hvd
     hvd.init()
-    IPEX_TILE_AS_DEVICE = os.environ.get("IPEX_TILE_AS_DEVICE", "0")
-    if IPEX_TILE_AS_DEVICE == "1":
-        os.environ["IPEX_DEV_INDEX"] = str(hvd.local_rank())
-    else:
-        os.environ["ZE_AFFINITY_MASK"] = str(hvd.local_rank())
 except:
     pass
 
