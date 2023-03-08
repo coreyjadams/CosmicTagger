@@ -370,7 +370,6 @@ class trainercore(object):
         yield
         self.profiling_array[self.profiling_index][key] = self.now() - start
 
-
     def close_savers(self):
         pass
 

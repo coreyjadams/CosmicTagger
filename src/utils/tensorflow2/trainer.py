@@ -494,7 +494,7 @@ class tf_trainer(trainercore):
         return
 
 
-    # @tf.function
+    @tf.function
     def gradient_step(self, image, label):
 
         with self.tape:
@@ -522,8 +522,10 @@ class tf_trainer(trainercore):
                 gradients = self._opt.get_unscaled_gradients(scaled_gradients)
             else:
                 gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
+        # TODO: Should this add reg_loss to the loss?  Need to check how TF handles this.
         return logits, labels, prediction, loss, gradients, reg_loss
         # return logits, labels, prediction, loss - reg_loss, gradients, reg_loss
+
 
     def train_step(self):
 
