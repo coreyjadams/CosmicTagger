@@ -311,7 +311,6 @@ class distributed_trainer(torch_trainer):
 
         return metrics_dict
 
-    @profile
     def _compute_metrics(self, logits, minibatch_data, loss):
 
         # This function calls the parent function which computes local metrics.

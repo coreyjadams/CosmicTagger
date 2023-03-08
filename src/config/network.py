@@ -67,8 +67,10 @@ class A21(Network):
     filter_size_deepest:  int          = 5
     residual:             bool         = False
     block_concat:         bool         = False
+    blocks_final:         int          = 0
     growth_rate:          GrowthRate   = GrowthRate.additive
     data_format:          str          = MISSING
+    connections:          Connection   = Connection.sum
 
 @dataclass
 class SCC21(Network):
