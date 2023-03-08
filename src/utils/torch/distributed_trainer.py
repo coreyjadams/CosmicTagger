@@ -306,33 +306,34 @@ class distributed_trainer(torch_trainer):
         split_metrics = torch.chunk(input_stacked_tensor, chunks = n_splits)
 
         metrics_dict = {
-            key : torch.reshape(m, (-1,)) for key, m in zip(keys, split_metrics)
+            key : torch.reshape(m, ()) for key, m in zip(keys, split_metrics)
         }
 
         return metrics_dict
 
+    @profile
     def _compute_metrics(self, logits, minibatch_data, loss):
 
         # This function calls the parent function which computes local metrics.
         # Then, it performs an all reduce on all metrics:
         metrics = torch_trainer._compute_metrics(self, logits, minibatch_data, loss)
 
-        if self.args.framework.distributed_mode == DistributedMode.horovod:
-            for key in metrics:
-                metrics[key] = hvd.allreduce(metrics[key], name = key)
-        elif self.args.framework.distributed_mode == DistributedMode.DDP:
-            for key in metrics:
-                torch.distributed.all_reduce(metrics[key])
-                metrics[key] /= self._size
-
-        # stacked_metrics = self.stack_tensors(metrics)
         # if self.args.framework.distributed_mode == DistributedMode.horovod:
-        #     stacked_metrics = hvd.allreduce(stacked_metrics, name = key)
+        #     for key in metrics:
+        #         metrics[key] = hvd.allreduce(metrics[key], name = key)
         # elif self.args.framework.distributed_mode == DistributedMode.DDP:
-        #     torch.distributed.all_reduce(stacked_metrics)
-        #     stacked_metrics /= self._size
-        # metrics = self.split_metrics(stacked_metrics, metrics.keys())
+        #     for key in metrics:
+        #         torch.distributed.all_reduce(metrics[key])
+        #         metrics[key] /= self._size
 
+        stacked_metrics = self.stack_tensors(metrics)
+        if self.args.framework.distributed_mode == DistributedMode.horovod:
+            stacked_metrics = hvd.allreduce(stacked_metrics, name = key)
+        elif self.args.framework.distributed_mode == DistributedMode.DDP:
+            torch.distributed.all_reduce(stacked_metrics)
+            stacked_metrics /= self._size
+        metrics = self.split_metrics(stacked_metrics, metrics.keys())
+        # print(metrics)
         return metrics
 
 
