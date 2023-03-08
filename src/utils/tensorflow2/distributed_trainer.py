@@ -203,7 +203,6 @@ class distributed_trainer(tf_trainer):
 
         return metrics_dict
 
-    @profile
     def _compute_metrics(self, logits, prediction, labels, loss, reg_loss):
 
 
