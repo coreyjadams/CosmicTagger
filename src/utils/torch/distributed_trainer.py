@@ -16,22 +16,15 @@ from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
 try:
-    import torch_ipex as ipex
+    import intel_extension_for_pytorch as ipex
 except:
     pass
 
 
 
-
-# set IPEX XPU device before importing IPEX
 try:
     import horovod.torch as hvd
     hvd.init()
-    IPEX_TILE_AS_DEVICE = os.environ.get("IPEX_TILE_AS_DEVICE", "0")
-    if IPEX_TILE_AS_DEVICE == "1":
-        os.environ["IPEX_DEV_INDEX"] = str(hvd.local_rank())
-    else:
-        os.environ["ZE_AFFINITY_MASK"] = str(hvd.local_rank())
 except:
     pass
 
@@ -84,7 +77,7 @@ class distributed_trainer(torch_trainer):
 
             # What backend?  nccl on GPU, gloo on CPU
             if self.args.run.compute_mode == ComputeMode.XPU:
-                # import torch_ccl
+                import oneccl_bindings_for_pytorch
                 backend = 'ccl'
             elif self.args.run.compute_mode == ComputeMode.CUDA:
                 if self.args.framework.oversubscribe > 1:
@@ -164,6 +157,7 @@ class distributed_trainer(torch_trainer):
             self.opt = hvd.DistributedOptimizer(self.opt, named_parameters=self._net.named_parameters())
             self.opt.param_groups[0]['capturable'] = True
         # self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.opt, self.lr_calculator, last_epoch=-1)
+
 
 
     def init_saver(self):
@@ -254,6 +248,35 @@ class distributed_trainer(torch_trainer):
             torch_trainer.summary_images(self, logits_image, labels_image, saver)
         return
 
+
+
+    def stack_tensors(self, input_tensor_dict):
+        # Assuming we have scalar metrics
+
+        # shapes = { key : input_tensor_dict[key].shape for key in input_tensor_dict.keys()}
+
+        flat_tensors = [ torch.reshape(input_tensor_dict[key], (-1,)) for key in input_tensor_dict.keys() ]
+
+        stacked_tensors = torch.stack(flat_tensors)
+        return stacked_tensors # , shapes
+
+    def split_metrics(self, input_stacked_tensor, keys):
+
+        """
+        Implicitly assuming that the metrics are all scalars
+        """
+
+        n_splits = input_stacked_tensor.shape[0]
+
+        split_metrics = torch.chunk(input_stacked_tensor, chunks = n_splits)
+
+        metrics_dict = {
+            key : torch.reshape(m, ()) for key, m in zip(keys, split_metrics)
+        }
+
+        return metrics_dict
+
+
     def _compute_metrics(self, logits, minibatch_data, loss_dict, batch_reduce=True):
 
         # This function calls the parent function which computes local metrics.
@@ -262,15 +285,14 @@ class distributed_trainer(torch_trainer):
 
         if batch_reduce:
             # Only perform the reduction if already reduced over the batch:
+            stacked_metrics = self.stack_tensors(metrics)
             if self.args.framework.distributed_mode == DistributedMode.horovod:
-                for key in metrics:
-                    metrics[key] = hvd.allreduce(metrics[key], name = key)
+                stacked_metrics = hvd.allreduce(stacked_metrics, name = key)
             elif self.args.framework.distributed_mode == DistributedMode.DDP:
-                with self.default_device_context():
-                    for key in metrics:
-                        torch.distributed.all_reduce(metrics[key])
-                        metrics[key] /= self._size
-
+                torch.distributed.all_reduce(stacked_metrics)
+                stacked_metrics /= self._size
+            metrics = self.split_metrics(stacked_metrics, metrics.keys())
+        # print(metrics)
         return metrics
 
 

@@ -30,7 +30,8 @@ network_dir = os.path.dirname(os.path.abspath(__file__))
 network_dir = os.path.dirname(network_dir)
 sys.path.insert(0,network_dir)
 
-from src.config import Config, RunUnit
+from src.config import Config, RunUnit, ComputeMode
+
 from src.config.mode import ModeKind
 
 from src.utils.io import create_larcv_dataset
@@ -448,9 +449,9 @@ class exec(object):
         if self.args.framework.name == "torch":
             # In torch, only option is channels first:
             if self.args.data.data_format == DataFormatKind.channels_last:
-                logger = logging.getLogger("CosmicTagger")
-                logger.warning("Torch requires channels_first, switching automatically")
-                self.args.data.data_format = DataFormatKind.channels_first
+                if self.args.run.compute_mode == ComputeMode.CUDA:
+                    logger.warning("CUDA Torch requires channels_first, switching automatically")
+                    self.args.data.data_format = DataFormatKind.channels_first
 
         elif self.args.framework.name == "tensorflow":
             if self.args.mode.name == ModeKind.train:
@@ -482,3 +483,4 @@ if __name__ == '__main__':
             'hydra/hydra_logging=disabled',
         ]
     main()
+    

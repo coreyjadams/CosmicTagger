@@ -53,7 +53,6 @@ class trainercore(object):
         self._exit          = False
         self.latest_metrics = {}
 
-
         # Just for benchmarking measurements:
         self.post_one_time   = None
         self.post_two_time   = None
@@ -66,6 +65,7 @@ class trainercore(object):
         #
         # if args.data.data_format == DataFormatKind.channels_first: self._channels_dim = 1
         # if args.data.data_format == DataFormatKind.channels_last : self._channels_dim = -1
+
 
         # Define a datatype for a profiling array.
         # It is going to be mostly 64bit timestamps for a number of points
@@ -88,28 +88,7 @@ class trainercore(object):
 
         # Create the baseline array:
         self.profiling_array = numpy.zeros((500,), dtype=self.profiling_dtype)
-        #
-        # self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
-        # if self.args.network.classification.active:
-        #     self._log_keys += ['Average/EventLabel',]
-        # if self.args.network.vertex.active:
-        #     self._log_keys += ['Average/VertexDetection',]
-        # if self.is_training():
-        #     self._log_keys.append("loss/total")
-        #
-        # # Copy these:
-        # self._hparams_keys = [ lk for lk in  self._log_keys]
-        # # Add to it
-        # self._hparams_keys += ["Average/Neutrino_IoU"]
-        # self._hparams_keys += ["Average/Cosmic_IoU"]
-        # self._hparams_keys += ["Average/Total_Accuracy"]
-        # self._hparams_keys += ["loss/segmentation"]
-        # if self.args.network.classification.active:
-        #     self._hparams_keys += ['loss/event_label',]
-        # if self.args.network.vertex.active:
-        #     self._hparams_keys += ['Average/VertexResolution',]
-        #     self._hparams_keys += ['loss/vertex/detection',]
-        #     self._hparams_keys += ['loss/vertex/localization',]
+  
 
     def now(self):
         return numpy.datetime64(datetime.datetime.now())
@@ -229,7 +208,6 @@ class trainercore(object):
         start = self.now()
         yield
         self.profiling_array[self.profiling_index][key] = self.now() - start
-
 
     def close_savers(self):
         pass
@@ -352,19 +330,6 @@ class trainercore(object):
             if self._iteration > max_steps: self._exit = True
 
 
-        # # Run iterations
-        # for self._iteration in range(self.args.run.iterations):
-        #
-        #
-        #
-        #     with self.timing_context("iteration"):
-        #         if self.is_training() and self._iteration >= self.args.run.iterations:
-        #
-        #             logger.info('Finished training (iteration %d)' % self._iteration)
-        #             break
-        #
-        #
-        #
 
 
 

@@ -18,6 +18,12 @@ import horovod.tensorflow as hvd
 hvd.init()
 from mpi4py import MPI
 
+
+try:
+    import intel_extension_for_tensorflow as itex
+except:
+    pass
+
 # from horovod.tensorflow.keras import DistributedOptimizer
 
 from src.config import ModeKind, ComputeMode
@@ -39,6 +45,9 @@ class distributed_trainer(tf_trainer):
         if self.args.run.compute_mode == ComputeMode.GPU:
             gpus = tf.config.list_physical_devices('GPU')
             tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
+        elif self.args.run.compute_mode == ComputeMode.XPU:
+            gpus = tf.config.list_physical_devices('XPU')
+            tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'XPU')
 
             # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
@@ -58,7 +67,7 @@ class distributed_trainer(tf_trainer):
 
         # Wrap the optimizer it in horovod:
         # self._opt = hvd.DistributedOptimizer(self._opt)
-        self.tape = hvd.DistributedGradientTape(self.tape)
+        self.tape = hvd.DistributedGradientTape(self.tape, num_groups=1)
 
     def init_saver(self):
         if hvd.rank() == 0:
@@ -70,6 +79,7 @@ class distributed_trainer(tf_trainer):
             self._val_writer = None
 
     def barrier(self):
+        from mpi4py import MPI
         MPI.COMM_WORLD.Barrier()
 
 
@@ -168,14 +178,42 @@ class distributed_trainer(tf_trainer):
         else:
             tf_trainer.log(self, metrics, kind, step)
 
+    def stack_tensors(self, input_tensor_dict):
+        # Assuming we have scalar metrics
+
+        # shapes = { key : input_tensor_dict[key].shape for key in input_tensor_dict.keys()}
+
+        flat_tensors = [ tf.reshape(input_tensor_dict[key], (-1,)) for key in input_tensor_dict.keys() ]
+
+        stacked_tensors = tf.stack(flat_tensors)
+        return stacked_tensors # , shapes
+
+    def split_metrics(self, input_stacked_tensor, keys):
+
+        """
+        Implicitly assuming that the metrics are all scalars
+        """
+
+        n_splits = input_stacked_tensor.shape[0]
+
+        split_metrics = tf.split(input_stacked_tensor, num_or_size_splits = n_splits)
+
+        metrics_dict = {
+            key : tf.reshape(m, ()) for key, m in zip(keys, split_metrics)
+        }
+
+        return metrics_dict
+
     def _compute_metrics(self, logits, prediction, labels, loss, reg_loss):
 
 
         metrics = tf_trainer._compute_metrics(self, logits, prediction, labels, loss, reg_loss)
 
+        # Concat all the metrics into one for better scaling:
+        stacked = self.stack_tensors(metrics)
 
-        reduced_metrics = {}
-        for key in metrics.keys():
-            reduced_metrics[key] = hvd.allreduce(metrics[key])
+        reduced_metrics = hvd.allreduce(stacked)
 
-        return reduced_metrics
+        metrics = self.split_metrics(reduced_metrics, metrics.keys())
+
+        return metrics

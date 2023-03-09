@@ -1,18 +1,18 @@
+
 defaults:
   - base_config
   - override framework: torch
   - _self_
-
+  
 data:
-  downsample: 0 # Change to 0
+  downsample: 1 # Change to 0
   version: 2
   data_format: channels_first
-  # data_directory: /cosmic_tagger_v2_data/
-  # file: "cosmic_tagging_2_train.h5"
-  # aux_file: "cosmic_tagging_2_val.h5"
+  file: "cosmic_tagging_2_train.h5"
+  aux_file: "cosmic_tagging_2_val.h5"
 
 network:
-  n_initial_filters: 32
+  n_initial_filters: 64
   classification:
     active: False
     detach: True
@@ -24,12 +24,12 @@ network:
   depth: 6 # changed from 5 to 6
   upsampling: convolutional
 run:
-  id: ds(0)_filters(32)_train_2023-01-31-20-37-20
-  minibatch_size: 128
-  iterations: 25000
+  id: ds(0)_filters(32)_train_2023-02-28-fp32
+  minibatch_size: 1
+  iterations: 250
   precision: float32
   epoch: 1000
-  distributed: True
+  distributed: False
   compute_mode: GPU
   # profile: True
-# output_dir: "/project_outputs/cosmic_tagger_v2/runs"
+output_dir: "//lus/grand/projects/datascience/cadams/CT-SN-RUNS"

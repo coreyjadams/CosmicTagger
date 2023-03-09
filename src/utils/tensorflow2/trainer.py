@@ -498,7 +498,7 @@ class tf_trainer(trainercore):
         return
 
 
-    # @tf.function
+    @tf.function
     def gradient_step(self, image, label):
 
         with self.tape:
@@ -526,10 +526,12 @@ class tf_trainer(trainercore):
                 gradients = self._opt.get_unscaled_gradients(scaled_gradients)
             else:
                 gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
+        # TODO: Should this add reg_loss to the loss?  Need to check how TF handles this.
         return logits, labels, prediction, loss, gradients, reg_loss
         # return logits, labels, prediction, loss - reg_loss, gradients, reg_loss
 
     def train_step(self, minibatch_data):
+
 
         global_start_time = datetime.datetime.now()
 
@@ -550,12 +552,12 @@ class tf_trainer(trainercore):
             io_fetch_time += (io_end_time - io_start_time).total_seconds()
 
             if self.args.run.profile:
-                if not self.args.distributed or self._rank == 0:
+                if not self.args.run.distributed or self._rank == 0:
                     tf.profiler.experimental.start(self.args.output_dir + "/train/")
             logits, labels, prediction, loss, internal_gradients, reg_loss = self.gradient_step(image, label)
 
             if self.args.run.profile:
-                if not self.args.distributed or self._rank == 0:
+                if not self.args.run.distributed or self._rank == 0:
                     tf.profiler.experimental.stop()
 
             # Accumulate gradients if necessary

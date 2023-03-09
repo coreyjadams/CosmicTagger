@@ -14,14 +14,14 @@ import pandas as pd
 import torch
 torch.autograd.set_detect_anomaly(True)
 try:
-    import ipex
+    import intel_extension_for_pytorch as ipex
 except:
     pass
 
 
 
 
-torch.manual_seed(0)
+# torch.manual_seed(0)
 
 # torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True
@@ -44,9 +44,9 @@ except:
     from tensorboardX import SummaryWriter
 
 import datetime
+from src.config import ComputeMode, Precision, ConvMode, ModeKind, DataFormatKind, RunUnit
 
 from . data import create_torch_larcv_dataloader
-from src.config import ComputeMode, Precision, ConvMode, ModeKind, RunUnit
 
 class torch_trainer(trainercore):
     '''
@@ -90,7 +90,9 @@ class torch_trainer(trainercore):
 
             self._raw_net = UResNet3D(self.args.network, image_size)
 
-
+        if self.args.data.data_format == DataFormatKind.channels_last:
+            if self.args.run.compute_mode == ComputeMode.XPU:
+                self._raw_net = self._raw_net.to("xpu").to(memory_format=torch.channels_last)
 
 
         if self.is_training():
@@ -623,8 +625,12 @@ class torch_trainer(trainercore):
             if self.args.data.synthetic:
                 minibatch_data['image'] = minibatch_data['image'].type(target_precision)
 
-        return minibatch_data
+            if self.args.run.compute_mode == ComputeMode.XPU:
+                if self.args.data.data_format == DataFormatKind.channels_last:
+                    minibatch_data["image"] == minibatch_data['image'].to(memory_format=torch.channels_last)
+                    minibatch_data["label"] == minibatch_data['label'].to(memory_format=torch.channels_last)
 
+        return minibatch_data
 
     def forward_pass(self, minibatch_data, net=None):
 
@@ -736,6 +742,19 @@ class torch_trainer(trainercore):
                     if not self.args.run.distributed or self.rank == 0:
                         prof.export_chrome_trace("timeline_" + str(self._global_step) + ".json")
 
+            step_start_time = datetime.datetime.now()
+            # Putting the optimization step here so the metrics and such can be concurrent:
+            with self.timing_context("optimizer"):
+                # Apply the parameter update:
+                if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
+                    self.scaler.step(self._opt)
+                    self.scaler.update()
+                else:
+                    self._opt.step()
+
+                self.lr_scheduler.step()
+            global_end_time = datetime.datetime.now()
+
             # Here, make sure to normalize the interior metrics:
             for key in metrics:
                 metrics[key] /= grad_accum
@@ -751,20 +770,7 @@ class torch_trainer(trainercore):
             metrics['io_fetch_time'] = io_fetch_time
 
 
-            step_start_time = datetime.datetime.now()
 
-
-            with self.timing_context("optimizer"):
-                # Apply the parameter update:
-                if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.CUDA:
-                    self.scaler.step(self.opt)
-                    self.scaler.update()
-                else:
-                    self.opt.step()
-
-                self.lr_scheduler.step()
-
-            global_end_time = datetime.datetime.now()
 
             metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
 

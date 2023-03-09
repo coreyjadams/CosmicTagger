@@ -17,4 +17,5 @@ run:
     distributed: False
     run_length: 500
     run_units: iteration
+    compute_mode: XPU
 
