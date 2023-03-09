@@ -384,7 +384,6 @@ class lightning_trainer(pl.LightningModule):
             value = self.inference_metrics[key] / n
             logger.info(f"  {key}: {value:.4f}")
 
-from lightning_fabric.plugins.environments import MPIEnvironment
 
 
 def build_network(args, image_size):
@@ -457,23 +456,31 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
     else:
         profiler  = None
 
+    if args.run.distributed:
+        from lightning_fabric.plugins.environments import MPIEnvironment
+        environment = MPIEnvironment()
+    else:
+        from lightning_fabric.plugins.environments import LightningEnvironment
+        environment = LightningEnvironment()
+
+
     # Distributed strategy:
     if args.run.distributed:
         from src.config import DistributedMode
         if args.framework.distributed_mode == DistributedMode.horovod:
             from pytorch_lightning.strategies import DataParallelStrategy
             strategy = DataParallelStrategy(
-                cluster_environment = MPIEnvironment()
+                cluster_environment = environment,
 
             )
         elif args.framework.distributed_mode == DistributedMode.DDP:
             from pytorch_lightning.strategies import DDPStrategy
             strategy = DDPStrategy(
-                cluster_environment = MPIEnvironment()
+                cluster_environment = environment,
             )
         elif False:
             from pytorch_lightning.strategies import DDPFullyShardedStrategy
-            strategy = DDPFullyShardedStrategy(cluster_environment = MPIEnvironment())
+            strategy = DDPFullyShardedStrategy(cluster_environment = environment,)
         elif args.framework.distributed_mode == DistributedMode.deepspeed:
             from pytorch_lightning.strategies import DeepSpeedStrategy
             strategy = DeepSpeedStrategy(
@@ -481,12 +488,12 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
                 stage               = 3,
                 sub_group_size      = 100000000000,
                 offload_optimizer   = True,
-                cluster_environment = MPIEnvironment()
+                cluster_environment = environment,
             )
         elif args.framework.distributed_mode == DistributedMode.sharded:
             from pytorch_lightning.strategies import DDPShardedStrategy
             strategy = DDPShardedStrategy(
-                cluster_environment = MPIEnvironment()
+                cluster_environment = environment,
             )
 
         devices   = int(os.environ['LOCAL_SIZE'])
@@ -503,7 +510,7 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
 
     # Move data to the device in the data loader:
     if args.run.compute_mode == ComputeMode.CUDA:
-        target_device = torch.device(f"cuda:{os.environ['LOCAL_RANK']}")
+        target_device = torch.device(environment.local_rank())
         # from lightning.pytorch.accelerators import find_usable_cuda_devices
         # lightning_devices = find_usable_cuda_devices(int(os.environ['LOCAL_RANK']))
         # print(lightning_devices)

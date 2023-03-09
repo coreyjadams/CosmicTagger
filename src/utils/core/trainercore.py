@@ -250,7 +250,6 @@ class trainercore(object):
             self.checkpoint()
         self._epoch_end = False
 
-
     def train_one_epoch(self, train_loader, val_loader=None, max_steps=None):
         self.on_epoch_start()
         for i, batch in enumerate(train_loader):

@@ -19,3 +19,5 @@ run:
     run_units: iteration
     compute_mode: XPU
 
+network:
+  depth: 6

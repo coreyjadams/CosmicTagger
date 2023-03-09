@@ -397,7 +397,7 @@ class exec(object):
                     )
 
         elif self.args.framework.name == "lightning":
-            from src.utils.torch import create_lightning_module
+            from src.utils.torch.lightning import create_lightning_module
             self.trainer = create_lightning_module(
                 self.args,
                 self.datasets,
@@ -445,8 +445,9 @@ class exec(object):
 
         from src.config.data import DataFormatKind
 
+        logger = logging.getLogger("CosmicTagger")
 
-        if self.args.framework.name == "torch":
+        if self.args.framework.name == "torch" or self.args.framework.name == "lightning":
             # In torch, only option is channels first:
             if self.args.data.data_format == DataFormatKind.channels_last:
                 if self.args.run.compute_mode == ComputeMode.CUDA:

@@ -154,7 +154,9 @@ class torch_trainer(trainercore):
                 if self.is_training() and  self.args.mode.optimizer.gradient_accumulation > 1:
                     raise Exception("Can not accumulate gradients in half precision.")
 
-            # self.trace_module()
+            # example_batch = next(iter(example_ds))
+
+            # self.trace_module(example_batch)
 
             if self.args.mode.name == ModeKind.inference:
                 self.inference_metrics = {}
@@ -167,22 +169,24 @@ class torch_trainer(trainercore):
                 device = self.default_device())
 
 
-    def trace_module(self):
+    def trace_module(self, example_batch):
         #
         # if self.args.run.precision == Precision.mixed:
         #     logger.warning("Tracing not available with mixed precision, sorry")
         #     return
 
         # Trace the module:
-        minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
-        example_inputs = self.to_torch(minibatch_data)
+        # minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop = True)
+        # example_inputs = self.to_torch(minibatch_data)
         # Run a forward pass of the model on the input image:
+
+        inputs = torch.tensor(example_batch["image"]).cuda()
 
         if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.CUDA:
             with torch.cuda.amp.autocast():
-                self._net = torch.jit.trace(self._net, example_inputs['image'] )
+                self._net = torch.jit.trace(self._net, inputs , strict=False)
         else:
-            self._net = torch.jit.trace(self._net, example_inputs['image'] )
+            self._net = torch.jit.trace(self._net, inputs , strict=False)
 
 
 
@@ -576,61 +580,62 @@ class torch_trainer(trainercore):
             device = torch.device('cpu')
         return device
 
-    def to_torch(self, minibatch_data, device_context=None):
+    # @profile
+    # def to_torch(self, minibatch_data, device_context=None):
 
-        if device_context is None:
-            device_context = self.default_device_context()
+    #     if device_context is None:
+    #         device_context = self.default_device_context()
 
-        target_precision = torch.float32
-        if self.args.run.precision == Precision.bfloat16:
-            target_precision = torch.bfloat16
-        elif self.args.run.precision == Precision.mixed:
-            target_precision = torch.float16
+    #     target_precision = torch.float32
+    #     if self.args.run.precision == Precision.bfloat16:
+    #         target_precision = torch.bfloat16
+    #     elif self.args.run.precision == Precision.mixed:
+    #         target_precision = torch.float16
 
-        device = self.default_device()
-        with device_context:
-            for key in minibatch_data:
-                if key == 'entries' or key == 'event_ids':
-                    continue
-                if key == 'vertex':
-                    minibatch_data[key]['detection'] = \
-                        [torch.tensor(d, device=device, dtype=target_precision) for d in minibatch_data[key]['detection'] ]
-                    minibatch_data[key]['regression'] = \
-                        torch.tensor(minibatch_data[key]['regression'],  device=device, dtype=target_precision)
-                    minibatch_data[key]['energy'] = \
-                        torch.tensor(minibatch_data[key]['energy'],  device=device, dtype=target_precision)
-                    minibatch_data[key]['xy_loc'] = \
-                        torch.tensor(minibatch_data[key]['xy_loc'],  device=device, dtype=target_precision)
+    #     device = self.default_device()
+    #     with device_context:
+    #         for key in minibatch_data:
+    #             if key == 'entries' or key == 'event_ids':
+    #                 continue
+    #             if key == 'vertex':
+    #                 minibatch_data[key]['detection'] = \
+    #                     [torch.tensor(d, device=device, dtype=target_precision) for d in minibatch_data[key]['detection'] ]
+    #                 minibatch_data[key]['regression'] = \
+    #                     torch.tensor(minibatch_data[key]['regression'],  device=device, dtype=target_precision)
+    #                 minibatch_data[key]['energy'] = \
+    #                     torch.tensor(minibatch_data[key]['energy'],  device=device, dtype=target_precision)
+    #                 minibatch_data[key]['xy_loc'] = \
+    #                     torch.tensor(minibatch_data[key]['xy_loc'],  device=device, dtype=target_precision)
 
-                elif key == 'image' and self.args.framework.sparse:
-                    # Use the image transform?
-                    if self.args.data.img_transform:
-                        # It's numpy data here:
-                        minibatch_data[key][1] =  numpy.log(minibatch_data[key][1] + 1)
-                    minibatch_data[key] = (
-                            torch.tensor(minibatch_data[key][0], device=device).long(),
-                            torch.tensor(minibatch_data[key][1], device=device, dtype=initial_learning_rate),
-                            minibatch_data[key][2],
-                        )
-                    # elif key == 'label':
-                        # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
-                else:
-                    # minibatch_data[key] = torch.tensor(minibatch_data[key])
-                    minibatch_data[key] = torch.tensor(minibatch_data[key], device=device, dtype=target_precision)
+    #             elif key == 'image' and self.args.framework.sparse:
+    #                 # Use the image transform?
+    #                 if self.args.data.img_transform:
+    #                     # It's numpy data here:
+    #                     minibatch_data[key][1] =  numpy.log(minibatch_data[key][1] + 1)
+    #                 minibatch_data[key] = (
+    #                         torch.tensor(minibatch_data[key][0], device=device).long(),
+    #                         torch.tensor(minibatch_data[key][1], device=device, dtype=initial_learning_rate),
+    #                         minibatch_data[key][2],
+    #                     )
+    #                 # elif key == 'label':
+    #                     # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
+    #             else:
+    #                 # minibatch_data[key] = torch.tensor(minibatch_data[key])
+    #                 minibatch_data[key] = torch.tensor(minibatch_data[key], device=device, dtype=target_precision)
 
-                    if key == 'image' and self.args.data.img_transform:
-                        minibatch_data[key] =  torch.log(minibatch_data['image'] + 1)
+    #                 if key == 'image' and self.args.data.img_transform:
+    #                     minibatch_data[key] =  torch.log(minibatch_data['image'] + 1)
 
 
-            if self.args.data.synthetic:
-                minibatch_data['image'] = minibatch_data['image'].type(target_precision)
+    #         if self.args.data.synthetic:
+    #             minibatch_data['image'] = minibatch_data['image'].type(target_precision)
 
-            if self.args.run.compute_mode == ComputeMode.XPU:
-                if self.args.data.data_format == DataFormatKind.channels_last:
-                    minibatch_data["image"] == minibatch_data['image'].to(memory_format=torch.channels_last)
-                    minibatch_data["label"] == minibatch_data['label'].to(memory_format=torch.channels_last)
+    #         if self.args.run.compute_mode == ComputeMode.XPU:
+    #             if self.args.data.data_format == DataFormatKind.channels_last:
+    #                 minibatch_data["image"] == minibatch_data['image'].to(memory_format=torch.channels_last)
+    #                 minibatch_data["label"] == minibatch_data['label'].to(memory_format=torch.channels_last)
 
-        return minibatch_data
+    #     return minibatch_data
 
     def forward_pass(self, minibatch_data, net=None):
 
@@ -663,6 +668,7 @@ class torch_trainer(trainercore):
 
         return network_dict, labels_dict
 
+    # @profile
     def train_step(self, minibatch_data):
 
         # For a train step, we fetch data, run a forward and backward pass, and
@@ -718,7 +724,7 @@ class torch_trainer(trainercore):
                     with self.timing_context("loss"):
                         loss, loss_metrics = self.loss_calculator(labels_dict, network_dict)
 
-                    if loss.isnan(): exit()
+                    # if loss.isnan(): exit()
                     # Compute the gradients for the network parameters:
                     with self.timing_context("backward"):
                         if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.CUDA:
@@ -747,10 +753,10 @@ class torch_trainer(trainercore):
             with self.timing_context("optimizer"):
                 # Apply the parameter update:
                 if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
-                    self.scaler.step(self._opt)
+                    self.scaler.step(self.opt)
                     self.scaler.update()
                 else:
-                    self._opt.step()
+                    self.opt.step()
 
                 self.lr_scheduler.step()
             global_end_time = datetime.datetime.now()
@@ -990,9 +996,10 @@ class torch_trainer(trainercore):
             logger.info(f"  {key}: {value:.4f}")
 
     def close_savers(self):
-        for saver in self.savers.values():
-            saver.flush()
-            saver.close()
+        if hasattr(self, "savers"):
+            for saver in self.savers.values():
+                saver.flush()
+                saver.close()
 
     def exit(self):
         self.store_parameters(self.latest_metrics)
