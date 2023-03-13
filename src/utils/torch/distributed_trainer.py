@@ -327,7 +327,7 @@ class distributed_trainer(torch_trainer):
 
         stacked_metrics = self.stack_tensors(metrics)
         if self.args.framework.distributed_mode == DistributedMode.horovod:
-            stacked_metrics = hvd.allreduce(stacked_metrics, name = key)
+            stacked_metrics = hvd.allreduce(stacked_metrics, name = '-'.join(metrics.keys()))
         elif self.args.framework.distributed_mode == DistributedMode.DDP:
             torch.distributed.all_reduce(stacked_metrics)
             stacked_metrics /= self._size
