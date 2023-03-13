@@ -95,6 +95,7 @@ class A21(Network):
     growth_rate:          GrowthRate   = GrowthRate.additive
     data_format:          str          = MISSING
     connections:          Connection   = Connection.sum
+    normalization:        Norm         = Norm.batch
 
 @dataclass
 class SCC21(Network):
