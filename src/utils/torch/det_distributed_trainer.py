@@ -172,7 +172,8 @@ class det_distributed_trainer(torch_trainer):
                     if self.is_training():
                         with self.timing_context("train"):
                             self.train_step()
-                            op.report_progress(self._iteration)
+                            if self._rank == 0: #report only from rank 0
+                                op.report_progress(self._iteration)
                         with self.timing_context("val"):
                             self.val_step(op)
                         with self.timing_context("checkpoint"):
@@ -195,9 +196,10 @@ class det_distributed_trainer(torch_trainer):
                 self.profiling_index += 1
             
             #report to operation completed
-            searcher_conf = self.determined_info.trial._config["searcher"]
-            det_searcher_metric_name = searcher_conf["metric"]
-            op.report_completed(self._last_known_val_metrics[det_searcher_metric_name])
+            if self._rank == 0: #report only from rank 0
+                searcher_conf = self.determined_info.trial._config["searcher"]
+                det_searcher_metric_name = searcher_conf["metric"]
+                op.report_completed(self._last_known_val_metrics[det_searcher_metric_name])
 
             self.close_savers()
 
@@ -288,6 +290,11 @@ class det_distributed_trainer(torch_trainer):
                     steps_completed=self._global_step+1,
                     metrics={k: metrics[k].item() if isinstance(metrics[k], torch.Tensor) else metrics[k] for k in metrics}
                 )
+                # determined needs validation metric to complete the trail and is also needed in HPO for search space exploration
+                # control flow for synthetic data is to avoid validation loop so the hack
+                if self.args.data.synthetic:
+                    self._last_known_val_metrics = {k: metrics[k].item() if isinstance(metrics[k], torch.Tensor) else metrics[k] for k in metrics}
+                    logger.info(f"hack when using synthetic data to use training last known metric: {self._last_known_val_metrics}")
             if saver == 'test':
                 self._last_known_val_metrics = {k: metrics[k].item() if isinstance(metrics[k], torch.Tensor) else metrics[k] for k in metrics}
                 self.determined_context.train.report_validation_metrics(

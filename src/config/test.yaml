@@ -8,9 +8,9 @@ defaults:
 
 data: 
   downsample: 1
-  synthetic: False
+  synthetic: True 
   aux_file: cosmic_tagging_light.h5
-  data_directory: /nfs/USERNAME/code/CosmicTagger/example_data/
+  data_directory: /grand/projects/determined_eval/code/CosmicTagger/example_data/
   file: cosmic_tagging_light.h5
 
 run:
