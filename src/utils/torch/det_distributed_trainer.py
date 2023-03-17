@@ -69,13 +69,13 @@ class det_distributed_trainer(torch_trainer):
 
 
     def default_device_context(self):
-        logger.info(f"Setting default_device_context to {self._local_rank} for rank {self._local_rank}")
+        #logger.info(f"Setting default_device_context to {self._local_rank} for rank {self._local_rank}")
         return torch.cuda.device(int(self._local_rank))
 
 
     def default_device(self):
 
-        logger.info(f"Get default_device_context to {self._local_rank} for rank {self._local_rank}")
+        #logger.info(f"Get default_device_context to {self._local_rank} for rank {self._local_rank}")
         return torch.device(f"cuda:{self._local_rank}")
 
     def barrier(self):
@@ -294,7 +294,7 @@ class det_distributed_trainer(torch_trainer):
                 # control flow for synthetic data is to avoid validation loop so the hack
                 if self.args.data.synthetic:
                     self._last_known_val_metrics = {k: metrics[k].item() if isinstance(metrics[k], torch.Tensor) else metrics[k] for k in metrics}
-                    logger.info(f"hack when using synthetic data to use training last known metric: {self._last_known_val_metrics}")
+                    #logger.info(f"hack when using synthetic data to use training last known metric: {self._last_known_val_metrics}")
             if saver == 'test':
                 self._last_known_val_metrics = {k: metrics[k].item() if isinstance(metrics[k], torch.Tensor) else metrics[k] for k in metrics}
                 self.determined_context.train.report_validation_metrics(

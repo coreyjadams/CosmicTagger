@@ -1,36 +1,44 @@
-name: Neutrino-launch
+name: Neutrino-2node
 debug: true
 entrypoint: >-
   python -m determined.launch.horovod
-  python /nfs/anoop/code/CosmicTagger/bin/det_exec.py --config-name test run.id=1 run.distributed=True +run.output_dir=/nfs/anoop/scratch
+  python /grand/projects/determined_eval/code/CosmicTagger/bin/det_exec.py --config-name test
 environment:
   environment_variables:
     - OMP_NUM_THREADS=1
     - NCCL_DEBUG=ERROR
+    # - HTTP_PROXY=http://proxy.alcf.anl.gov:3128
+    - HTTPS_PROXY=http://proxy.alcf.anl.gov:3128
+    # - http_proxy=http://proxy.alcf.anl.gov:3128
+    - https_proxy=http://proxy.alcf.anl.gov:3128
+    # - no_proxy=localhost,127.0.0.1
+
   image:
-    cuda: anoophpe/neutrino:1.0
-slurm:
-  gpu_type: nvidia_a100
-  slots_per_node: 1 #8
+    cuda: /grand/projects/determined_eval/images/neutrino:1.0.sif
 
 resources:
-  resource_pool: mlde_cuda
-  slots_per_trial: 1 #8
+  slots_per_trial: 8
 max_restarts: 0
 searcher:
   name: single
-  metric: test
-  max_length: 100
+  metric: loss
+  max_length: 500
 hyperparameters:
-  iterations: 5
   override_config:
+    output_dir: /grand/projects/determined_eval/scratch/joboutput/
     mode:
       checkpoint_iteration: 20
     run:
-      iterations: 100
-
+      distributed: True
+      id: 1
 bind_mounts:
-  - container_path: /nfs
-    host_path: /nfs
+  - container_path: /grand/projects/determined_eval
+    host_path: /grand/projects/determined_eval
     propagation: rprivate
     read_only: false
+  - container_path: /opt/cray/libfabric
+    host_path: /opt/cray/libfabric
+  - container_path: /opt/cray/pe
+    host_path: /opt/cray/pe
+  - container_path: /var/run/palsd/
+    host_path: /var/run/palsd/

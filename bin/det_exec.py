@@ -53,8 +53,9 @@ class exec(object):
 
         # Print the command line args to the log file:
         logger = logging.getLogger()
-        logger.info("Dumping launch arguments.")
-        logger.info(sys.argv)
+        if rank == 0:
+            logger.info("Dumping launch arguments.")
+            logger.info(sys.argv)
 
 
         if config.mode.name == ModeKind.train:
@@ -95,7 +96,8 @@ class exec(object):
         logger = logging.getLogger("cosmictagger")
 
         logger.info("Running Training")
-        logger.info(self.__str__())
+        if self.determined_context.distributed.get_rank() == 0:
+            logger.info(self.__str__())
 
         self.make_trainer()
 
