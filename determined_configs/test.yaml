@@ -1,4 +1,4 @@
-name: Neutrino-2node
+name: Neutrino-4node
 debug: true
 entrypoint: >-
   python -m determined.launch.horovod
@@ -17,7 +17,7 @@ environment:
     cuda: /grand/projects/determined_eval/images/neutrino:1.0.sif
 
 resources:
-  slots_per_trial: 8
+  slots_per_trial: 16
 max_restarts: 0
 searcher:
   name: single
@@ -27,7 +27,7 @@ hyperparameters:
   override_config:
     output_dir: /grand/projects/determined_eval/scratch/joboutput/
     mode:
-      checkpoint_iteration: 20
+      checkpoint_iteration: 100
     run:
       distributed: True
       id: 1
