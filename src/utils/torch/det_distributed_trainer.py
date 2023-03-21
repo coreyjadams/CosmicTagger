@@ -190,7 +190,7 @@ class det_distributed_trainer(torch_trainer):
 
                             # check for pre-emption and break 
                     if self.determined_context.preempt.should_preempt():
-                        logger.info('pre-emption signal received at iteration {self._iteration} - exiting training loop')
+                        logger.info(f'pre-emption signal received at iteration {self._iteration} - exiting training loop')
                         break
 
                 self.profiling_index += 1
