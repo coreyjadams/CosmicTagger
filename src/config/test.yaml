@@ -15,4 +15,3 @@ data:
 
 run:
     distributed: True
-    minibatch_size: 1

@@ -22,7 +22,6 @@ hydra.output_subdir = None
 import determined as det
 import torch
 import torch.distributed as dist
-from determined.horovod import hvd
 
 # Add the local folder to the import path:
 network_dir = os.path.dirname(os.path.abspath(__file__))
@@ -233,10 +232,30 @@ def main(cfg : OmegaConf) -> None:
     rank = comm.Get_rank()
     size = comm.Get_size()
 
-    hvd.require_horovod_type("torch", "to get horovod context for mpibootstrap")
-    hvd.init()
 
-    distributed = det.core.DistributedContext.from_horovod(hvd)
+    info = det.get_cluster_info()
+    slots_per_node = len(info.slot_ids)
+    num_nodes = len(info.container_addrs)
+    cross_rank = info.container_rank
+    cross_size = int(size / slots_per_node)
+    local_rank = int(rank % slots_per_node)
+
+    # bootstrapping for torch dist
+    C10D_PORT = str(29400)
+    chief_ip = info.container_addrs[0]
+    os.environ['MASTER_ADDR'] = chief_ip
+    os.environ['MASTER_PORT'] = C10D_PORT
+
+
+    distributed = det.core.DistributedContext(
+        rank=rank,
+        size=size,
+        local_rank=local_rank,
+        local_size=slots_per_node,
+        cross_rank=cross_rank,
+        cross_size=num_nodes,
+        chief_ip=chief_ip,
+    )
     with det.core.init(distributed=distributed) as determined_context:
         world_size = determined_context.distributed.size
         num_gpus_per_machine = determined_context.distributed.local_size

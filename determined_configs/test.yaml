@@ -30,6 +30,7 @@ hyperparameters:
       checkpoint_iteration: 100
     run:
       distributed: True
+      minibatch_size: 1
       id: 1
 bind_mounts:
   - container_path: /grand/projects/determined_eval

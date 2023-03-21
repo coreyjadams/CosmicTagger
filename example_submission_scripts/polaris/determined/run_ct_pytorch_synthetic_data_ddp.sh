@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -l select=4:system=polaris
 #PBS -l place=scatter
-#PBS -l walltime=0:30:00
+#PBS -l walltime=1:00:00
 #PBS -q debug-scaling
 #PBS -l filesystems=home:grand:eagle
 #PBS -A determined_eval
@@ -51,4 +51,4 @@ exit_with_status() {
      exit $EXIT_STATUS
 }
 
-task_num=-1; for host in $(sort -u ${PBS_NODEFILE}); do task_num=$((${task_num}+1)); parallel_launch pbs_tmrsh ${host} /grand/projects/determined_eval/bin/agents/determined-agent_0.20.0-dev0_linux_amd64/determined-agent --master-host=polaris-login-03  --master-port=8080 --resource-pool=default --container-runtime=singularity  --slot-type=cuda ;done;wait;exit_with_status
+task_num=-1; for host in $(sort -u ${PBS_NODEFILE}); do task_num=$((${task_num}+1)); parallel_launch pbs_tmrsh ${host} /grand/projects/determined_eval/bin/agents/determined-agent_0.20.0-dev0_linux_amd64/determined-agent --master-host=$MASTER_HOST  --master-port=8080 --resource-pool=default --container-runtime=singularity  --slot-type=cuda ;done;wait;exit_with_status
