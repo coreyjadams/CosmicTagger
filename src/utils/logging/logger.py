@@ -100,7 +100,7 @@ class logger():
         if level >= self.level:
             print(msg, flush=True)
             if hasattr(self, "file"):
-                self.file.write(msg)
+                self.file.write(msg + "\n")
 
     def info(self, message):
         self.print(

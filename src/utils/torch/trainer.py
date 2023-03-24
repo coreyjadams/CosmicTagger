@@ -125,7 +125,7 @@ class torch_trainer(trainercore):
             # Initialize savers:
             dir = self.args.output_dir
             self.savers = {
-                ds_name : SummaryWriter(dir + "/{ds_name}/")
+                ds_name : SummaryWriter(dir + f"/{ds_name}/")
                 for ds_name in datasets.keys()
             }
 
@@ -752,7 +752,7 @@ class torch_trainer(trainercore):
             # Putting the optimization step here so the metrics and such can be concurrent:
             with self.timing_context("optimizer"):
                 # Apply the parameter update:
-                if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.GPU:
+                if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.CUDA:
                     self.scaler.step(self.opt)
                     self.scaler.update()
                 else:
@@ -869,7 +869,8 @@ class torch_trainer(trainercore):
                 # Save a checkpoint, but don't do it on the first pass
                 self.save_model()
         else:
-            if self._epoch % self.args.mode.checkpoint_iteration == 0 and self._epoch_end:
+            # self._epoch % self.args.mode.checkpoint_iteration == 0 and
+            if self._epoch_end:
                 self.save_model()
 
     def ana_step(self):

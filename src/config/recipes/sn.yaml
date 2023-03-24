@@ -8,8 +8,10 @@ data:
   downsample: 1 # Change to 0
   version: 2
   data_format: channels_first
-  file: "cosmic_tagging_2_train.h5"
-  aux_file: "cosmic_tagging_2_val.h5"
+  paths:
+    active: 
+      - train
+      - val
 
 network:
   n_initial_filters: 64
@@ -26,10 +28,10 @@ network:
 run:
   id: ds(0)_filters(32)_train_2023-02-28-fp32
   minibatch_size: 1
-  iterations: 250
+  run_length: 25000
+  run_units: iteration
   precision: float32
-  epoch: 1000
   distributed: False
-  compute_mode: GPU
+  compute_mode: CUDA
   # profile: True
 output_dir: "//lus/grand/projects/datascience/cadams/CT-SN-RUNS"

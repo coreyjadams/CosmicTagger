@@ -15,10 +15,7 @@ class LossCalculator(torch.nn.Module):
 
         self.balance_type = params.mode.optimizer.loss_balance_scheme
 
-        if self.balance_type != "none":
-            self._criterion = torch.nn.CrossEntropyLoss(reduction='none')
-        else:
-            self._criterion = torch.nn.CrossEntropyLoss(reduction='mean')
+        self._criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
 
         self.event_label_criterion = torch.nn.CrossEntropyLoss(reduction="mean", weight=weight)
@@ -40,7 +37,10 @@ class LossCalculator(torch.nn.Module):
 
     def forward(self, labels_dict, network_dict):
 
-        loss   = self.segmentation_loss(labels_dict["segmentation"], network_dict["segmentation"])
+        loss   = self.segmentation_loss(
+            labels_dict["segmentation"],
+            [ n.to(torch.float32) for n in network_dict["segmentation"] ]
+        )
         loss_metrics = {
             "segmentation" : loss.detach()
         }
@@ -173,50 +173,51 @@ class LossCalculator(torch.nn.Module):
         # labels and logits are by plane, loop over them:
         for i in [0,1,2]:
             plane_loss = self._criterion(input=logits[i], target=labels[i])
-            if self.balance_type != LossBalanceScheme.none:
-                with torch.no_grad():
-                    if self.balance_type == LossBalanceScheme.focal:
-                        # To compute the focal loss, we need to compute the one-hot labels and the
-                        # softmax
-                        softmax = torch.nn.functional.softmax(logits[i], dim=1)
-                        # print("torch.isnan(softmax).any(): ", torch.isnan(softmax).any())
-                        onehot = torch.nn.functional.one_hot(labels[i], num_classes=3)
-                        # print("torch.isnan(onehot).any(): ", torch.isnan(onehot).any())
-                        onehot = onehot.permute([0,3,1,2])
-                        # print("torch.isnan(onehot).any(): ", torch.isnan(onehot).any())
-                        # print("onehot.shape: ", onehot.shape)
+            with torch.no_grad():
+                if self.balance_type == LossBalanceScheme.focal:
+                    # To compute the focal loss, we need to compute the one-hot labels and the
+                    # softmax
+                    softmax = torch.nn.functional.softmax(logits[i], dim=1)
+                    # print("torch.isnan(softmax).any(): ", torch.isnan(softmax).any())
+                    onehot = torch.nn.functional.one_hot(labels[i], num_classes=3)
+                    # print("torch.isnan(onehot).any(): ", torch.isnan(onehot).any())
+                    onehot = onehot.permute([0,3,1,2])
+                    # print("torch.isnan(onehot).any(): ", torch.isnan(onehot).any())
+                    # print("onehot.shape: ", onehot.shape)
 
-                        weights = onehot * (1 - softmax)**2
-                        # print("torch.isnan(weights).any(): ", torch.isnan(weights).any())
-                        # print("weights.shape:  ", weights.shape)
-                        weights = torch.mean(weights, dim=1)
-                        # print("torch.isnan(weights).any(): ", torch.isnan(weights).any())
-                        # print("scale_factor.shape:  ", scale_factor.shape)
-                        # print("plane_loss.shape: ", plane_loss.shape)
-                        # scale_factor /= torch.mean(scale_factor)
-                        # print("plane_loss.shape: ", plane_loss.shape)
+                    weights = onehot * (1 - softmax)**2
+                    # print("torch.isnan(weights).any(): ", torch.isnan(weights).any())
+                    # print("weights.shape:  ", weights.shape)
+                    weights = torch.mean(weights, dim=1)
+                    # print("torch.isnan(weights).any(): ", torch.isnan(weights).any())
+                    # print("scale_factor.shape:  ", scale_factor.shape)
+                    # print("plane_loss.shape: ", plane_loss.shape)
+                    # scale_factor /= torch.mean(scale_factor)
+                    # print("plane_loss.shape: ", plane_loss.shape)
 
-                    elif self.balance_type == LossBalanceScheme.even:
-                        counts = self.label_counts(labels[i])
-                        total_pixels = numpy.prod(labels[i].shape)
-                        locs = torch.where(labels[i] != 0)
-                        class_weights = 0.3333/(counts + 1.0)
+                elif self.balance_type == LossBalanceScheme.even:
+                    counts = self.label_counts(labels[i])
+                    total_pixels = numpy.prod(labels[i].shape)
+                    locs = torch.where(labels[i] != 0)
+                    class_weights = 0.3333/(counts + 1.0)
 
-                        weights = torch.full(labels[i].shape, class_weights[0], device=labels[i].device)
+                    weights = torch.full(labels[i].shape, class_weights[0], device=labels[i].device)
 
-                        weights[labels[i] == 1 ] = class_weights[1]
-                        weights[labels[i] == 2 ] = class_weights[2]
-                        pass
+                    weights[labels[i] == 1 ] = class_weights[1]
+                    weights[labels[i] == 2 ] = class_weights[2]
+                    pass
 
-                    elif self.balance_type == LossBalanceScheme.light:
+                elif self.balance_type == LossBalanceScheme.light:
 
-                        total_pixels = numpy.prod(labels[i].shape)
-                        per_pixel_weight = 1.
-                        weights = torch.full(labels[i].shape, per_pixel_weight, device=labels[i].device)
-                        weights[labels[i] == 1 ] = 1.5 * per_pixel_weight
-                        weights[labels[i] == 2 ] = 10  * per_pixel_weight
+                    total_pixels = numpy.prod(labels[i].shape)
+                    per_pixel_weight = 1.
+                    weights = torch.full(labels[i].shape, per_pixel_weight, device=labels[i].device)
+                    weights[labels[i] == 1 ] = 1.5 * per_pixel_weight
+                    weights[labels[i] == 2 ] = 10  * per_pixel_weight
+                else: # self.balance_type == LossBalanceScheme.none
+                    weights = 1.0
 
-                plane_loss = torch.mean(weights*plane_loss)
+            plane_loss = torch.mean(weights*plane_loss)
 
                 # total_weight = torch.sum(weights)
                 # plane_loss /= total_weight

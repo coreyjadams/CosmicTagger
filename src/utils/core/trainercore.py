@@ -18,14 +18,7 @@ import pathlib
 
 
 from src.utils import logging
-# logger = logging.getLogger()
-# logger.critical("TEST 1")
-# logger.propogate = True
-# print(logger)
-# print(logger.handlers)
-# logger.critical("TEST 2")
-# logger.handlers[0].flush()
-# exit()
+
 
 import contextlib
 
@@ -65,6 +58,7 @@ class trainercore(object):
         #
         # if args.data.data_format == DataFormatKind.channels_first: self._channels_dim = 1
         # if args.data.data_format == DataFormatKind.channels_last : self._channels_dim = -1
+        self._epoch_end = False
 
 
         # Define a datatype for a profiling array.
@@ -88,7 +82,7 @@ class trainercore(object):
 
         # Create the baseline array:
         self.profiling_array = numpy.zeros((500,), dtype=self.profiling_dtype)
-  
+
 
     def now(self):
         return numpy.datetime64(datetime.datetime.now())
@@ -263,8 +257,8 @@ class trainercore(object):
             self.on_step_start()
             with self.timing_context("train"):
                 self.train_step(batch)
-            # Validate one batch if using iterations as a measure:
-            if self.args.run.run_units == RunUnit.iteration and  self._iteration % self.args.run.val_iteration == 0:
+            # Validate one batch if:
+            if self._iteration % self.args.run.val_iteration == 0:
                 if val_loader is not None: self.validate(val_loader, max_steps=1)
 
             self.on_step_end()

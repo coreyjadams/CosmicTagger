@@ -14,9 +14,6 @@ import numpy
 
 import torch
 import pytorch_lightning as pl
-# logging.basicConfig(level=logging.INFO)
-# logging.getLogger("lightning").setLevel(logging.ERROR)
-# logging.getLogger("torch").setLevel(logging.ERROR)
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -218,7 +215,7 @@ class lightning_trainer(pl.LightningModule):
 
         self.print_log(acc_metrics, mode="train")
         # self.summary(acc_metrics)
-        # self.log_dict(acc_metrics, on_step=False, sync_dist=True)
+        self.log_dict(acc_metrics, sync_dist=True, rank_zero_only=True)
         return loss
 
     def configure_optimizers(self):
@@ -302,7 +299,9 @@ class lightning_trainer(pl.LightningModule):
             accuracy = self._calculate_accuracy(network_dict, labels_dict)
             accuracy.update(metrics)
 
-        return accuracy
+        current_lr = self.optimizers().state_dict()['param_groups'][0]['lr']
+        metrics["learning_rate"] = current_lr
+        return metrics
 
     def print_log(self, metrics, mode=""):
 
@@ -342,25 +341,25 @@ class lightning_trainer(pl.LightningModule):
 
     def exit(self): pass
 
-    def summary(self, metrics):
-        if self.global_step % self.args.mode.summary_iteration == 0:
-            saver = self.logger.experiment
-            for metric in metrics:
-                name = metric
-                value = metrics[metric]
-                if isinstance(value, torch.Tensor):
-                    # Cast metrics to 32 bit float
-                    value = value.float()
-
-                saver.add_scalar(metric, value, self.global_step)
-
-            # try to get the learning rate
-            try:
-                current_lr = self.optimizers().state_dict()['param_groups'][0]['lr']
-                saver.add_scalar("learning_rate", current_lr, self.global_step)
-            except:
-                pass
-            return
+    # def summary(self, metrics):
+    #     if self.global_step % self.args.mode.summary_iteration == 0:
+    #         saver = self.logger.experiment
+    #         for metric in metrics:
+    #             name = metric
+    #             value = metrics[metric]
+    #             if isinstance(value, torch.Tensor):
+    #                 # Cast metrics to 32 bit float
+    #                 value = value.float()
+    #
+    #             saver.add_scalar(metric, value, self.global_step)
+    #
+    #         # try to get the learning rate
+    #         try:
+    #             current_lr = self.optimizers().state_dict()['param_groups'][0]['lr']
+    #             saver.add_scalar("learning_rate", current_lr, self.global_step)
+    #         except:
+    #             pass
+    #         return
 
     def accumulate_metrics(self, metrics):
 
@@ -524,9 +523,9 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
 
 
     # Configure the logger:
-    # from pytorch_lightning.loggers import TensorBoardLogger
+    from pytorch_lightning.loggers import TensorBoardLogger
 
-    # tb_logger = TensorBoardLogger(args.output_dir + "/train/")
+    tb_logger = TensorBoardLogger(args.output_dir + "/train/")
 
     # Hooks specific to training:
     if args.mode.name == ModeKind.train:
@@ -546,7 +545,8 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
         strategy                = strategy,
         enable_progress_bar     = False,
         replace_sampler_ddp     = False,
-        logger                  = False,
+        logger                  = tb_logger,
+        log_every_n_steps       = 1,
         max_epochs              = max_epochs,
         max_steps               = max_steps,
         plugins                 = plugins,
