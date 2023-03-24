@@ -136,6 +136,11 @@ class exec(object):
                 vertex_depth = self.args.network.depth - self.args.network.vertex.depth
                 event_id = True
 
+        # Manually override - here - the data format in some cases
+        data_args = self.args.data
+        if self.args.run.compute_mode == ComputeMode.XPU:
+            if self.args.framework.name == "torch":
+                data_args.data_format = DataFormatKind.channels_first
 
         if self.args.data.synthetic:
             if self.args.mode.name == ModeKind.train:
@@ -145,7 +150,7 @@ class exec(object):
 
             datasets = {
                 name : create_larcv_dataset(
-                    data_args    = self.args.data,
+                    data_args    = data_args,
                     batch_size   = self.args.run.minibatch_size,
                     input_file   = None,
                     name         = name,
@@ -157,7 +162,7 @@ class exec(object):
         else:
             datasets = {
                 name : create_larcv_dataset(
-                    data_args    = self.args.data,
+                    data_args    = data_args,
                     batch_size   = self.args.run.minibatch_size,
                     input_file   = getattr(self.args.data.paths, name),
                     name         = name,
