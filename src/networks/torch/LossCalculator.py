@@ -37,6 +37,7 @@ class LossCalculator(torch.nn.Module):
 
     def forward(self, labels_dict, network_dict):
 
+        
         loss   = self.segmentation_loss(
             labels_dict["segmentation"],
             [ n.to(torch.float32) for n in network_dict["segmentation"] ]

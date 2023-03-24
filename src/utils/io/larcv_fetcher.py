@@ -408,6 +408,8 @@ class larcv_dataset(object):
         if self.vertex_depth is not None:
             downsample_level = 2**self.data_args.downsample
 
+            # Vertex depth is from the bottom up, but this function
+            # expects the number from the top down.
             # Put together the YOLO labels:
             minibatch_data["vertex"]  = data_transforms.form_yolo_targets(self.vertex_depth,
                 minibatch_data["vertex"], minibatch_data["particle"],

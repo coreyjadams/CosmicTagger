@@ -502,8 +502,9 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
         #     os.environ['CUDA_VISIBLE_DEVICES'] = os.environ['LOCAL_RANK']
         #     devices=1
     else:
+        from pytorch_lightning.strategies import SingleDeviceStrategy
         plugins   = []
-        strategy  = None
+        strategy  = SingleDeviceStrategy("cuda:0")
         devices   = 1
         num_nodes = 1
 
@@ -544,7 +545,7 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
         profiler                = profiler,
         strategy                = strategy,
         enable_progress_bar     = False,
-        replace_sampler_ddp     = False,
+        # replace_sampler_ddp     = False,
         logger                  = tb_logger,
         log_every_n_steps       = 1,
         max_epochs              = max_epochs,

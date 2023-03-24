@@ -12,22 +12,15 @@ import pandas as pd
 
 
 import torch
-torch.autograd.set_detect_anomaly(True)
 try:
     import intel_extension_for_pytorch as ipex
 except:
     pass
 
-
-
-
 # torch.manual_seed(0)
 
-# torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True
 
-
-# from torch.jit import trace
 
 from src.utils.core.trainercore import trainercore
 from src.networks.torch         import LossCalculator, AccuracyCalculator
@@ -421,8 +414,8 @@ class torch_trainer(trainercore):
 
 
         # Convert flat index to 2D coordinates:
-        height_index = [torch.div(p, self.vertex_output_space[1], rounding_mode='floor')  for p in predicted_vertex_index]
-        width_index  = [p % self.vertex_output_space[1]  for p in predicted_vertex_index]
+        height_index = [torch.div(p, self.vertex_meta["vertex_output_space"][1], rounding_mode='floor')  for p in predicted_vertex_index]
+        width_index  = [p % self.vertex_meta["vertex_output_space"][1]  for p in predicted_vertex_index]
 
         # Extract the regression parameters for every box:
         internal_offsets_height = [ n[:,1,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
@@ -438,9 +431,9 @@ class torch_trainer(trainercore):
         internal_offsets_width  = [ i[batch_indexes, p] for i, p in zip(internal_offsets_width,  predicted_vertex_index) ]
 
         # Calculate the predicted height as origin + (p+r)*box_size
-        predicted_height = [ self.origin[i,0] + (p+r)*self.anchor_size[i,0] for  \
+        predicted_height = [ self.vertex_meta["origin"][i,0] + (p+r)*self.vertex_meta["anchor_size"][i,0] for  \
             i, (p,r) in enumerate(zip(height_index, internal_offsets_height)) ]
-        predicted_width  = [ self.origin[i,1] + (p+r)*self.anchor_size[i,1] for \
+        predicted_width  = [ self.vertex_meta["origin"][i,1] + (p+r)*self.vertex_meta["anchor_size"][i,1] for \
             i, (p,r) in enumerate(zip(width_index, internal_offsets_width)) ]
 
         # Stack it all together properly:

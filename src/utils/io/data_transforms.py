@@ -241,7 +241,6 @@ def form_yolo_targets(vertex_depth, vertex_labels, particle_labels, event_labels
     # The data gets loaded in (W, H) format and we need it in (H, W) format.:
     vertex_labels[:,:,[0,1]] = vertex_labels[:,:,[1,0]]
 
-
     # First, determine the dimensionality of the output space of the vertex yolo network:
     vertex_output_space =tuple(d // 2**vertex_depth  for d in image_shape )
 
