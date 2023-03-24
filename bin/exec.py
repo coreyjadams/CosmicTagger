@@ -81,7 +81,7 @@ class exec(object):
             self.iotest()
         else:
             self.batch_process()
-        
+
     def exit(self):
         if hasattr(self, "trainer"):
             self.trainer.exit()
@@ -132,7 +132,8 @@ class exec(object):
         vertex_depth = None
         if hasattr(self.args.network, "vertex"):
             if self.args.network.vertex.active:
-                vertex_depth = self.args.network.vertex.depth
+                # Convert the vertex depth to measure from the top down here:
+                vertex_depth = self.args.network.depth - self.args.network.vertex.depth
                 event_id = True
 
 
@@ -484,4 +485,3 @@ if __name__ == '__main__':
             'hydra/hydra_logging=disabled',
         ]
     main()
-    
