@@ -292,6 +292,7 @@ class distributed_trainer(torch_trainer):
                 torch.distributed.all_reduce(stacked_metrics)
                 stacked_metrics /= self._size
             metrics = self.split_metrics(stacked_metrics, metrics.keys())
+
         # print(metrics)
         return metrics
 
