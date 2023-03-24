@@ -24,7 +24,7 @@ torch.backends.cudnn.benchmark = True
 
 from src.utils.core.trainercore import trainercore
 from src.networks.torch         import LossCalculator, AccuracyCalculator
-from src.networks.torch         import create_vertex_meta
+from src.networks.torch         import create_vertex_meta, predict_vertex
 
 import contextlib
 @contextlib.contextmanager
@@ -400,66 +400,24 @@ class torch_trainer(trainercore):
 
         # Predict the vertex, if needed:
         if self.args.network.vertex.active:
-            network_dict['predicted_vertex'] = self.predict_vertex(network_dict)
+            network_dict['predicted_vertex'] = predict_vertex(network_dict, self.vertex_meta)
 
         return self.acc_calc(network_dict, labels_dict, batch_reduce)
-
-    def predict_vertex(self, network_dict):
-
-        # We also flatten to make the argmax operation easier:
-        detection_logits = [ n[:,0,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
-
-        # Extract the index, which comes out flattened:
-        predicted_vertex_index = [ torch.argmax(n, dim=1) for n in detection_logits ]
-
-
-        # Convert flat index to 2D coordinates:
-        height_index = [torch.div(p, self.vertex_meta["vertex_output_space"][1], rounding_mode='floor')  for p in predicted_vertex_index]
-        width_index  = [p % self.vertex_meta["vertex_output_space"][1]  for p in predicted_vertex_index]
-
-        # Extract the regression parameters for every box:
-        internal_offsets_height = [ n[:,1,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
-        internal_offsets_width  = [ n[:,2,:,:].reshape((n.shape[0], -1)) for n in  network_dict['vertex'] ]
-
-        # Get the specific regression parameters
-        # Creates flat index into the vectors
-        batch_size = network_dict['vertex'][0].shape[0]
-        batch_indexes = torch.arange(batch_size)
-
-        # Extract the specific internal offsets:
-        internal_offsets_height = [ i[batch_indexes, p] for i, p in zip(internal_offsets_height, predicted_vertex_index) ]
-        internal_offsets_width  = [ i[batch_indexes, p] for i, p in zip(internal_offsets_width,  predicted_vertex_index) ]
-
-        # Calculate the predicted height as origin + (p+r)*box_size
-        predicted_height = [ self.vertex_meta["origin"][i,0] + (p+r)*self.vertex_meta["anchor_size"][i,0] for  \
-            i, (p,r) in enumerate(zip(height_index, internal_offsets_height)) ]
-        predicted_width  = [ self.vertex_meta["origin"][i,1] + (p+r)*self.vertex_meta["anchor_size"][i,1] for \
-            i, (p,r) in enumerate(zip(width_index, internal_offsets_width)) ]
-
-        # Stack it all together properly:
-        vertex_prediction = torch.stack([
-            torch.stack(predicted_height, dim=-1),
-            torch.stack(predicted_width, dim=-1)
-        ], dim=-1)
-
-        return vertex_prediction
 
 
     def _compute_metrics(self, network_dict, labels_dict, loss_dict, batch_reduce=True):
 
         with torch.no_grad():
-            # Call all of the functions in the metrics dictionary:
-            metrics = {}
+
+            metrics = self._calculate_accuracy(network_dict, labels_dict, batch_reduce)
 
             if loss_dict is not None:
                 for key in loss_dict:
-                    metrics[f'loss/{key}'] = loss_dict[key].data
-            accuracy = self._calculate_accuracy(network_dict, labels_dict, batch_reduce)
-            accuracy.update(metrics)
+                    metrics[f'loss/{key}'] = loss_dict[key].detach()
 
             ## TODO - add vertex resolution????
 
-        return accuracy
+        return metrics
 
 
     def summary(self, metrics, saver):
@@ -661,7 +619,6 @@ class torch_trainer(trainercore):
 
         return network_dict, labels_dict
 
-    # @profile
     def train_step(self, minibatch_data):
 
         # For a train step, we fetch data, run a forward and backward pass, and
@@ -812,12 +769,6 @@ class torch_trainer(trainercore):
             val_net = torch.quantization.convert(self._net)
         else:
             val_net = self._net
-        # Fetch the next batch of data with larcv
-        # (Make sure to pull from the validation set)
-        # io_start_time = datetime.datetime.now()
-        # with self.timing_context("io"):
-        #     minibatch_data = self.larcv_fetcher.fetch_next_batch('aux', force_pop = True)
-        # io_end_time = datetime.datetime.now()
 
 
         # if mixed precision, and cuda, use autocast:
@@ -827,8 +778,11 @@ class torch_trainer(trainercore):
         else:
             network_dict, labels_dict = self.forward_pass(minibatch_data, net=val_net)
 
+
+
         # Compute the loss based on the network_dict
         loss, loss_metrics = self.loss_calculator(labels_dict, network_dict)
+
 
         # Compute any necessary metrics:
         metrics = self._compute_metrics(network_dict, labels_dict, loss_metrics)
@@ -905,7 +859,7 @@ class torch_trainer(trainercore):
 
             # We can count the number of neutrino id'd pixels per plane:
             n_neutrino_pixels = [ torch.sum(torch.argmax(p, axis=1) == 2, axis=(1,2)) for p in logits_dict["segmentation"]]
-            predicted_vertex = self.predict_vertex(logits_dict)
+            predicted_vertex = predict_vertex(logits_dict, self.vertex_meta)
             predicted_label = torch.softmax(logits_dict["event_label"],axis=1)
             predicted_label = torch.argmax(predicted_label, axis=1)
             prediction_score = torch.max(predicted_label)

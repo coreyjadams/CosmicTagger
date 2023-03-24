@@ -11,7 +11,6 @@ class AccuracyCalculator(object):
 
     def segmentation_accuracy(self, labels, logits, batch_reduce=True):
 
-
         accuracy = {}
         accuracy['Average/Total_Accuracy']   = 0.0
         accuracy['Average/Cosmic_IoU']       = 0.0
@@ -19,8 +18,8 @@ class AccuracyCalculator(object):
         accuracy['Average/Non_Bkg_Accuracy'] = 0.0
         accuracy['Average/mIoU']             = 0.0
 
-        target_dtype = logits[0].dtype
-
+        target_dtype  = logits[0].dtype
+        target_device = logits[0].device
         for plane in [0,1,2]:
 
             values, predicted_label = torch.max(logits[plane], dim=1)
@@ -59,7 +58,7 @@ class AccuracyCalculator(object):
                 cosmic_label_locations).sum(dim=[1,2]).type(target_dtype)
             # neutrino_intersection =
 
-            one = torch.ones(1, dtype=neutrino_intersection.dtype,device=neutrino_intersection.device)
+            one = torch.ones(1, dtype=target_dtype,device=target_device)
 
 
             neutrino_safe_unions = torch.where(neutrino_union != 0, True, False)
@@ -80,6 +79,8 @@ class AccuracyCalculator(object):
             else:
                 correct = torch.mean(correct, axis=(1,2))
 
+
+
             accuracy[f'plane{plane}/Total_Accuracy']   = correct
             accuracy[f'plane{plane}/Cosmic_IoU']       = cosmic_iou
             accuracy[f'plane{plane}/Neutrino_IoU']     = neutrino_iou
@@ -91,7 +92,6 @@ class AccuracyCalculator(object):
             accuracy['Average/Neutrino_IoU']     += (0.3333333)*neutrino_iou
             accuracy['Average/Non_Bkg_Accuracy'] += (0.3333333)*non_zero_accuracy
             accuracy['Average/mIoU']             += (0.3333333)*(0.5)*(cosmic_iou + neutrino_iou)
-
 
         return accuracy
 
@@ -175,15 +175,21 @@ class AccuracyCalculator(object):
 
         with torch.no_grad():
 
+
             accuracy = self.segmentation_accuracy(labels_dict["segmentation"], network_dict["segmentation"], batch_reduce)
+
+
 
             if self.network_params.classification.active:
                 accuracy.update(self.event_accuracy(labels_dict["event_label"], network_dict["event_label"], batch_reduce))
+
+
 
             if self.network_params.vertex.active:
                 accuracy.update(self.vertex_accuracy(
                     labels_dict["vertex"], network_dict["vertex"],
                     network_dict["predicted_vertex"], labels_dict["event_label"], batch_reduce))
+
 
 
         return accuracy
