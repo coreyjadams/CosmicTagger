@@ -553,9 +553,11 @@ class UNetCore(tf.keras.models.Model):
 
 class UResNet(tf.keras.models.Model):
 
-    def __init__(self, params):
+    def __init__(self, params, spatial_size):
 
         tf.keras.models.Model.__init__(self)
+
+        # Spatial size isn't used because there is no vertex tagging yet in TF.
 
         if params.data_format == "channels_first":
             self.channels_axis = 1
@@ -588,9 +590,6 @@ class UResNet(tf.keras.models.Model):
                 out_filters = n_filters,
                 n_blocks    = params.blocks_final,
                 params      = params)
-
-
-        self.classification_subnet = tf.keras.layers.Sequential
 
 
         self.bottleneck = tf.keras.layers.Conv2D(
