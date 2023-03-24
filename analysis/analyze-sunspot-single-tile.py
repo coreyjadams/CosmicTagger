@@ -194,6 +194,7 @@ def plot_tile_FOM(df, bins, title, output_dir):
 
     counts, bin_edges = numpy.histogram(fom_per_tile, bins=bins)
     min_fom = numpy.min(fom_per_tile)
+    max_fom = numpy.max(fom_per_tile)
 
     bin_centers = 0.5*(bin_edges[1:] + bin_edges[:-1])
     widths = bin_edges[1:] - bin_edges[:-1]
@@ -211,7 +212,7 @@ def plot_tile_FOM(df, bins, title, output_dir):
     mean_fom = numpy.mean(fom_per_tile)
 
 
-    plt.bar(bin_centers, counts, width=widths, zorder=3, label=f"Min {min_fom:.2f} ({min_fom/mean_fom:.2f}%)")
+    plt.bar(bin_centers, counts, width=widths, zorder=3, label=f"Min/max {min_fom:.2f}/{max_fom:.2f} ({(max_fom -min_fom)/max_fom:.2f}%)")
     plt.plot(x, scale*norm(*fit).pdf(x), zorder=4, color="red", label=f"Gaussian ({fit[0]:.2f}, {fit[1]:.2f})")
     plt.grid(zorder=0)
     plt.legend()
