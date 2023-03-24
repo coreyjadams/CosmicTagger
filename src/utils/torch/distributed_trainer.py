@@ -62,7 +62,6 @@ class distributed_trainer(torch_trainer):
             # In the exec.py file, I call a script that sets MPI
             # variables in the environment for every rank.  So a lot of this
             # is simpler than it used to be.
-            import torch.distributed as dist
             from torch.nn.parallel import DistributedDataParallel as DDP
 
             rank       = int(os.environ['RANK'])
@@ -86,7 +85,6 @@ class distributed_trainer(torch_trainer):
                     backend = 'nccl'
             elif self.args.run.compute_mode == ComputeMode.CPU: backend = 'gloo'
 
-            # init_method = 'file:///home/cadams/ddp_init/ddp_init.txt'
             init_method = 'env://'
 
             torch.distributed.init_process_group(
@@ -155,7 +153,6 @@ class distributed_trainer(torch_trainer):
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
             self.opt = hvd.DistributedOptimizer(self.opt, named_parameters=self._net.named_parameters())
-            self.opt.param_groups[0]['capturable'] = True
         # self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.opt, self.lr_calculator, last_epoch=-1)
 
 
@@ -286,14 +283,20 @@ class distributed_trainer(torch_trainer):
         if batch_reduce:
             # Only perform the reduction if already reduced over the batch:
             stacked_metrics = self.stack_tensors(metrics)
+
             if self.args.framework.distributed_mode == DistributedMode.horovod:
-                stacked_metrics = hvd.allreduce(stacked_metrics, name = key)
+                stacked_metrics = hvd.allreduce(stacked_metrics, name = "key")
             elif self.args.framework.distributed_mode == DistributedMode.DDP:
+                # For an unknown reason, on Polaris, this puts extra stuff on device 0
+                # But, ONLY If the validation data is being used.
                 torch.distributed.all_reduce(stacked_metrics)
+
                 stacked_metrics /= self._size
+
             metrics = self.split_metrics(stacked_metrics, metrics.keys())
 
-        # print(metrics)
+
+
         return metrics
 
 

@@ -199,6 +199,25 @@ class lightning_trainer(pl.LightningModule):
         # self.summary(acc_metrics)
         # self.log_dict(acc_metrics)
 
+    def validation_step(self, batch, batch_idx):
+        # training_step defines the train loop.
+        network_dict = self(batch["image"])
+        prepped_labels = self.prep_labels(batch)
+
+        loss, loss_metrics = self.loss_calc(prepped_labels, network_dict)
+
+        acc_metrics = self.calculate_accuracy(network_dict, prepped_labels)
+
+        acc_metrics.update({
+            f"loss/{key}" : loss_metrics[key] for key in loss_metrics
+        })
+
+
+        self.print_log(acc_metrics, mode="val")
+        # self.summary(acc_metrics)
+        self.log_dict(acc_metrics, sync_dist=True, rank_zero_only=True)
+        return loss
+
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
         network_dict = self(batch["image"])
@@ -552,8 +571,10 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
         max_steps               = max_steps,
         plugins                 = plugins,
         # benchmark               = True,
+        val_check_interval      = 10,
+        check_val_every_n_epoch = None,
+        limit_val_batches       = 1,
         accumulate_grad_batches = accumulate,
-        limit_test_batches      = max_steps
     )
 
 
@@ -561,7 +582,8 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
     if args.mode.name == ModeKind.train:
         trainer.fit(
             lightning_model,
-            train_dataloaders=datasets["train"],
+            train_dataloaders = datasets["train"],
+            val_dataloaders   = datasets["val"] if "val" in datasets.keys() else None,
         )
     elif args.mode.name == ModeKind.inference:
         trainer.test(
