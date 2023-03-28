@@ -5,7 +5,6 @@ import contextlib
 import re
 
 from typing import Callable, Dict, Optional, Tuple, Type, Union
-from torch._six import string_classes
 
 np_str_obj_array_pattern = re.compile(r'[SaUO]')
 
@@ -66,7 +65,7 @@ def custom_convert(data, device):
         return elem_type(*(custom_convert(d, device=device) for d in data))
     elif isinstance(data, tuple):
         return [custom_convert(d, device=device) for d in data]  # Backwards compatibility.
-    elif isinstance(data, collections.abc.Sequence) and not isinstance(data, string_classes):
+    elif isinstance(data, collections.abc.Sequence):
         try:
             return elem_type([custom_convert(d, device=device) for d in data])
         except TypeError:

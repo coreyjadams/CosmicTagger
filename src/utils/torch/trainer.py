@@ -429,7 +429,7 @@ class torch_trainer(trainercore):
                 if isinstance(value, torch.Tensor):
                     # Cast metrics to 32 bit float
                     value = value.float()
-                    saver.add_scalar(metric, value, self._global_step)
+                saver.add_scalar(metric, value, self._global_step)
 
 
 
@@ -716,7 +716,6 @@ class torch_trainer(trainercore):
                     self.scaler.update()
                 else:
                     self.opt.step()
-
                 self.lr_scheduler.step()
             global_end_time = datetime.datetime.now()
 
@@ -738,6 +737,7 @@ class torch_trainer(trainercore):
 
 
             metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
+
 
             with self.timing_context("log"):
                 self.log(metrics, self.log_keys, saver="train")
