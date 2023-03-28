@@ -18,14 +18,15 @@ class AccuracyCalculator(object):
         accuracy['Average/Non_Bkg_Accuracy'] = 0.0
         accuracy['Average/mIoU']             = 0.0
 
-        target_dtype  = logits[0].dtype
+        # Compute accuracy in fp32!
+        target_dtype  = torch.float32
+        # target_dtype  = logits[0].dtype
         target_device = logits[0].device
         for plane in [0,1,2]:
 
             values, predicted_label = torch.max(logits[plane], dim=1)
 
             correct = (predicted_label == labels[plane].long()).type(target_dtype)
-
             # We calculate 4 metrics.
             # First is the mean accuracy over all pixels
             # Second is the intersection over union of all cosmic pixels
@@ -36,9 +37,10 @@ class AccuracyCalculator(object):
 
             non_zero_locations       = labels[plane] != 0
 
-            weighted_accuracy = correct * non_zero_locations
-            non_zero_accuracy = torch.sum(weighted_accuracy, dim=[1,2]) / \
-                (torch.sum(non_zero_locations, dim=[1,2]) + 0.1).type(target_dtype)
+            # This must be done in fp32:
+            weighted_accuracy = (correct * non_zero_locations).type(target_dtype)
+            denom = torch.sum(non_zero_locations, dim=[1,2]).type(target_dtype) + 0.1
+            non_zero_accuracy = torch.sum(weighted_accuracy, dim=[1,2]) / denom
 
             neutrino_label_locations = labels[plane] == 2
             cosmic_label_locations   = labels[plane] == 1
