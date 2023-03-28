@@ -98,7 +98,6 @@ class exec(object):
     def configure_lr_schedule(self, epoch_length, max_epochs):
 
 
-
         if self.args.mode.optimizer.lr_schedule.name == "one_cycle":
             from src.utils.core import OneCycle
             lr_schedule = OneCycle(self.args.mode.optimizer.lr_schedule)
@@ -330,9 +329,8 @@ class exec(object):
         elif self.args.run.run_units == RunUnit.iteration:
             # Max steps is easy:
             self.max_steps    = self.args.run.run_length
-
-            self.epoch_length = int(self.max_steps / dataset_length)
-
+            
+            self.epoch_length = dataset_length
             # This is totally arbitrary but meant to ensure there are enough
             # epochs in the lr scheduler
             # It's not recommended to use this mode unless benchmarking.
