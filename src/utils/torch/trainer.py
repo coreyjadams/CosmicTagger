@@ -592,7 +592,16 @@ class torch_trainer(trainercore):
 
 
         with self.default_device_context():
-            # minibatch_data = self.to_torch(minibatch_data)
+
+            if self.args.run.compute_mode == ComputeMode.XPU:
+                if self.args.data.data_format == DataFormatKind.channels_last:
+                    # minibatch_data["image"] = minibatch_data["image"].to(memory_format=torch.channels_last)
+                    # minibatch_data["label"] = minibatch_data['label'].to(memory_format=torch.channels_last)
+
+                    minibatch_data['label'].to(memory_format=torch.channels_last)
+                    minibatch_data["image"].to(memory_format=torch.channels_last)
+
+
             labels_dict = {
                 "segmentation" : torch.chunk(minibatch_data['label'].long(), chunks=3, dim=1),
 

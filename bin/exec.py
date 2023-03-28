@@ -30,7 +30,7 @@ network_dir = os.path.dirname(os.path.abspath(__file__))
 network_dir = os.path.dirname(network_dir)
 sys.path.insert(0,network_dir)
 
-from src.config import Config, RunUnit, ComputeMode
+from src.config import Config, RunUnit, ComputeMode, DataFormatKind
 
 from src.config.mode import ModeKind
 
@@ -137,7 +137,9 @@ class exec(object):
                 event_id = True
 
         # Manually override - here - the data format in some cases
-        data_args = self.args.data
+        import copy
+        
+        data_args = copy.copy(self.args.data)
         if self.args.run.compute_mode == ComputeMode.XPU:
             if self.args.framework.name == "torch":
                 data_args.data_format = DataFormatKind.channels_first

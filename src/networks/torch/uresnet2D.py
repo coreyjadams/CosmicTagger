@@ -487,7 +487,6 @@ class UResNet(torch.nn.Module):
 
         torch.nn.Module.__init__(self)
 
-
         self.initial_convolution = Block(
             inplanes  = 1,
             kernel    = [5,5],
@@ -622,8 +621,8 @@ class UResNet(torch.nn.Module):
         # Reshape this tensor into the right shape to apply this multiplane network.
         x = input_tensor
 
-        x = torch.chunk(x, chunks=3, dim=1)
 
+        x = torch.chunk(x, chunks=3, dim=1)
 
         # Apply the initial convolutions:
         x = tuple( self.initial_convolution(_x) for _x in x )

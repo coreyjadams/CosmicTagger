@@ -3,7 +3,7 @@ defaults:
   - override framework: torch
   - _self_
 data:
-  downsample: 0
+  downsample: 1
   version: 2
   paths:
     active:
@@ -14,11 +14,9 @@ data:
 network:
   n_initial_filters: 32
   classification:
-    active: True
-    detach: True
+    active: False
   vertex:
-    active: True
-    detach: True
+    active: False
   blocks_deepest_layer: 3
   blocks_final: 3
   depth: 6
