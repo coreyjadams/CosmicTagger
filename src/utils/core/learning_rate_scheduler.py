@@ -20,6 +20,9 @@ class Linear():
     def __getitem__(self, idx):
         return self.start +  idx *(self.stop - self.start) / self.length
 
+    def __repr__(self):
+        return f"Linear from {self.start} to {self.stop} for length {self.length}.\n"
+
 class Flat():
 
     def __init__(self, start_value, length):
@@ -37,10 +40,14 @@ class Flat():
     def __getitem__(self, idx):
         return self.start
 
+    def __repr__(self):
+        return f"Flat at {self.start} for length {self.length}.\n"
+
+
 class Decay:
 
     def __init__(self, start_value, floor, length, decay_rate):
-        self.start_value = start_value
+        self.start       = start_value
         self.floor       = floor
         self.length      = length
         self.decay_rate  = decay_rate
@@ -51,11 +58,14 @@ class Decay:
 
     def __getitem__(self, idx):
         exp = numpy.exp(-self.decay_rate * (idx))
-        return (self.start_value - self.floor) * exp + self.floor
+        return (self.start - self.floor) * exp + self.floor
 
     def __iter__(self):
         for i in range(self.length):
             yield self[i]
+
+    def __repr__(self):
+        return f"Decay from {self.start} to {self.floor} for length {self.length} at rate {self.decay_rate}.\n"
 
 
 class LRSchedule:
@@ -89,6 +99,13 @@ class LRSchedule:
         
     def __call__(self, idx):
         return self.__getitem__(idx)
+
+    def __repr__(self):
+        r = ""
+        for segment in self.segments:
+            r += repr(segment)
+
+        return r
 
 class WarmupFlatDecay(LRSchedule):
 
