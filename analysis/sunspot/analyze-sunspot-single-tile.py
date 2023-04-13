@@ -20,78 +20,50 @@ matplotlib.rc('font', **font)
 import matplotlib.font_manager
 
 
+def main():
 
-# Here's a function to read the profiling data for a given run:
-def read_numpy_profile_data(node, GPU, CPU, prefix):
-    data_file_name = prefix + node + f"/GPU{GPU}-CPU{CPU}" + f"/profiles/profiling_info_rank_0.npy"
-    # print(data_file_name)
-    read_in_data = numpy.load(data_file_name)
-    
-    return read_in_data
+    ####################################################################################
+    # Definition of run parameters:
+    NRANKS=984
+    LOCAL_BATCH_SIZE=12
+    FRAMEWORK="tensorflow"
+    PRECISION="float32"
+    DATA_FORMAT="channels_last"
+    PREFIX="/data/datasets/Sunspot/ct_output_multirun/"
+    RUN_NAME="synthetic-tile-run3"
+    TITLE=f"{FRAMEWORK}-n{NRANKS}-df{DATA_FORMAT}-p{PRECISION}-mb{LOCAL_BATCH_SIZE}-{RUN_NAME}"
+    top_dir = f"{PREFIX}/sunspot-a21-single-tile-{TITLE}/"
+    OUT_DIR="test/"
+    print(top_dir)
+    ####################################################################################
 
-def get_hosts(top_dir):
-    hosts = glob.glob(top_dir + "/x*")
-    hosts = [os.path.basename(h) for h in hosts]
-    return hosts    
+    p = pathlib.Path(OUT_DIR)
+    p.mkdir(parents=True, exist_ok=True)
 
+    # Make a list of the GPUS:
+    GPUS = [ f"{g//2}.{g%2}" for g in range(12) ]
+    print(f"GPUS are {GPUS}")
 
-def create_dataframe(local_batch_size, hosts, gpus, cpus, nranks, prefix):
-    host_vals  = []
-    host_index = []
-    gpu_index  = []
-    gpu_vals   = []
-    throughputs = []
-    variation  = []
-    start_time = []
-    all_imgs   = []
-
-    for i_host, host in enumerate(hosts):
-        for i_gpu, GPU in enumerate(gpus):
-            try:
-                this_data = read_numpy_profile_data(host, GPU, cpus[i_gpu], prefix)
-            except:
-                print(f"Host {host} and GPU {GPU} FAILED")
-                continue
-                
-            start_time.append( this_data[0]['start'] )
-            # Compute img/s for each iteration:
-            img_per_s = local_batch_size / (1e-6*this_data['iteration'][2:].astype(float) )
-            
-            # Compute throughput as total time / total iterations
-            total_time = 1e-6*numpy.sum(this_data['iteration'][2:].astype(float))
-            total_iterations = len(this_data['iteration'][2:])
-
-            this_throughput = local_batch_size * total_iterations / total_time
-                
-            average_img_per_s = numpy.mean(img_per_s)
-            var_img_per_s     = numpy.std(img_per_s)
-    #         print(this_throughput)
-    #         print(average_img_per_s)
-            
-            
-            host_index.append(i_host)
-            gpu_index.append(i_gpu)
-            gpu_vals.append(GPU)
-            host_vals.append(host)
-            throughputs.append(average_img_per_s)
-            variation.append(var_img_per_s)
-            all_imgs.append(img_per_s)
-
-    # throughput = len(data['iteration'][2:]) * LOCAL_BATCH_SIZE / numpy.sum(numpy.cast(data['iteration'][2:].cast(numpy.float))
-    # print(throughput)
-
-    df = pd.DataFrame(
-        zip(host_index, host_vals, gpu_index, 
-            gpu_vals, throughputs, all_imgs, variation, start_time), 
-        columns=["i_Host", "Host", "i_GPU", 
-                 "GPU", "Throughput", "Throughputs", 
-                 "Uncert", "Start"])
-
-    # Add a column for the tile:
-    df['tile'] = df['i_GPU'] % 2 == 0
+    CPUS = list(range(0,45,8)) + list(range(52,96,8))
+    print(f"CPUs are {CPUS}")
 
 
-    return df
+    hosts = get_hosts(top_dir)
+
+    # print(f"Found the following hosts: {hosts}")
+
+    df = create_dataframe(LOCAL_BATCH_SIZE, hosts, GPUS, CPUS, NRANKS, top_dir)
+
+    bins = numpy.arange(15,21,0.07)
+
+
+
+    plot_gpu_gpu_variation_scatter(df, GPUS, title=TITLE, output_dir=OUT_DIR)
+    plot_gpu_gpu_variation_box(df, GPUS, title=TITLE, output_dir=OUT_DIR)
+    plot_host_variation(df, title=TITLE, output_dir=OUT_DIR)
+    histogram_tile_throughput(df, bins, title=TITLE, output_dir=OUT_DIR)
+    plot_tile_FOM(df, bins, title=TITLE, output_dir=OUT_DIR)
+
 
 def plot_gpu_gpu_variation_box(df, gpus, title, output_dir):
 
@@ -221,51 +193,6 @@ def plot_tile_FOM(df, bins, title, output_dir):
     plt.title(title)
     plt.savefig(output_dir + "tile_FOM.pdf")
     # plt.show()
-
-def main():
-
-
-    ####################################################################################
-    # Definition of run parameters:
-    NRANKS=984
-    LOCAL_BATCH_SIZE=12
-    FRAMEWORK="tensorflow"
-    PRECISION="float32"
-    DATA_FORMAT="channels_last"
-    PREFIX="/data/datasets/Sunspot/ct_output_multirun/"
-    RUN_NAME="synthetic-tile-run1"
-    TITLE=f"{FRAMEWORK}-n{NRANKS}-df{DATA_FORMAT}-p{PRECISION}-mb{LOCAL_BATCH_SIZE}-{RUN_NAME}"
-    top_dir = f"{PREFIX}/sunspot-a21-single-tile-{TITLE}/"
-    OUT_DIR="test/"
-    print(top_dir)
-    ####################################################################################
-
-    p = pathlib.Path(OUT_DIR)
-    p.mkdir(parents=True, exist_ok=True)
-
-    # Make a list of the GPUS:
-    GPUS = [ f"{g//2}.{g%2}" for g in range(12) ]
-    print(f"GPUS are {GPUS}")
-
-    CPUS = list(range(0,45,8)) + list(range(52,96,8))
-    print(f"CPUs are {CPUS}")
-
-
-    hosts = get_hosts(top_dir)
-
-    # print(f"Found the following hosts: {hosts}")
-
-    df = create_dataframe(LOCAL_BATCH_SIZE, hosts, GPUS, CPUS, NRANKS, top_dir)
-
-    bins = numpy.arange(15,21,0.07)
-
-
-
-    plot_gpu_gpu_variation_scatter(df, GPUS, title=TITLE, output_dir=OUT_DIR)
-    plot_gpu_gpu_variation_box(df, GPUS, title=TITLE, output_dir=OUT_DIR)
-    plot_host_variation(df, title=TITLE, output_dir=OUT_DIR)
-    histogram_tile_throughput(df, bins, title=TITLE, output_dir=OUT_DIR)
-    plot_tile_FOM(df, bins, title=TITLE, output_dir=OUT_DIR)
 
 
 if __name__ == "__main__":
