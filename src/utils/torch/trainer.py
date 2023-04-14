@@ -117,10 +117,13 @@ class torch_trainer(trainercore):
 
             # Initialize savers:
             dir = self.args.output_dir
-            self.savers = {
-                ds_name : SummaryWriter(dir + f"/{ds_name}/")
-                for ds_name in datasets.keys()
-            }
+            if not self.args.run.distributed or self.rank == 0:
+                self.savers = {
+                    ds_name : SummaryWriter(dir + f"/{ds_name}/")
+                    for ds_name in datasets.keys()
+                }
+            else:
+                self.savers = {ds_name : None for ds_name in datasets.keys()}
 
 
             self._global_step = 0

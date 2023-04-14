@@ -54,9 +54,9 @@ class distributed_trainer(torch_trainer):
         if self.args.framework.distributed_mode == DistributedMode.horovod:
             # if self.args.run.compute_mode == "GPU":
                 # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
-            self._rank            = hvd.rank()
-            self._local_rank      = hvd.local_rank()
-            self._size            = hvd.size()
+            self.rank            = hvd.rank()
+            self.local_rank      = hvd.local_rank()
+            self.size            = hvd.size()
         else:
 
             # In the exec.py file, I call a script that sets MPI
@@ -70,9 +70,9 @@ class distributed_trainer(torch_trainer):
 
             # os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
 
-            self._rank = rank
-            self._size = size
-            self._local_rank = local_rank
+            self.rank = rank
+            self.size = size
+            self.local_rank = local_rank
 
             # What backend?  nccl on GPU, gloo on CPU
             if self.args.run.compute_mode == ComputeMode.XPU:
@@ -98,7 +98,7 @@ class distributed_trainer(torch_trainer):
 
     def save_model(self):
 
-        if self._rank == 0:
+        if self.rank == 0:
             torch_trainer.save_model(self)
 
     def default_device_context(self):
@@ -109,11 +109,11 @@ class distributed_trainer(torch_trainer):
                 # Then, it's manually set, use it
                 return torch.cuda.device(0)
             else:
-                return torch.cuda.device(int(self._local_rank))
+                return torch.cuda.device(int(self.local_rank))
         elif self.args.run.compute_mode == ComputeMode.XPU:
             # return contextlib.nullcontext
             try:
-                return ipex.xpu.device(int(self._local_rank))
+                return ipex.xpu.device(int(self.local_rank))
             except:
                 pass
             return contextlib.nullcontext
@@ -134,9 +134,9 @@ class distributed_trainer(torch_trainer):
                 # Then, it's manually set, use it
                 return torch.device("cuda:0")
             else:
-                return torch.device(f"cuda:{self._local_rank}")
+                return torch.device(f"cuda:{self.local_rank}")
         elif self.args.run.compute_mode == ComputeMode.XPU:
-            device = torch.device(f"xpu:{self._local_rank}")
+            device = torch.device(f"xpu:{self.local_rank}")
         elif self.args.run.compute_mode == ComputeMode.DPCPP:
             device = torch.device("dpcpp")
         else:
@@ -158,7 +158,7 @@ class distributed_trainer(torch_trainer):
 
 
     def init_saver(self):
-        if self._rank == 0:
+        if self.rank == 0:
             torch_trainer.init_saver(self)
         else:
             self._saver = None
@@ -166,20 +166,20 @@ class distributed_trainer(torch_trainer):
 
 
     def print_network_info(self, verbose=False):
-        if self._rank == 0:
+        if self.rank == 0:
             torch_trainer.print_network_info(self, verbose)
         return
 
     def restore_model(self):
 
         # Load on rank 0:
-        if self._rank == 0:
+        if self.rank == 0:
             state = self.load_state_from_file()
         else:
             state = None
 
         # Restore the weights on rank 0:
-        if state is not None and self._rank == 0:
+        if state is not None and self.rank == 0:
             self.restore_state(state)
 
 
@@ -211,7 +211,7 @@ class distributed_trainer(torch_trainer):
 
             devices = None
             if self.args.run.compute_mode == ComputeMode.XPU:
-                devices = ["xpu:{}".format(self._local_rank)]
+                devices = ["xpu:{}".format(self.local_rank)]
                 self._net.to(devices[0])
             elif self.args.run.compute_mode == ComputeMode.CUDA:
                 self._net.cuda()
@@ -236,12 +236,12 @@ class distributed_trainer(torch_trainer):
 
     def summary(self, metrics, saver=""):
 
-        if self._rank == 0:
+        if self.rank == 0:
             torch_trainer.summary(self, metrics, saver)
         return
 
     def summary_images(self, logits_image, labels_image, saver=""):
-        if self._rank == 0:
+        if self.rank == 0:
             torch_trainer.summary_images(self, logits_image, labels_image, saver)
         return
 
@@ -291,7 +291,7 @@ class distributed_trainer(torch_trainer):
                 # But, ONLY If the validation data is being used.
                 torch.distributed.all_reduce(stacked_metrics)
 
-                stacked_metrics /= self._size
+                stacked_metrics /= self.size
 
             metrics = self.split_metrics(stacked_metrics, metrics.keys())
 
@@ -304,5 +304,5 @@ class distributed_trainer(torch_trainer):
 
     def log(self, metrics, log_keys, saver):
 
-        if self._rank == 0:
+        if self.rank == 0:
             torch_trainer.log(self, metrics, log_keys, saver)

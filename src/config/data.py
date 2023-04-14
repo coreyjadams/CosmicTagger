@@ -13,11 +13,13 @@ class RandomMode(Enum):
     random_blocks = 0
     serial_access = 1
 
+data_top="/lus/gila/projects/Aurora_deployment/cadams/cosmic_tagger_2/"
+
 @dataclass
 class DatasetPaths:
-    train: str  = "/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_train.h5"
-    test:  str  = "/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_test.h5"
-    val:   str  = "/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_val.h5"
+    train: str  = f"{data_top}/cosmic_tagging_2_train.h5"
+    test:  str  = f"{data_top}/cosmic_tagging_2_test.h5"
+    val:   str  = f"{data_top}/cosmic_tagging_2_val.h5"
     active: Tuple[str] =  field(default_factory=list)
 
 
