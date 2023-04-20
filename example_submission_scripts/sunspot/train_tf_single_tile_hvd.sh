@@ -1,7 +1,7 @@
 #!/bin/bash -l
-#PBS -l select=64:system=sunspot
+#PBS -l select=1:system=sunspot
 #PBS -l place=scatter
-#PBS -l walltime=1:00:00
+#PBS -l walltime=0:30:00
 #PBS -q workq
 #PBS -A Aurora_deployment
 
@@ -32,7 +32,8 @@ PRECISION="float32"
 # PRECISION="mixed"
 
 # Adjust the local batch size:
-LOCAL_BATCH_SIZE=2
+LOCAL_BATCH_SIZE=12
+let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
 # NOTE: batch size 8 works ok, batch size 16 core dumps, haven't explored
 # much in between.  reduced precision should improve memory usage.
@@ -84,7 +85,7 @@ export FI_CXI_CQ_FILL_PERCENT=20
 module load frameworks/2023-03-03-experimental
 module list
 
-
+source /home/cadams/frameworks-2023-01-31-extension/bin/activate
 export NUMEXPR_MAX_THREADS=1
 
 
@@ -99,7 +100,7 @@ export NUMEXPR_MAX_THREADS=1
 
 
 # This string is an identified to store log files:
-run_id=sunspot-a21-singltile-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_SIZE}-synthetic
+run_id=sunspot-a21-tf-singltile-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_SIZE}-synthetic
 
 
 #####################################################################
@@ -135,10 +136,12 @@ python bin/exec.py \
 --config-name a21 \
 framework=tensorflow \
 output_dir=${OUTPUT_DIR}/${run_id} \
+data=real \
+data.data_directory=/lus/gila/projects/Aurora_deployment/cadams/cosmic_tagger/ \
 run.id=${run_id} \
 run.compute_mode=XPU \
 run.distributed=True \
 data.data_format=${DATA_FORMAT} \
 run.precision=${PRECISION} \
-run.minibatch_size=${LOCAL_BATCH_SIZE} \
+run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.iterations=5000
