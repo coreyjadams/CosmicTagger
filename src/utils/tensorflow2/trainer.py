@@ -136,6 +136,8 @@ class tf_trainer(trainercore):
         self._config = tf.compat.v1.ConfigProto()
 
         if self.args.run.compute_mode == ComputeMode.CPU:
+            cpus = tf.config.get_visible_devices("CPU")
+            tf.config.set_visible_devices(cpus[0])
             self._config.inter_op_parallelism_threads = self.args.framework.inter_op_parallelism_threads
             self._config.intra_op_parallelism_threads = self.args.framework.intra_op_parallelism_threads
         elif self.args.run.compute_mode == ComputeMode.GPU:
@@ -184,6 +186,7 @@ class tf_trainer(trainercore):
 
     def initialize(self, io_only=False):
 
+        self.set_compute_parameters()
 
         self._initialize_io(color=0)
 
@@ -208,7 +211,6 @@ class tf_trainer(trainercore):
 
         self.init_saver()
 
-        self.set_compute_parameters()
 
 
         # Try to restore a model?
