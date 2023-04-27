@@ -554,6 +554,8 @@ class UResNet(tf.keras.models.Model):
         else:
             self.channels_axis = -1
 
+        print(self.channels_axis)
+
         self.initial_convolution = Block(
             n_filters   = params.n_initial_filters,
             kernel      = [5,5],
@@ -619,6 +621,8 @@ class UResNet(tf.keras.models.Model):
         x = input_tensor
         x = tf.split(x, 3, self.channels_axis)
         split_input = x
+
+
 
 
 

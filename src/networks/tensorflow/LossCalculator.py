@@ -46,14 +46,26 @@ class LossCalculator(object):
 
             # labels and logits are by plane, loop over them:
             for i in [0,1,2]:
-                plane_loss = self._criterion(labels=labels[i], logits=logits[i])
+                print("logits[i].shape: ", logits[i].shape)
+                if self.channels_dim == 1:
+                    print("pre transpose logits[i].shape: ", logits[i].shape)
+                    logits_transposed = tf.transpose(logits[i], perm=(0,2,3,1))
+                    print("post transpose logits[i].shape: ", logits[i].shape)
+                else:
+                    logits_transposed = logits[i]
+                print("logits[i].shape: ", logits[i].shape)
+                plane_loss = self._criterion(labels=labels[i], logits=logits_transposed)
+                print("logits[i].shape: ", logits[i].shape)
                 if self.balance_type != LossBalanceScheme.none:
                     if self.balance_type == LossBalanceScheme.focal:
 
+                        print("logits[i].shape: ", logits[i].shape)
                         # Compute this as focal loss:
                         softmax = tf.nn.softmax(logits[i], axis = self.channels_dim)
                         one_hot = tf.one_hot(indices=labels[i], depth=3, axis=self.channels_dim)
                         weights = (1-softmax)**2
+                        print("weights.shape: ", weights.shape)
+                        print("one_hot.shape: ", one_hot.shape)
                         weights *= one_hot
                         weights = tf.reduce_sum(input_tensor=weights, axis=self.channels_dim)
 
