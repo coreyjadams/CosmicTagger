@@ -1,6 +1,6 @@
 from enum import Enum
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
@@ -22,7 +22,7 @@ class Train(Mode):
     checkpoint_iteration:   int = 500
     summary_iteration:      int = 1
     logging_iteration:      int = 1
-    optimizer:        Optimizer = Optimizer()
+    optimizer:        Optimizer = field(default_factory= lambda : Optimizer())
     quantization_aware:    bool = False
 
 @dataclass
