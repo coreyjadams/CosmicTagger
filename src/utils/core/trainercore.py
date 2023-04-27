@@ -45,7 +45,7 @@ class trainercore(object):
             io_dataformat = "channels_first"
         else:
             sparse = False
-            io_dataformat = args.data.data_format
+            io_dataformat = args.data.data_format.name
 
         self.larcv_fetcher = larcv_fetcher.larcv_fetcher(
             mode        = args.mode.name.name,
@@ -157,32 +157,6 @@ class trainercore(object):
                     'decay_rate'    : 0.999
                 },
             }
-
-        # one_cycle_schedule = {
-        #     'ramp_up' : {
-        #         'function'      : 'linear',
-        #         'start'         : 0,
-        #         'n_epochs'      : 10,
-        #         'initial_rate'  : 0.00001,
-        #         'final_rate'    : 0.001,
-        #     },
-        #     'ramp_down' : {
-        #         'function'      : 'linear',
-        #         'start'         : 10,
-        #         'n_epochs'      : 10,
-        #         'initial_rate'  : 0.001,
-        #         'final_rate'    : 0.00001,
-        #     },
-        #     'decay' : {
-        #         'function'      : 'decay',
-        #         'start'         : 20,
-        #         'n_epochs'      : 5,
-        #         'rate'          : 0.00001
-        #         'floor'         : 0.00001,
-        #         'decay_rate'    : 0.99
-        #     },
-        # }
-        # learning_rate_schedule = one_cycle_schedule
 
         # We build up the functions we need piecewise:
         func_list = []

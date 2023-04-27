@@ -18,13 +18,13 @@ class OptimizerKind(Enum):
 
 
 
-@dataclass 
+@dataclass
 class Optimizer:
-    learning_rate:         float             =  0.0003
+    learning_rate:         float             =  0.003
     loss_balance_scheme:   LossBalanceScheme = LossBalanceScheme.focal
     name:                  OptimizerKind     = OptimizerKind.adam
     gradient_accumulation: int               = 1
-    
+
 
 cs = ConfigStore.instance()
 cs.store(name="optimizer", node=Optimizer)
