@@ -19,6 +19,10 @@ import datetime
 
 
 import tensorflow as tf
+
+cpu = tf.config.list_physical_devices('CPU')[0]
+tf.config.set_visible_devices(cpu)
+
 tf.get_logger().setLevel('INFO')
 
 
@@ -107,7 +111,7 @@ class tf_trainer(trainercore):
                 self.args.mode.optimizer.loss_balance_scheme, self._channels_dim)
 
 
-        self._log_keys = ["loss", "Average/Non_Bkg_Accuracy", "Average/mIoU"]
+        self._log_keys = ["loss/loss", "Average/Non_Bkg_Accuracy", "Average/mIoU"]
 
         end = time.time()
         return end - start
@@ -136,6 +140,7 @@ class tf_trainer(trainercore):
         self._config = tf.compat.v1.ConfigProto()
 
         if self.args.run.compute_mode == ComputeMode.CPU:
+
             self._config.inter_op_parallelism_threads = self.args.framework.inter_op_parallelism_threads
             self._config.intra_op_parallelism_threads = self.args.framework.intra_op_parallelism_threads
         elif self.args.run.compute_mode == ComputeMode.GPU:
@@ -256,7 +261,7 @@ class tf_trainer(trainercore):
         # Parse the checkpoint file and use that to get the latest file path
         logger.info(f"Restoring checkpoint from {path}")
         self._net.load_weights(path)
-
+        print(self._global_step)
         # self.scheduler.set_current_step(self.current_step())
 
         return True
@@ -351,6 +356,7 @@ class tf_trainer(trainercore):
         # self._output['prediction'] = [ tf.argmax(input=x, axis=self._channels_dim) for x in self._logits]
         accuracy = self.acc_calculator(prediction=prediction, labels=labels)
 
+
         metrics = {}
         for p in [0,1,2]:
             metrics[f"plane{p}/Total_Accuracy"]          = accuracy["total_accuracy"][p]
@@ -413,7 +419,6 @@ class tf_trainer(trainercore):
 
         # Run a forward pass of the model on the input image:
         logits = self._net(image, training=training)
-
 
         if self.args.run.precision == Precision.mixed:
             logits = [ tf.cast(l, tf.float32) for l in logits ]
@@ -522,7 +527,7 @@ class tf_trainer(trainercore):
                 gradients = self._opt.get_unscaled_gradients(scaled_gradients)
             else:
                 gradients = self.get_gradients(loss, self.tape, self._net.trainable_weights)
-                
+
         return logits, labels, prediction, loss - reg_loss, gradients, reg_loss
 
     def train_step(self):
