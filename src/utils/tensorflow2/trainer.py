@@ -137,13 +137,14 @@ class tf_trainer(trainercore):
 
     def set_compute_parameters(self):
 
-        self._config = tf.compat.v1.ConfigProto()
 
         if self.args.run.compute_mode == ComputeMode.CPU:
             cpus = tf.config.get_visible_devices("CPU")
             tf.config.set_visible_devices(cpus[0])
-            self._config.inter_op_parallelism_threads = self.args.framework.inter_op_parallelism_threads
-            self._config.intra_op_parallelism_threads = self.args.framework.intra_op_parallelism_threads
+
+            tf.config.threading.set_intra_op_parallelism_threads(self.args.framework.intra_op_parallelism_threads)
+            tf.config.threading.set_inter_op_parallelism_threads(self.args.framework.inter_op_parallelism_threads)
+
         elif self.args.run.compute_mode == ComputeMode.GPU:
             gpus = tf.config.experimental.list_physical_devices('GPU')
 
@@ -355,6 +356,7 @@ class tf_trainer(trainercore):
 
         # self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
         # self._output['prediction'] = [ tf.argmax(input=x, axis=self._channels_dim) for x in self._logits]
+        # If the mode is channels last,
         accuracy = self.acc_calculator(prediction=prediction, labels=labels)
 
 
@@ -426,7 +428,7 @@ class tf_trainer(trainercore):
         # elif self.args.run.precision == Precision.bfloat16:
         #     logits = [ tf.cast(l, tf.bfloat16) for l in logits ]
 
-        prediction = tf.argmax(logits, axis=self._channels_dim, output_type = tf.dtypes.int32)
+        prediction = [ tf.argmax(l, axis=self._channels_dim, output_type = tf.dtypes.int32) for l in logits ]
         labels = tf.split(label, num_or_size_splits=3, axis=self._channels_dim)
         labels = [tf.squeeze(li, axis=self._channels_dim) for li in labels]
 
@@ -578,6 +580,8 @@ class tf_trainer(trainercore):
                     else:
                         metrics[key] = interior_metrics[key]
 
+
+
         # Normalize the metrics:
         for key in metrics:
             metrics[key] /= gradient_accumulation
@@ -599,6 +603,7 @@ class tf_trainer(trainercore):
 
         with self.timing_context("optimizer"):
             self.apply_gradients(gradients)
+        # print(self._net.trainable_variables)
 
 
         # Add the global step / second to the tensorboard log:
@@ -628,6 +633,8 @@ class tf_trainer(trainercore):
         self._global_step.assign_add(1)
         # Update the learning rate:
         self._learning_rate.assign(self.lr_calculator(int(self._global_step.numpy())))
+        self._opt.lr.assign(self._learning_rate)
+
         return self.current_step()
 
 

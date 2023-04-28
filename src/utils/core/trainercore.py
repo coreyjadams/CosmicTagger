@@ -142,7 +142,7 @@ class trainercore(object):
                     'function'      : 'linear',
                     'start'         : 0,
                     'n_epochs'      : 1,
-                    'initial_rate'  : 0.00001,
+                    'initial_rate'  : 0.0001,
                 },
                 'flat' : {
                     'function'      : 'flat',
