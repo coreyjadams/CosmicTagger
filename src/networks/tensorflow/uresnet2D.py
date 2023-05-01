@@ -554,7 +554,6 @@ class UResNet(tf.keras.models.Model):
         else:
             self.channels_axis = -1
 
-        print(self.channels_axis)
 
         self.initial_convolution = Block(
             n_filters   = params.n_initial_filters,

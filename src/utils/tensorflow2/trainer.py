@@ -22,9 +22,6 @@ import datetime
 
 import tensorflow as tf
 
-cpu = tf.config.list_physical_devices('CPU')[0]
-tf.config.set_visible_devices(cpu)
-
 tf.get_logger().setLevel('INFO')
 
 
@@ -111,8 +108,16 @@ class tf_trainer(trainercore):
 
     def print_network_info(self, verbose=False):
         n_trainable_parameters = 0
+
+        # Are we trying to run in deterministic mode?  If so, print out
+        # Extra info on the weights:
+        deterministic = self.args.framework.seed != 0 and self.args.data.seed != 0
+
         for var in self._net.variables:
             n_trainable_parameters += numpy.prod(var.get_shape())
+            if deterministic:
+                logger.info(f"{var.name} has min/mean/max {tf.reduce_min(var)}/{tf.reduce_mean(var)}/{tf.reduce_max(var)}.")
+                logger.info(f"{var.device}")
             if verbose:
                 logger.info(f"{var.name}: {var.get_shape()}")
         logger.info(f"Total number of trainable parameters in this network: {n_trainable_parameters}")
@@ -141,7 +146,7 @@ class tf_trainer(trainercore):
 
         elif self.args.run.compute_mode == ComputeMode.GPU:
             gpus = tf.config.experimental.list_physical_devices('GPU')
-
+            print(gpus)
 
             # The code below is for MPS mode.  It is a bit of a hard-coded
             # hack.  Use with caution since the memory limit is set by hand.

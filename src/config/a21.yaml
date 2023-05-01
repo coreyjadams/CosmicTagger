@@ -6,7 +6,7 @@ defaults:
   - override data: synthetic
   - _self_
 
-data: 
+data:
   downsample: 1
 
 mode:
@@ -15,5 +15,3 @@ mode:
 run:
     distributed: False
     compute_mode: XPU
-
-
