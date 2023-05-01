@@ -1,0 +1,22 @@
+
+
+defaults:
+  - base_config
+  - override network: a21
+  - override data: synthetic
+  - _self_
+
+data: 
+  downsample: 2
+  seed: 12345
+framework:
+  seed: 54321
+  
+mode:
+    no_summary_images: True
+
+run:
+    distributed: False
+    compute_mode: XPU
+
+

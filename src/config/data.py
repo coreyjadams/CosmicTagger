@@ -10,16 +10,18 @@ class DataFormatKind(Enum):
 
 @dataclass
 class Data:
-    synthetic:   bool            = False
-    downsample:  int             = 1
+    synthetic:              bool = False
+    downsample:              int = 1
     data_format: DataFormatKind  = DataFormatKind.channels_last
     img_transform:          bool = False
+    seed:                    int = 0
 
 @dataclass
 class Real(Data):
     synthetic:      bool = False
-    data_directory: str  = "/grand/projects/datascience/cadams/datasets/SBND/"
-    file:           str  = "cosmic_tagging_train.h5"
+    data_directory: str  = "/data/datasets/SBND/cosmic_tagging_1/"
+    # data_directory: str  = "/grand/projects/datascience/cadams/datasets/SBND/"
+    file:           str  = "cosmic_tagging_val.h5"
     aux_file:       str  = "cosmic_tagging_val.h5"
 
 
