@@ -7,17 +7,15 @@ defaults:
   - _self_
 
 data:
-  downsample: 2
+  downsample: 1
   seed: 12345
 framework:
   seed: 54321
 
 mode:
     no_summary_images: True
-    optimizer:
-      learning_rate: 0.01
 run:
     distributed: False
     compute_mode: GPU
-    minibatch_size: 8
-    iterations: 2500
+    minibatch_size: 32
+    iterations: 5000
