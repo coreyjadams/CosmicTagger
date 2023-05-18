@@ -82,6 +82,13 @@ class trainercore(object):
         # Create the baseline array:
         self.profiling_array = numpy.zeros((args.run.iterations,), dtype=self.profiling_dtype)
 
+        # Store the metrics per iteration into a file, (though only if rank == 0)
+        self.metric_files = {}
+
+    def __del__(self):
+        for key in self.metric_files.keys():
+            self.metric_files[key].close()
+
     def now(self):
         return numpy.datetime64(datetime.datetime.now())
 
@@ -215,6 +222,22 @@ class trainercore(object):
     def set_compute_parameters(self):
         pass
 
+    def write_metrics(self, metrics, kind, step):
+        '''
+        Write the metrics into a csv file.
+        '''
+        if kind not in self.metric_files:
+            # Initialize the file:
+            fname = f"{self.args.output_dir}/{kind}_metrics.csv"
+            self.metric_files[kind] = open(fname, 'w')
+            # Dump the header in:
+            self.metric_files[kind].write("step,"+",".join(metrics.keys())+"\n")
+
+        # Write the metrics in:
+        values = [ f"{v:.5f}" for v in metrics.values()]
+        self.metric_files[kind].write(f"{step}," + ",".join(values)+"\n")
+
+
 
     def log(self, metrics, kind, step):
 
@@ -234,6 +257,7 @@ class trainercore(object):
             log_string.rstrip(", ")
 
         logger.info(log_string)
+        self.write_metrics(metrics, kind, step)
 
         return
 

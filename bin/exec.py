@@ -199,6 +199,16 @@ class exec(object):
                     self.trainer = trainer.tf_trainer(self.args)
 
         elif self.args.framework.name == "torch":
+
+            # Import tensorflow and see what the version is.
+            if self.args.framework.seed != 0:
+                import torch
+                torch.manual_seed(self.args.framework.see)
+                torch.use_deterministic_algorithms(True)
+                
+                # Seed python too:
+                import random; random.seed(framework_seed)
+
             if self.args.run.distributed:
                 from src.utils.torch import distributed_trainer
                 self.trainer = distributed_trainer.distributed_trainer(self.args)

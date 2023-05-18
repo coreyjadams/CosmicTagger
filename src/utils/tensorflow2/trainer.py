@@ -379,26 +379,8 @@ class tf_trainer(trainercore):
         return metrics
 
     def log(self, metrics, kind, step):
-
-        log_string = ""
-
-        log_string += "{} Global Step {}: ".format(kind, step)
-
-
-        for key in metrics:
-            if key in self._log_keys and key != "global_step":
-                log_string += "{}: {:.3}, ".format(key, metrics[key])
-
-        if kind == "Train":
-            log_string += "Img/s: {:.2} ".format(metrics["images_per_second"])
-            log_string += "IO: {:.2} ".format(metrics["io_fetch_time"])
-        else:
-            log_string.rstrip(", ")
-
-        logger.info(log_string)
-
-        return
-
+        metrics = { key : float(val) for key, val in metrics.items()}
+        trainercore.log(self, metrics, kind, step)
 
     # @tf.function
     def cast_input(self, image, label):
