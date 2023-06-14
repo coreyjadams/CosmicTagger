@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -l select=1:system=sunspot
+#PBS -l select=2:system=sunspot
 #PBS -l place=scatter
 #PBS -l walltime=1:00:00
 #PBS -q workq
@@ -46,7 +46,7 @@ PRECISION="float32"
 # PRECISION="mixed"
 
 # Adjust the local batch size:
-LOCAL_BATCH_SIZE=1
+LOCAL_BATCH_SIZE=2
 let BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
 # NOTE: batch size 8 works ok, batch size 16 core dumps, haven't explored
@@ -77,10 +77,14 @@ unset IPEX_XPU_ONEDNN_LAYOUT_OPT
 
 # Frameworks have a different oneapi backend at the moment:
 module restore
+module list
 
-module load frameworks/2023-03-03-experimental
-source /home/cadams/frameworks-2023-01-31-extension/bin/activate
+frameworks="2023.05.15"
 
+# module load frameworks/${frameworks}.001
+module load frameworks/2023.05.15.001
+source /home/cadams/frameworks-2023-05-15-extension/bin/activate
+# source /home/cadams/frameworks-${frameworks}-extension/bin/activate
 
 export NUMEXPR_MAX_THREADS=1
 export OMP_NUM_THREADS=1
@@ -102,7 +106,7 @@ export OMP_NUM_THREADS=1
 
 
 # This string is an identified to store log files:
-run_id=sunspot-master-single-tile-ddp-n${NRANKS}-df${DATA_FORMAT}-p${PRECISION}-3
+run_id=${frameworks}-ddp-n${NRANKS}
 
 
 #####################################################################
