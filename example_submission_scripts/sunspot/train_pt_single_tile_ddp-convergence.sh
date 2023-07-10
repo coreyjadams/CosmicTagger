@@ -1,7 +1,7 @@
 #!/bin/bash -l
-#PBS -l select=2:system=sunspot
+#PBS -l select=32:system=sunspot
 #PBS -l place=scatter
-#PBS -l walltime=1:00:00
+#PBS -l walltime=0:20:00
 #PBS -q workq
 #PBS -A Aurora_deployment
 

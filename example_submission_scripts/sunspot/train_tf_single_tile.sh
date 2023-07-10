@@ -10,7 +10,7 @@
 # These are my own personal directories,
 # you will need to change these.
 #####################################################################
-OUTPUT_DIR=/lus/gila/projects/Aurora_deployment/cadams/ct_output/
+OUTPUT_DIR=/home/cadams/CosmicTagger/output-cpu/
 WORKDIR=/home/cadams/CosmicTagger/
 cd ${WORKDIR}
 
@@ -43,8 +43,8 @@ let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 #####################################################################
 
 # Toggle tf32 on (or don't):
-# ITEX_FP32_MATH_MODE=FP32
-unset ITEX_FP32_MATH_MODE
+ITEX_FP32_MATH_MODE=TF32
+# unset ITEX_FP32_MATH_MODE
 
 # For cosmic tagger, this improves performance:
 # (for reference, the default is "setenv ITEX_LAYOUT_OPT \"1\" ")
@@ -80,7 +80,7 @@ export NUMEXPR_MAX_THREADS=1
 
 
 # This string is an identified to store log files:
-run_id=sunspot-a21-tf-singltile-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_SIZE}-CPU
+run_id=sunspot-a21-tf-singletile-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_SIZE}-TF32
 
 
 #####################################################################

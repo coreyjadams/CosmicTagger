@@ -24,7 +24,7 @@ let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 #####################################################################
 
 # Channels last is faster for pytorch, requires code changes!
-# More info here: 
+# More info here:
 # https://intel.github.io/intel-extension-for-pytorch/xpu/latest/tutorials/features.html#channels-last
 DATA_FORMAT="channels_last"
 # DATA_FORMAT="channels_first"
@@ -75,7 +75,7 @@ module restore
 # module list
 
 
-module load frameworks/2023-01-31-experimental
+module load frameworks/2023.05.15.001
 
 
 export NUMEXPR_MAX_THREADS=1

@@ -22,10 +22,8 @@ let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
 echo $GLOBAL_BATCH_SIZE
 
-LEARNING_RATE=0.0003
 
 # export NVIDIA_TF32_OVERRIDE=0
-run_id=lr${LEARNING_RATE}/single-PVC-fp32-XPU-run1
 
 # output_dir=/home/cadams/CosmicTagger/output/ \
 
@@ -36,11 +34,37 @@ module list
 source /home/cadams/frameworks-2023-01-31-extension/bin/activate
 export NUMEXPR_MAX_THREADS=1
 
-python bin/exec.py \
---config-name a21-deterministic \
-run.id=${run_id} \
-run.distributed=False \
-run.minibatch_size=${GLOBAL_BATCH_SIZE} \
-run.compute_mode=${COMPUTE_MODE} \
-data.data_directory=${DATA_DIR} \
-mode.optimizer.loss_balance_scheme=none \
+
+declare -a LEARNING_RATES=("0.003"  "0.003" "0.0003")
+declare -a RUNS=("1" "2")
+declare -a LOSSES=("none" "focal")
+
+for LR in 0.03 0.003 0.0003;
+do
+  echo "$LR"
+  for RUN in 1 2;
+  do
+    echo " $RUN"
+    for LOSS in "none" "focal";
+    do
+      echo "  $LOSS"
+      run_id=packed_lr${LR}/single-PVC-fp32-XPU-${LOSS}-run${RUN}
+      echo $run_id
+      python bin/exec.py \
+      --config-name a21-deterministic \
+      run.id=${run_id} \
+      run.distributed=False \
+      run.minibatch_size=${GLOBAL_BATCH_SIZE} \
+      run.compute_mode=${COMPUTE_MODE} \
+      data.data_directory=${DATA_DIR} \
+      mode.optimizer.loss_balance_scheme=${LOSS} \
+      mode.optimizer.learning_rate=${LR} \
+      >/dev/null 2>&1 &
+
+    done
+  done
+done
+#
+
+echo "Jobs launched"
+wait < <(jobs -p)

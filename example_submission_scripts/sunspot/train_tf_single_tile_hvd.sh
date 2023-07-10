@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -l select=24:system=sunspot
+#PBS -l select=64:system=sunspot
 #PBS -l place=scatter
 #PBS -l walltime=0:30:00
 #PBS -q workq
@@ -119,7 +119,7 @@ ulimit -c 0
 mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} \
 --depth=8 --cpu-bind=verbose,depth \
 python bin/exec.py \
---config-name a21-deterministic \
+--config-name a21 \
 framework=tensorflow \
 output_dir=${OUTPUT_DIR}/${run_id} \
 data=real \

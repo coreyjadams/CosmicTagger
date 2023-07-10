@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -l select=42:system=sunspot
+#PBS -l select=64:system=sunspot
 #PBS -l place=scatter
 #PBS -l walltime=1:00:00
 #PBS -q workq
