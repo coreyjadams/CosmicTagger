@@ -83,6 +83,33 @@ class trainercore(object):
         # Create the baseline array:
         self.profiling_array = numpy.zeros((500,), dtype=self.profiling_dtype)
 
+        self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
+        if self.args.network.classification.active:
+            self._log_keys += ['Average/EventLabel',]
+        if self.args.network.vertex.active:
+            self._log_keys += ['Average/VertexDetection',]
+        if self.is_training():
+            self._log_keys.append("loss/total")
+
+        # Copy these:
+        self._hparams_keys = [ lk for lk in  self._log_keys]
+        # Add to it
+        self._hparams_keys += ["Average/Neutrino_IoU"]
+        self._hparams_keys += ["Average/Cosmic_IoU"]
+        self._hparams_keys += ["Average/Total_Accuracy"]
+        self._hparams_keys += ["loss/segmentation"]
+        if self.args.network.classification.active:
+            self._hparams_keys += ['loss/event_label',]
+        if self.args.network.vertex.active:
+            self._hparams_keys += ['Average/VertexResolution',]
+            self._hparams_keys += ['loss/vertex/detection',]
+            self._hparams_keys += ['loss/vertex/localization',]
+        # Store the metrics per iteration into a file, (though only if rank == 0)
+        self.metric_files = {}
+
+    def __del__(self):
+        for key in self.metric_files.keys():
+            self.metric_files[key].close()
 
     def now(self):
         return numpy.datetime64(datetime.datetime.now())
@@ -103,7 +130,23 @@ class trainercore(object):
     def set_compute_parameters(self):
         pass
 
+    def write_metrics(self, metrics, kind, step):
+        '''
+        Write the metrics into a csv file.
+        '''
+        if kind not in self.metric_files:
+            # Initialize the file:
+            fname = f"{self.args.output_dir}/{kind}_metrics.csv"
+            self.metric_files[kind] = open(fname, 'w')
+            # Dump the header in:
+            self.metric_files[kind].write("step,"+",".join(metrics.keys())+"\n")
+
+        # Write the metrics in:
+        values = [ f"{v:.5f}" for v in metrics.values()]
+        self.metric_files[kind].write(f"{step}," + ",".join(values)+"\n")
+
     def log(self, metrics, log_keys=[], saver=''):
+
 
         if self._global_step % self.args.mode.logging_iteration == 0:
 
@@ -126,8 +169,13 @@ class trainercore(object):
             if 'io_fetch_time' in metrics.keys():
                 time_string.append("{:.2} IOs".format(metrics['io_fetch_time']))
 
+<<<<<<< HEAD
             if 'step_time' in metrics.keys():
                 time_string.append("{:.2} (Step)(s)".format(metrics['step_time']))
+=======
+        logger.info(log_string)
+        self.write_metrics(metrics, kind, step)
+>>>>>>> v2.0
 
             if len(time_string) > 0:
                 s += " (" + " / ".join(time_string) + ")"

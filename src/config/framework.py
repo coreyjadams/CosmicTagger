@@ -14,6 +14,7 @@ class DistributedMode(Enum):
 class Framework:
     name:    str = MISSING
     sparse: bool = False
+    seed:    int = 0
 
 @dataclass
 class Tensorflow(Framework):

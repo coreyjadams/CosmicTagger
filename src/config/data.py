@@ -28,7 +28,9 @@ class Data:
     synthetic:              bool = False
     downsample:              int = 1
     data_format: DataFormatKind  = DataFormatKind.channels_last
-    version:                 int = 2 # Pick 1 or 2
+    img_transform:          bool = False
+    version:                 int = 2 # Pick 1 or two
+    seed:                    int = 0
 
 @dataclass
 class Real(Data):
