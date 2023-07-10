@@ -154,9 +154,9 @@ class trainercore(object):
 
             # Build up a string for logging:
             if log_keys != []:
-                s = ", ".join(["{0}: {1:.3}".format(key, metrics[key]) for key in log_keys])
+                s = ", ".join([f"{key}: {metrics[key]:.3}" for key in log_keys])
             else:
-                s = ", ".join(["{0}: {1:.3}".format(key, metrics[key]) for key in metrics])
+                s = ", ".join([f"{key}: {metrics[key]:.3}" for key in metrics])
 
             time_string = []
 
@@ -169,13 +169,8 @@ class trainercore(object):
             if 'io_fetch_time' in metrics.keys():
                 time_string.append("{:.2} IOs".format(metrics['io_fetch_time']))
 
-<<<<<<< HEAD
             if 'step_time' in metrics.keys():
                 time_string.append("{:.2} (Step)(s)".format(metrics['step_time']))
-=======
-        logger.info(log_string)
-        self.write_metrics(metrics, kind, step)
->>>>>>> v2.0
 
             if len(time_string) > 0:
                 s += " (" + " / ".join(time_string) + ")"

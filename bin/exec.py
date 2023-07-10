@@ -343,7 +343,7 @@ class exec(object):
         # Set the random seed for numpy, which controls the order of the 
         # data loading:
         data_seed = self.args.data.seed
-        if data_seed == 0:
+        if data_seed < 0:
             data_seed = int(time.time())
         numpy.random.seed(data_seed)
 

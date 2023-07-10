@@ -145,7 +145,6 @@ class tf_trainer(trainercore):
 
 
         if self.args.run.compute_mode == ComputeMode.CPU:
-<<<<<<< HEAD
             self._config.inter_op_parallelism_threads = self.args.framework.inter_op_parallelism_threads
             self._config.intra_op_parallelism_threads = self.args.framework.intra_op_parallelism_threads
         elif self.args.run.compute_mode == ComputeMode.CUDA:
@@ -153,17 +152,6 @@ class tf_trainer(trainercore):
         elif self.args.run.compute_mode == ComputeMode.XPU:
             gpus = tf.config.experimental.list_physical_devices('XPU')
 
-=======
-            cpus = tf.config.get_visible_devices("CPU")
-            tf.config.set_visible_devices(cpus[0])
-
-            tf.config.threading.set_intra_op_parallelism_threads(self.args.framework.intra_op_parallelism_threads)
-            tf.config.threading.set_inter_op_parallelism_threads(self.args.framework.inter_op_parallelism_threads)
-
-        elif self.args.run.compute_mode == ComputeMode.GPU:
-            gpus = tf.config.experimental.list_physical_devices('GPU')
-            print(gpus)
->>>>>>> v2.0
 
             # The code below is for MPS mode.  It is a bit of a hard-coded
             # hack.  Use with caution since the memory limit is set by hand.
@@ -387,15 +375,15 @@ class tf_trainer(trainercore):
         metrics["Average/mIoU"]                    = tf.reduce_mean(accuracy["miou"])
 
         if loss is not None:
-            metrics['loss/loss'] = loss
+            metrics['loss/total'] = loss
         if reg_loss is not None:
             metrics['loss/reg_loss'] = reg_loss
 
         return metrics
 
-    def log(self, metrics, kind, step):
+    def log(self, metrics, keys, saver):
         metrics = { key : float(val) for key, val in metrics.items()}
-        trainercore.log(self, metrics, kind, step)
+        trainercore.log(self, metrics, keys, saver)
 
     # @tf.function
     def cast_input(self, image, label):
@@ -459,7 +447,7 @@ class tf_trainer(trainercore):
         # It allows a handle to the distributed network to allreduce metrics.
         return metrics
 
-    def val_step(self, minibatch_data):
+    def val_step(self, minibatch_data, store=True):
 
 
         if not hasattr(self, "_aux_data_size"):
@@ -484,12 +472,13 @@ class tf_trainer(trainercore):
             metrics = self._compute_metrics(logits, prediction, labels, loss, current_reg_loss)
 
 
-            # Report metrics on the terminal:
-            self.log(metrics, kind="Test", step=int(self.current_step().numpy()))
+            if store:
+                # Report metrics on the terminal:
+                self.log(metrics, self.log_keys, saver="Test")
 
 
-            self.summary(metrics=metrics, saver=self._val_writer)
-            self.summary_images(labels, prediction, saver=self._val_writer)
+                self.summary(metrics=metrics, saver=self._val_writer)
+                self.summary_images(labels, prediction, saver=self._val_writer)
 
         return
 
@@ -613,7 +602,8 @@ class tf_trainer(trainercore):
 
         with self.timing_context("log"):
             # Report metrics on the terminal:
-            self.log(metrics, kind="Train", step=int(self.current_step().numpy()))
+            # self.log(metrics, kind="Train", step=int(self.current_step().numpy()))
+            self.log(metrics, self.log_keys, saver="Train")
 
 
         global_end_time = datetime.datetime.now()
@@ -703,7 +693,8 @@ class tf_trainer(trainercore):
 
 
         # Report metrics on the terminal:
-        self.log(metrics, kind="Inference", step=int(self.current_step().numpy()))
+        # self.log(metrics, kind="Inference", step=int(self.current_step().numpy()))
+        self.log(metrics, self.log_keys, saver="Inference")
 
 
         self.summary(metrics)

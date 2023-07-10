@@ -39,22 +39,6 @@ class Real(Data):
     seed:                    int = -1 # Random number seed
     paths:          DatasetPaths = DatasetPaths()
 
-# @dataclass
-# class Train(Data):
-#     synthetic:      bool = False
-#     path:           str  = "/data/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_train.h5"
-
-# @dataclass
-# class Test(Data):
-#     synthetic:      bool = False
-#     path:           str  = "/data/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_test.h5"
-#     seed:           int  = 0
-
-# @dataclass
-# class Val(Data):
-#     synthetic:      bool = False
-#     path:           str  = "/data/datasets/SBND/cosmic_tagging_2/cosmic_tagging_2_val.h5"
-
 
 @dataclass
 class Synthetic(Data):
