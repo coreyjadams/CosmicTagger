@@ -12,6 +12,7 @@ class AccuracyCalculator(object):
     # @tf.function
     def __call__(self, labels, prediction):
 
+
         # Labels is a list of tensors
         # Logits is a list of tensors
         with tf.compat.v1.variable_scope("accuracy"):

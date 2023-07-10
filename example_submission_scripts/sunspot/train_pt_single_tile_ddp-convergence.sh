@@ -1,11 +1,16 @@
 #!/bin/bash -l
+#PBS -l select=32:system=sunspot
+#PBS -l place=scatter
+#PBS -l walltime=0:20:00
+#PBS -q workq
+#PBS -A Aurora_deployment
 
 
 #####################################################################
 # These are my own personal directories,
 # you will need to change these.
 #####################################################################
-OUTPUT_DIR_TOP=/lus/gila/projects/Aurora_deployment/cadams/ct_output_multirun/${DATE}
+OUTPUT_DIR=/lus/gila/projects/Aurora_deployment/cadams/ct_output-master/
 WORKDIR=/home/cadams/CosmicTagger/
 cd ${WORKDIR}
 
@@ -19,8 +24,14 @@ NNODES=`wc -l < $PBS_NODEFILE`
 NRANKS_PER_NODE=12
 let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 
+# This is a fix for running over 16 nodes:
+export FI_CXI_DEFAULT_CQ_SIZE=131072
+export FI_CXI_OVFLOW_BUF_SIZE=8388608
+export FI_CXI_CQ_FILL_PERCENT=20
+
+
 #####################################################################
-# APPLICATION Variables that make a performance difference for torch:
+# APPLICATION Variables that make a performance difference for tf:
 #####################################################################
 
 # Channels last is faster for pytorch, requires code changes!
@@ -29,14 +40,14 @@ let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 DATA_FORMAT="channels_last"
 # DATA_FORMAT="channels_first"
 
-
 # Precision for CT can be float32, bfloat16, or mixed (fp16).
 PRECISION="float32"
 # PRECISION="bfloat16"
 # PRECISION="mixed"
 
 # Adjust the local batch size:
-LOCAL_BATCH_SIZE=12
+LOCAL_BATCH_SIZE=2
+let BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
 # NOTE: batch size 8 works ok, batch size 16 core dumps, haven't explored
 # much in between.  reduced precision should improve memory usage.
@@ -46,12 +57,14 @@ LOCAL_BATCH_SIZE=12
 #####################################################################
 
 # Toggle tf32 on (or don't):
-IPEX_FP32_MATH_MODE=TF32
+# IPEX_FP32_MATH_MODE=TF32
 # unset IPEX_FP32_MATH_MODE
 
 # For cosmic tagger, this improves performance:
 unset IPEX_XPU_ONEDNN_LAYOUT_OPT
 #setenv IPEX_XPU_ONEDNN_LAYOUT_OPT "1"
+
+
 
 #####################################################################
 # End of perf-adjustment section
@@ -64,34 +77,17 @@ unset IPEX_XPU_ONEDNN_LAYOUT_OPT
 
 # Frameworks have a different oneapi backend at the moment:
 module restore
-# Use a newer oneapi:
-# module swap oneapi/eng-compiler/2022.10.15.006 oneapi/release/2022.12.30.001
+module list
 
-# Activate my conda install:
-# source /home/cadams/miniconda3/bin/activate
+frameworks="2023.05.15"
 
-# Activate my conda env:
-# conda activate /home/cadams/intel-python-conda-build/envs
-# module list
-
-
+# module load frameworks/${frameworks}.001
 module load frameworks/2023.05.15.001
-
+source /home/cadams/frameworks-2023-05-15-extension/bin/activate
+# source /home/cadams/frameworks-${frameworks}-extension/bin/activate
 
 export NUMEXPR_MAX_THREADS=1
 export OMP_NUM_THREADS=1
-
-# Create the command arguments:
-
-echo "CREATE ARGS"
-
-PYTHON_ARGUMENTS="bin/exec.py --config-name a21 framework=${FRAMEWORK} "
-PYTHON_ARGUMENTS="${PYTHON_ARGUMENTS} run.compute_mode=XPU run.distributed=False data.data_format=${DATA_FORMAT}"
-PYTHON_ARGUMENTS="${PYTHON_ARGUMENTS} run.precision=${PRECISION} run.minibatch_size=${LOCAL_BATCH_SIZE} run.iterations=500"
-PYTHON_ARGUMENTS="${PYTHON_ARGUMENTS} mode.checkpoint_iteration=20000"
-
-echo $PYTHON_ARGUMENTS
-
 
 # One tile per gpu:
 # ZE_AFFINITY_MASK=0.0
@@ -108,30 +104,45 @@ echo $PYTHON_ARGUMENTS
 # Note that this example targets a SINGLE TILE
 #####################################################################
 
-# These are the tiles in order in which we use them:
-# ZE_AFFINITY_LIST=("0.0" "1.0"  "2.0" "3.0" "4.0" "5.0" "0.1" "1.1" "2.1" "3.1" "4.1" "5.1")
-# CPU_AFFINITY_LIST=("0"  "16"   "32"  "52"  "68"  "84"  "8"   "24"  "40"  "60"  "76"  "92")
-ZE_AFFINITY_LIST=("0.0" "1.0"  "2.0" "3.0" "4.0" "5.0" "0.1" "1.1" "2.1" "3.1" "4.1" "5.1")
-CPU_AFFINITY_LIST=("0"  "16"   "32"  "52"  "68"  "84"  "8"   "24"  "40"  "60"  "76"  "92")
-RUN_ID_TEMPLATE=sunspot-a21-single-tile-${FRAMEWORK}-n${NRANKS}-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_SIZE}-synthetic-tile-run${RUN}
-
-
-for (( idx=0; idx<${NRANKS_PER_NODE}; idx++ ))
-do
-	echo "Hello"
-	echo $idx
-	GPU=${ZE_AFFINITY_LIST[$idx]}
-	CPU=${CPU_AFFINITY_LIST[$idx]}
-	host=$(hostname)
-	run_id="${RUN_ID_TEMPLATE}/${host}/GPU${GPU}-CPU${CPU}"
-	echo $run_id
-	export ZE_AFFINITY_MASK=${GPU}
-	numactl -C ${CPU} python $PYTHON_ARGUMENTS run.id=${run_id} output_dir=${OUTPUT_DIR_TOP}/${run_id} > /dev/null 2>&1 &
-	unset ZE_AFFINITY_MASK
-done
-
-wait < <(jobs -p)
-
-echo "DONE LOOP"
 
 # This string is an identified to store log files:
+run_id=${frameworks}-ddp-n${NRANKS}
+
+
+#####################################################################
+# Launch the script
+# This section is to outline what the command is doing
+#
+# python bin/exec.py \						# Script entry point
+# --config-name a21 \						# Aurora acceptance model
+# framework=torch \							# Switch to torch here
+# output_dir=${OUTPUT_DIR}/${run_id} \		# Direct the output to this folder
+# run.id=${run_id} \						# Pass the unique runID
+# run.compute_mode=XPU \					# Explicitly set XPU as the target accelerator
+# run.distributed=True \					# Use collectives now
+# data.data_format=${DATA_FORMAT} \			# Set data format per user spec
+# run.precision=${PRECISION} \				# Set precision per user spec
+# run.minibatch_size=${LOCAL_BATCH_SIZE} \	# Set minibatch size per user spec
+# run.iterations=250						# Run for 250 iterations.
+#####################################################################
+
+export CCL_LOG_LEVEL="WARN"
+# export ZE_AFFINITY_MASK=0.0,0.1,1.0,1.1,2.0,2.1,3.0,3.1,4.0,4.1,5.0,5.1
+
+ulimit -c 0
+
+# Launch the script
+mpiexec -np ${NRANKS} -ppn ${NRANKS_PER_NODE} \
+--cpu-bind verbose,list:0:8:16:24:32:40:52:60:68:76:84:92 \
+python bin/exec.py \
+framework=torch \
+output_dir=${OUTPUT_DIR}/${run_id} \
+run.id=${run_id} \
+run.compute_mode=XPU \
+run.distributed=True \
+data.data_directory=/lus/gila/projects/Aurora_deployment/cadams/cosmic_tagger/ \
+data.data_format=${DATA_FORMAT} \
+network.n_initial_filters=32 \
+run.precision=${PRECISION} \
+run.minibatch_size=${BATCH_SIZE} \
+run.iterations=25000

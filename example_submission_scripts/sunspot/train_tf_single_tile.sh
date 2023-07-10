@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#PBS -l select=64:system=sunspot
+#PBS -l select=1:system=sunspot
 #PBS -l place=scatter
 #PBS -l walltime=0:30:00
 #PBS -q workq
@@ -10,12 +10,12 @@
 # These are my own personal directories,
 # you will need to change these.
 #####################################################################
-OUTPUT_DIR=/home/cadams/CosmicTagger/output-xpu-hvd-determ/
+OUTPUT_DIR=/home/cadams/CosmicTagger/output-cpu/
 WORKDIR=/home/cadams/CosmicTagger/
 cd ${WORKDIR}
 
 NNODES=`wc -l < $PBS_NODEFILE`
-NRANKS_PER_NODE=12
+NRANKS_PER_NODE=1
 let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 
 #####################################################################
@@ -43,17 +43,12 @@ let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 #####################################################################
 
 # Toggle tf32 on (or don't):
-# ITEX_FP32_MATH_MODE=TF32
-unset ITEX_FP32_MATH_MODE
+ITEX_FP32_MATH_MODE=TF32
+# unset ITEX_FP32_MATH_MODE
 
 # For cosmic tagger, this improves performance:
 # (for reference, the default is "setenv ITEX_LAYOUT_OPT \"1\" ")
 unset ITEX_LAYOUT_OPT
-
-# This is a fix for running over 16 nodes:
-export FI_CXI_DEFAULT_CQ_SIZE=131072
-export FI_CXI_OVFLOW_BUF_SIZE=8388608
-export FI_CXI_CQ_FILL_PERCENT=20
 
 #####################################################################
 # End of perf-adjustment section
@@ -67,11 +62,10 @@ export FI_CXI_CQ_FILL_PERCENT=20
 # module load frameworks/2023-01-31-experimental
 # module load intel_compute_runtime/release/agama-devel-549
 # module load frameworks/2022.12.30.001
-module load frameworks/.2023.05.15.001
-source /home/cadams/frameworks-2023-05-15-extension/bin/activate
+module load frameworks/2023-03-03-experimental
 module list
 
-# source /home/cadams/frameworks-2023-01-31-extension/bin/activate
+source /home/cadams/frameworks-2023-01-31-extension/bin/activate
 export NUMEXPR_MAX_THREADS=1
 
 
@@ -86,14 +80,14 @@ export NUMEXPR_MAX_THREADS=1
 
 
 # This string is an identified to store log files:
-run_id=sunspot-a21-tf-singltile-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_SIZE}-FP32-lr10x
+run_id=sunspot-a21-tf-singletile-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_SIZE}-TF32
 
 
 #####################################################################
 # Launch the script
 # This section is to outline what the command is doing
 #
-# python bin/exec.py \						# Script entry point
+# python bin/exec.py \						# Script entrqy point
 # --config-name a21 \						# Aurora acceptance model
 # framework=tensorflow \					# TF is default, but explicitly setting it
 # output_dir=${OUTPUT_DIR}/${run_id} \		# Direct the output to this folder
@@ -116,8 +110,6 @@ run_id=sunspot-a21-tf-singltile-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_S
 ulimit -c 0
 
 
-mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} \
---depth=8 --cpu-bind=verbose,depth \
 python bin/exec.py \
 --config-name a21 \
 framework=tensorflow \
@@ -126,9 +118,8 @@ data=real \
 data.data_directory=/lus/gila/projects/Aurora_deployment/cadams/cosmic_tagger/ \
 run.id=${run_id} \
 run.compute_mode=XPU \
-run.distributed=True \
+run.distributed=False \
 data.data_format=${DATA_FORMAT} \
-mode.optimizer.learning_rate=0.003 \
 run.precision=${PRECISION} \
 run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.iterations=5000

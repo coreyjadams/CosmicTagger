@@ -3,21 +3,19 @@
 defaults:
   - base_config
   - override network: a21
-  - override data: synthetic
+  - override data: real
   - _self_
 
 data:
   downsample: 1
-  version: 1
+  seed: 12345
+framework:
+  seed: 54321
 
 mode:
     no_summary_images: True
-
 run:
     distributed: False
-    compute_mode: XPU
-network:
-    classification:
-        active: False
-    vertex:
-        active: False
+    compute_mode: GPU
+    minibatch_size: 32
+    iterations: 5000

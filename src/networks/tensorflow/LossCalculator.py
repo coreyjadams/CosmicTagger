@@ -46,7 +46,12 @@ class LossCalculator(object):
 
             # labels and logits are by plane, loop over them:
             for i in [0,1,2]:
-                plane_loss = self._criterion(labels=labels[i], logits=logits[i])
+                if self.channels_dim == 1:
+                    logits_transposed = tf.transpose(logits[i], perm=(0,2,3,1))
+                else:
+                    logits_transposed = logits[i]
+                    
+                plane_loss = self._criterion(labels=labels[i], logits=logits_transposed)
                 if self.balance_type != LossBalanceScheme.none:
                     if self.balance_type == LossBalanceScheme.focal:
 

@@ -15,6 +15,7 @@ class Data:
     data_format: DataFormatKind  = DataFormatKind.channels_last
     img_transform:          bool = False
     version:                 int = 2 # Pick 1 or two
+    seed:                    int = 0
 
 @dataclass
 class Real(Data):

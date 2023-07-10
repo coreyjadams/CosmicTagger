@@ -11,6 +11,7 @@ class DistributedMode(Enum):
 @dataclass
 class Framework:
     name: str = MISSING
+    seed: int = 0
 
 @dataclass
 class Tensorflow(Framework):

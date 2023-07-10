@@ -4,6 +4,8 @@ import time
 import tempfile
 from collections import OrderedDict
 
+from functools import reduce
+
 import numpy
 
 
@@ -19,6 +21,7 @@ import datetime
 
 
 import tensorflow as tf
+
 tf.get_logger().setLevel('INFO')
 
 
@@ -82,15 +85,6 @@ class tf_trainer(trainercore):
 
         self._net.trainable = True
 
-        # self._logits = self._net(self._input['image'], training=self.is_training())
-
-        # # If channels first, need to permute the logits:
-        # if self._channels_dim == 1:
-        #     permutation = tf.keras.layers.Permute((2, 3, 1))
-        #     self._loss_logits = [ permutation(l) for l in self._logits ]
-        # else:
-        #     self._loss_logits = self._logits
-
 
         # TO PROPERLY INITIALIZE THE NETWORK, NEED TO DO A FORWARD PASS
         minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=False)
@@ -114,11 +108,20 @@ class tf_trainer(trainercore):
 
     def print_network_info(self, verbose=False):
         n_trainable_parameters = 0
+
+        # Are we trying to run in deterministic mode?  If so, print out
+        # Extra info on the weights:
+        deterministic = self.args.framework.seed != 0 and self.args.data.seed != 0
+
         for var in self._net.variables:
             n_trainable_parameters += numpy.prod(var.get_shape())
+            if deterministic:
+                logger.info(f"{var.name} has min/mean/max {tf.reduce_min(var)}/{tf.reduce_mean(var)}/{tf.reduce_max(var)}.")
+                logger.info(f"{var.device}")
             if verbose:
                 logger.info(f"{var.name}: {var.get_shape()}")
         logger.info(f"Total number of trainable parameters in this network: {n_trainable_parameters}")
+
 
     def n_parameters(self):
         n_trainable_parameters = 0
@@ -133,14 +136,17 @@ class tf_trainer(trainercore):
 
     def set_compute_parameters(self):
 
-        self._config = tf.compat.v1.ConfigProto()
 
         if self.args.run.compute_mode == ComputeMode.CPU:
-            self._config.inter_op_parallelism_threads = self.args.framework.inter_op_parallelism_threads
-            self._config.intra_op_parallelism_threads = self.args.framework.intra_op_parallelism_threads
+            cpus = tf.config.get_visible_devices("CPU")
+            tf.config.set_visible_devices(cpus[0])
+
+            tf.config.threading.set_intra_op_parallelism_threads(self.args.framework.intra_op_parallelism_threads)
+            tf.config.threading.set_inter_op_parallelism_threads(self.args.framework.inter_op_parallelism_threads)
+
         elif self.args.run.compute_mode == ComputeMode.GPU:
             gpus = tf.config.experimental.list_physical_devices('GPU')
-
+            print(gpus)
 
             # The code below is for MPS mode.  It is a bit of a hard-coded
             # hack.  Use with caution since the memory limit is set by hand.
@@ -184,6 +190,7 @@ class tf_trainer(trainercore):
 
     def initialize(self, io_only=False):
 
+        self.set_compute_parameters()
 
         self._initialize_io(color=0)
 
@@ -208,7 +215,6 @@ class tf_trainer(trainercore):
 
         self.init_saver()
 
-        self.set_compute_parameters()
 
 
         # Try to restore a model?
@@ -256,7 +262,6 @@ class tf_trainer(trainercore):
         # Parse the checkpoint file and use that to get the latest file path
         logger.info(f"Restoring checkpoint from {path}")
         self._net.load_weights(path)
-
         # self.scheduler.set_current_step(self.current_step())
 
         return True
@@ -349,7 +354,9 @@ class tf_trainer(trainercore):
 
         # self._output['softmax'] = [ tf.nn.softmax(x) for x in self._logits]
         # self._output['prediction'] = [ tf.argmax(input=x, axis=self._channels_dim) for x in self._logits]
+        # If the mode is channels last,
         accuracy = self.acc_calculator(prediction=prediction, labels=labels)
+
 
         metrics = {}
         for p in [0,1,2]:
@@ -372,26 +379,8 @@ class tf_trainer(trainercore):
         return metrics
 
     def log(self, metrics, kind, step):
-
-        log_string = ""
-
-        log_string += "{} Global Step {}: ".format(kind, step)
-
-
-        for key in metrics:
-            if key in self._log_keys and key != "global_step":
-                log_string += "{}: {:.3}, ".format(key, metrics[key])
-
-        if kind == "Train":
-            log_string += "Img/s: {:.2} ".format(metrics["images_per_second"])
-            log_string += "IO: {:.2} ".format(metrics["io_fetch_time"])
-        else:
-            log_string.rstrip(", ")
-
-        logger.info(log_string)
-
-        return
-
+        metrics = { key : float(val) for key, val in metrics.items()}
+        trainercore.log(self, metrics, kind, step)
 
     # @tf.function
     def cast_input(self, image, label):
@@ -414,13 +403,12 @@ class tf_trainer(trainercore):
         # Run a forward pass of the model on the input image:
         logits = self._net(image, training=training)
 
-
         if self.args.run.precision == Precision.mixed:
             logits = [ tf.cast(l, tf.float32) for l in logits ]
         # elif self.args.run.precision == Precision.bfloat16:
         #     logits = [ tf.cast(l, tf.bfloat16) for l in logits ]
 
-        prediction = tf.argmax(logits, axis=self._channels_dim, output_type = tf.dtypes.int32)
+        prediction = [ tf.argmax(l, axis=self._channels_dim, output_type = tf.dtypes.int32) for l in logits ]
         labels = tf.split(label, num_or_size_splits=3, axis=self._channels_dim)
         labels = [tf.squeeze(li, axis=self._channels_dim) for li in labels]
 
@@ -574,6 +562,8 @@ class tf_trainer(trainercore):
                     else:
                         metrics[key] = interior_metrics[key]
 
+
+
         # Normalize the metrics:
         for key in metrics:
             metrics[key] /= gradient_accumulation
@@ -595,6 +585,7 @@ class tf_trainer(trainercore):
 
         with self.timing_context("optimizer"):
             self.apply_gradients(gradients)
+        # print(self._net.trainable_variables)
 
 
         # Add the global step / second to the tensorboard log:
@@ -624,6 +615,8 @@ class tf_trainer(trainercore):
         self._global_step.assign_add(1)
         # Update the learning rate:
         self._learning_rate.assign(self.lr_calculator(int(self._global_step.numpy())))
+        self._opt.lr.assign(self._learning_rate)
+
         return self.current_step()
 
 

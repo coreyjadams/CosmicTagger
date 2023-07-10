@@ -501,15 +501,12 @@ class torch_trainer(trainercore):
             if len(time_string) > 0:
                 s += " (" + " / ".join(time_string) + ")"
 
-            # except:
-            #     pass
-
-
 
             self._previous_log_time = self._current_log_time
             logger.info("{} Step {} metrics: {}".format(saver, self._global_step, s))
 
     def summary(self, metrics, saver=""):
+        self.write_metrics(metrics, saver, self._global_step)
 
         if self._global_step % self.args.mode.summary_iteration == 0:
             for metric in metrics:

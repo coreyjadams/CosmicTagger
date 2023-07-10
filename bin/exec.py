@@ -155,6 +155,18 @@ class exec(object):
 
     def make_trainer(self):
 
+        # Set the random seed for numpy, which controls the order of the 
+        # data loading:
+        data_seed = self.args.data.seed
+        if data_seed == 0:
+            data_seed = int(time.time())
+        numpy.random.seed(data_seed)
+
+
+        framework_seed = self.args.framework.seed
+        if framework_seed == 0:
+            framework_seed = int(time.time())
+
 
         if 'environment_variables' in self.args.framework:
             for env in self.args.framework.environment_variables.keys():
@@ -175,6 +187,11 @@ class exec(object):
 
             # Import tensorflow and see what the version is.
             import tensorflow as tf
+            if self.args.framework.seed != 0:
+                tf.config.experimental.enable_op_determinism()
+            # tf.keras.utils.set_random_seed(framework_seed)
+            tf.random.set_seed(framework_seed)
+            import random; random.seed(framework_seed)
 
             if tf.__version__.startswith("2"):
                 if self.args.run.distributed:
@@ -192,6 +209,16 @@ class exec(object):
                     self.trainer = trainer.tf_trainer(self.args)
 
         elif self.args.framework.name == "torch":
+
+            # Import tensorflow and see what the version is.
+            if self.args.framework.seed != 0:
+                import torch
+                torch.manual_seed(self.args.framework.see)
+                torch.use_deterministic_algorithms(True)
+                
+                # Seed python too:
+                import random; random.seed(framework_seed)
+
             if self.args.run.distributed:
                 from src.utils.torch import distributed_trainer
                 self.trainer = distributed_trainer.distributed_trainer(self.args)

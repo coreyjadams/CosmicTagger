@@ -50,6 +50,9 @@ def event_label(neutrino_particles, n_neutrino_pixels, neutrino_threshold=10):
             # )
 
 
+from src.config import DataFormatKind, ModeKind
+
+
 def larcvsparse_to_dense_2d(input_array, dense_shape, dataformat,  threshold=None):
 
     batch_size = input_array.shape[0]
