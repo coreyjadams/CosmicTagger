@@ -18,14 +18,12 @@ import pytorch_lightning as pl
 torch.autograd.set_detect_anomaly(True)
 
 try:
-    import ipex
+    import intel_extension_for_pytorch as ipex
 except:
     pass
 
 
 
-
-torch.manual_seed(0)
 
 # torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True
@@ -36,7 +34,7 @@ torch.backends.cudnn.benchmark = True
 from src.networks.torch         import LossCalculator, AccuracyCalculator, predict_vertex
 
 
-from src.config import ComputeMode, Precision, ConvMode, ModeKind, OptimizerKind
+from src.config import ComputeMode, Precision, ConvMode, ModeKind, OptimizerKind, DataFormatKind
 
 
 class lightning_trainer(pl.LightningModule):
@@ -57,6 +55,11 @@ class lightning_trainer(pl.LightningModule):
         self.loss_calc    = loss_calc
         self.acc_calc     = acc_calc
 
+        if self.args.run.compute_mode == ComputeMode.XPU:
+            if self.args.data.data_format == DataFormatKind.channels_last:
+                self.model = self.model.to(memory_format=torch.channels_last)
+        
+
         self.log_keys     = log_keys
         self.hparams_keys = hparams_keys
 
@@ -64,6 +67,11 @@ class lightning_trainer(pl.LightningModule):
 
 
     def prep_labels(self, minibatch_data):
+
+        # minibatch_data["image"].to(memory_format=torch.channels_last)
+        if self.args.run.compute_mode == ComputeMode.XPU:
+            if self.args.data.data_format == DataFormatKind.channels_last:
+                minibatch_data['label'] = minibatch_data['label'].to(memory_format=torch.channels_last)
 
         # Always have segmentation labels:
         labels_dict = {
@@ -183,8 +191,13 @@ class lightning_trainer(pl.LightningModule):
     # This concludes the section of functions for benchmarking only
     ####################################################################
 
-
     def forward(self, batch):
+
+        if self.args.run.compute_mode == ComputeMode.XPU:
+            if self.args.data.data_format == DataFormatKind.channels_last:
+                batch = batch.to(memory_format=torch.channels_last)
+
+
         network_dict = self.model(batch)
         return network_dict
 
@@ -239,7 +252,7 @@ class lightning_trainer(pl.LightningModule):
 
     def configure_optimizers(self):
         learning_rate = 1.0
-        # learning_rate = self.args.mode.optimizer.learning_rate
+        # learning_rate = self.args.mode.optimizers.learning_rate
 
         if self.args.mode.optimizer.name == OptimizerKind.rmsprop:
             opt = torch.optim.RMSprop(self.parameters(), learning_rate, eps=1e-6)
@@ -456,6 +469,8 @@ def create_lightning_module(args, datasets, lr_scheduler=None, log_keys = [], hp
         vertex_meta  = vertex_meta)
     return model
 
+
+
 def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
 
     from src.config import Precision
@@ -481,9 +496,23 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
         from lightning_fabric.plugins.environments import LightningEnvironment
         environment = LightningEnvironment()
 
+    print(environment)
+
+    # Select the accelerator:
+    if args.run.compute_mode == ComputeMode.XPU:
+        from lightning.fabric.accelerators import XPUAccelerator
+        accelerator = XPUAccelerator()
+    elif args.run.compute_mode == ComputeMode.CUDA:
+        from lightning.fabric.accelerators import CUDAAccelerator
+        accelerator = CUDAAccelerator()
+    else:
+        from lightning.fabric.accelerators import CPUAccelerator
+        accelerator = CPUAccelerator()
+
 
     # Distributed strategy:
     if args.run.distributed:
+        parallel_devices = accelerator.get_parallel_devices(range(accelerator.auto_device_count()))
         from src.config import DistributedMode
         if args.framework.distributed_mode == DistributedMode.horovod:
             from pytorch_lightning.strategies import DataParallelStrategy
@@ -523,23 +552,32 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
     else:
         from pytorch_lightning.strategies import SingleDeviceStrategy
         plugins   = []
-        strategy  = SingleDeviceStrategy("cuda:0")
+        strategy  = SingleDeviceStrategy(device=f"{args.run.compute_mode.name.lower()}:0")
         devices   = 1
         num_nodes = 1
 
-    # Move data to the device in the data loader:
-    if args.run.compute_mode == ComputeMode.CUDA:
-        target_device = torch.device(environment.local_rank())
-        # from lightning.pytorch.accelerators import find_usable_cuda_devices
-        # lightning_devices = find_usable_cuda_devices(int(os.environ['LOCAL_RANK']))
-        # print(lightning_devices)
-    else:
-        target_device = None
+
+
+
+    # all_devices = accelerator.get_parallel_devices(range(accelerator.auto_device_count()))
+    # target_device = all_devices[environment.local_rank()]
+    # # Move data to the device in the data loader:
+    # if args.run.compute_mode == ComputeMode.CUDA:
+    #     target_device = torch.device(environment.local_rank())
+    #     # from lightning.pytorch.accelerators import find_usable_cuda_devices
+    #     # lightning_devices = find_usable_cuda_devices(int(os.environ['LOCAL_RANK']))
+    #     # print(lightning_devices)
+    # elif args.run.compute_mode == ComputeMode.XPU:
+    #     target_device = accelerator.device(environment.local_rank())
+    #     print(environment.local_rank())
+    #     print(target_device)
+    # else:
+        # target_device = None
 
     # Turn the datasets into dataloaders:
     for key in datasets.keys():
         datasets[key] = create_torch_larcv_dataloader(
-            datasets[key], args.run.minibatch_size, device=target_device)
+            datasets[key], args.run.minibatch_size, device=strategy.root_device)
 
 
     # Configure the logger:
@@ -556,8 +594,10 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
             max_steps = len(dataloaders["test"]) * max_epochs
         accumulate = None
 
+
+
     trainer = pl.Trainer(
-        accelerator             = args.run.compute_mode.name.lower(),
+        accelerator             = "auto",
         # num_nodes               = num_nodes,
         default_root_dir        = args.output_dir,
         precision               = precision,

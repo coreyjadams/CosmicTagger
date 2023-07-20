@@ -107,6 +107,14 @@ class LRSchedule:
 
         return r
 
+class FlatSchedule(LRSchedule):
+
+    def __init__(self, start_value, epoch_length, total_epochs):
+        if total_epochs is None:
+            total_epochs = 25
+        segments = [ Flat(start_value, epoch_length * total_epochs),]
+        super().__init__(segments)
+
 class WarmupFlatDecay(LRSchedule):
 
     def __init__(self, peak_learning_rate, decay_floor, epoch_length, decay_epochs, total_epochs):

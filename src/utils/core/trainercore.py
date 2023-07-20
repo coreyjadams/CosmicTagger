@@ -148,7 +148,8 @@ class trainercore(object):
     def log(self, metrics, log_keys=[], saver=''):
 
 
-        if self._global_step % self.args.mode.logging_iteration == 0:
+        step = int(self._global_step)
+        if step % self.args.mode.logging_iteration == 0:
 
             self._current_log_time = datetime.datetime.now()
 
@@ -164,19 +165,21 @@ class trainercore(object):
             # try:
                 total_images = self.args.run.minibatch_size
                 images_per_second = total_images / (self._current_log_time - self._previous_log_time).total_seconds()
-                time_string.append("{:.2} Img/s".format(images_per_second))
+                time_string.append(f"{images_per_second:.2} Img/s")
 
             if 'io_fetch_time' in metrics.keys():
-                time_string.append("{:.2} IOs".format(metrics['io_fetch_time']))
+                time_string.append(f"{metrics['io_fetch_time']:.2} IOs")
 
             if 'step_time' in metrics.keys():
-                time_string.append("{:.2} (Step)(s)".format(metrics['step_time']))
+                time_string.append(f"{metrics['step_time']:.2} (Step)(s)")
 
             if len(time_string) > 0:
                 s += " (" + " / ".join(time_string) + ")"
 
             self._previous_log_time = self._current_log_time
-            logging.getLogger("CosmicTagger""CosmicTagger").info("{} Step {} metrics: {}".format(saver, self._global_step, s))
+            logging.getLogger("CosmicTagger""CosmicTagger").info(f"{saver} Step {step} metrics: {s}".format(s))
+
+        self.write_metrics(metrics, saver, step)
 
     def metrics(self, metrics):
         # This function looks useless, but it is not.
@@ -313,7 +316,6 @@ class trainercore(object):
         self.on_epoch_end()
 
     def validate(self, val_loader, max_steps):
-
         metrics_list = []
         # Print out on every iteration or none?
         store = False

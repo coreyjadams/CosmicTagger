@@ -542,9 +542,6 @@ class torch_trainer(trainercore):
 
             if self.args.run.compute_mode == ComputeMode.XPU:
                 if self.args.data.data_format == DataFormatKind.channels_last:
-                    # minibatch_data["image"] = minibatch_data["image"].to(memory_format=torch.channels_last)
-                    # minibatch_data["label"] = minibatch_data['label'].to(memory_format=torch.channels_last)
-
                     minibatch_data['label'].to(memory_format=torch.channels_last)
                     minibatch_data["image"].to(memory_format=torch.channels_last)
 
@@ -902,8 +899,9 @@ class torch_trainer(trainercore):
     def close_savers(self):
         if hasattr(self, "savers"):
             for saver in self.savers.values():
-                saver.flush()
-                saver.close()
+                if saver is not None:
+                    saver.flush()
+                    saver.close()
 
     def exit(self):
         self.store_parameters(self.latest_metrics)

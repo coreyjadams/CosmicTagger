@@ -51,7 +51,7 @@ class tf_trainer(trainercore):
         if self.args.data.data_format == DataFormatKind.channels_first:
             self._channels_dim = 1
 
-        self.initialize()
+        # self.initialize(datasets)
 
     def local_batch_size(self):
         return self.args.run.minibatch_size
@@ -193,13 +193,10 @@ class tf_trainer(trainercore):
 
         return
 
-    def initialize(self, io_only=False):
+    def initialize(self, datasets):
 
         self.set_compute_parameters()
 
-
-        if io_only:
-            return
 
         start = time.time()
 
@@ -213,7 +210,16 @@ class tf_trainer(trainercore):
         if self.args.mode.name == ModeKind.train:
             self.init_optimizer()
 
-        self.init_saver()
+        # self.init_saver()
+        # Initialize savers:
+        dir = self.args.output_dir
+        if not self.args.run.distributed or self.rank == 0:
+            self.savers = {
+                ds_name : tf.summary.create_file_writer(dir + f"/{ds_name}/")
+                for ds_name in datasets.keys()
+            }
+        else:
+            self.savers = {ds_name : None for ds_name in datasets.keys()}
 
 
 
@@ -311,24 +317,24 @@ class tf_trainer(trainercore):
         return name, checkpoint_file_path
 
 
-    def init_saver(self):
+    # def init_saver(self):
 
-        file_path = self.get_checkpoint_dir()
+    #     file_path = self.get_checkpoint_dir()
 
-        try:
-            os.makedirs(file_path)
-        except:
-            logger.warning("Could not make file path")
+    #     try:
+    #         os.makedirs(file_path)
+    #     except:
+    #         logger.warning("Could not make file path")
 
-        # # Create a saver for snapshots of the network:
-        # self._saver = tf.compat.v1.train.Saver()
+    #     # # Create a saver for snapshots of the network:
+    #     # self._saver = tf.compat.v1.train.Saver()
 
-        # Create a file writer for training metrics:
-        self._main_writer = tf.summary.create_file_writer(self.args.output_dir +  "/train/")
+    #     # Create a file writer for training metrics:
+    #     self._main_writer = tf.summary.create_file_writer(self.args.output_dir +  "/train/")
 
-        # Additionally, in training mode if there is aux data use it for validation:
-        if hasattr(self, "_aux_data_size"):
-            self._val_writer = tf.summary.create_file_writer(self.args.output_dir + "/test/")
+    #     # Additionally, in training mode if there is aux data use it for validation:
+    #     if hasattr(self, "_aux_data_size"):
+    #         self._val_writer = tf.summary.create_file_writer(self.args.output_dir + "/test/")
 
 
     def init_optimizer(self):
@@ -423,7 +429,7 @@ class tf_trainer(trainercore):
         if self.current_step() % self.args.mode.summary_iteration == 0:
 
             if saver == "":
-                saver = self._main_writer
+                saver = self.savers['train']
 
             with saver.as_default():
                 for metric in metrics:
@@ -450,35 +456,26 @@ class tf_trainer(trainercore):
     def val_step(self, minibatch_data, store=True):
 
 
-        if not hasattr(self, "_aux_data_size"):
-            return
-
         if self.args.data.synthetic:
             return
-        #
-        # if self._val_writer is None:
-        #     return
-
-        gs = self.current_step()
-
-        if gs % self.args.run.aux_iterations == 0:
-
-            image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
-
-            labels, logits, prediction = self.forward_pass(image, label, training=False)
-
-            loss, current_reg_loss = self.loss_calculator(labels, logits)
-
-            metrics = self._compute_metrics(logits, prediction, labels, loss, current_reg_loss)
 
 
-            if store:
-                # Report metrics on the terminal:
-                self.log(metrics, self.log_keys, saver="Test")
+        image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
+
+        labels, logits, prediction = self.forward_pass(image, label, training=False)
+
+        loss, current_reg_loss = self.loss_calculator(labels, logits)
+
+        metrics = self._compute_metrics(logits, prediction, labels, loss, current_reg_loss)
 
 
-                self.summary(metrics=metrics, saver=self._val_writer)
-                self.summary_images(labels, prediction, saver=self._val_writer)
+        if store:
+            # Report metrics on the terminal:
+            self.log(metrics, self.log_keys, saver="val")
+
+
+            self.summary(metrics=metrics, saver=self.savers['val'])
+            self.summary_images(labels, prediction, saver=self.savers['val'])
 
         return
 
@@ -603,7 +600,7 @@ class tf_trainer(trainercore):
         with self.timing_context("log"):
             # Report metrics on the terminal:
             # self.log(metrics, kind="Train", step=int(self.current_step().numpy()))
-            self.log(metrics, self.log_keys, saver="Train")
+            self.log(metrics, self.log_keys, saver="train")
 
 
         global_end_time = datetime.datetime.now()
@@ -733,34 +730,34 @@ class tf_trainer(trainercore):
             value = self.inference_metrics[key] / n
             logger.info(f"  {key}: {value:.4f}")
 
-    def feed_dict(self, inputs):
-        '''Build the feed dict
+    # def feed_dict(self, inputs):
+    #     '''Build the feed dict
 
-        Take input images, labels and match
-        to the correct feed dict tensorrs
+    #     Take input images, labels and match
+    #     to the correct feed dict tensorrs
 
-        This is probably overridden in the subclass, but here you see the idea
+    #     This is probably overridden in the subclass, but here you see the idea
 
-        Arguments:
-            images {dict} -- Dictionary containing the input tensors
+    #     Arguments:
+    #         images {dict} -- Dictionary containing the input tensors
 
-        Returns:
-            [dict] -- Feed dictionary for a tf session run call
+    #     Returns:
+    #         [dict] -- Feed dictionary for a tf session run call
 
-        '''
-        fd = dict()
+    #     '''
+    #     fd = dict()
 
-        # fd[self._learning_rate] = self._base_learning_rate
+    #     # fd[self._learning_rate] = self._base_learning_rate
 
-        for key in inputs:
-            if key == "entries" or key == "event_ids": continue
+    #     for key in inputs:
+    #         if key == "entries" or key == "event_ids": continue
 
-            if inputs[key] is not None:
-                fd.update({self._input[key] : inputs[key]})
+    #         if inputs[key] is not None:
+    #             fd.update({self._input[key] : inputs[key]})
 
-        if self.is_training():
-            fd.update({self._learning_rate : self.lr_calculator(self.current_step())})
-        return fd
+    #     if self.is_training():
+    #         fd.update({self._learning_rate : self.lr_calculator(self.current_step())})
+    #     return fd
 
     def close_savers(self):
         pass

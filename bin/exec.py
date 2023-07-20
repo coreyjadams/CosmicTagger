@@ -97,10 +97,18 @@ class exec(object):
 
     def configure_lr_schedule(self, epoch_length, max_epochs):
 
-
         if self.args.mode.optimizer.lr_schedule.name == "one_cycle":
             from src.utils.core import OneCycle
             lr_schedule = OneCycle(self.args.mode.optimizer.lr_schedule)
+        elif self.args.mode.optimizer.lr_schedule.name == "flat":
+            from src.utils.core import FlatSchedule
+            schedule_args = self.args.mode.optimizer.lr_schedule
+            lr_schedule = FlatSchedule(
+                start_value  = schedule_args.peak_learning_rate,
+                epoch_length = epoch_length,
+                total_epochs = max_epochs,
+            ) 
+
         elif self.args.mode.optimizer.lr_schedule.name == "standard":
             from src.utils.core import WarmupFlatDecay
             schedule_args = self.args.mode.optimizer.lr_schedule
@@ -140,7 +148,7 @@ class exec(object):
         
         data_args = copy.copy(self.args.data)
         if self.args.run.compute_mode == ComputeMode.XPU:
-            if self.args.framework.name == "torch":
+            if self.args.framework.name == "torch" or self.args.framework.name == "lightning":
                 data_args.data_format = DataFormatKind.channels_first
 
         if self.args.data.synthetic:
@@ -402,10 +410,9 @@ class exec(object):
 
         elif self.args.framework.name == "torch":
 
-            # Import tensorflow and see what the version is.
             if self.args.framework.seed != 0:
                 import torch
-                torch.manual_seed(self.args.framework.see)
+                torch.manual_seed(self.args.framework.seed)
                 torch.use_deterministic_algorithms(True)
                 
                 # Seed python too:
