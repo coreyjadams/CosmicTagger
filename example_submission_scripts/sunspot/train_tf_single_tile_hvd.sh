@@ -106,18 +106,14 @@ run_id=sunspot-a21-tf-singltile-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_S
 # run.iterations=250						# Run for 250 iterations.
 #####################################################################
 
-# ZE_AFFINITY_MASK=0.0,0.1,1.0,1.1,2.0,2.1,3.0,3.1,4.0,4.1,5.0,5.1
-# ZE_AFFINITY_MASK=0.0
-# CPU_AFFINITY=0:10:20:30:40:50:52:62:72:82:92:102
-
-# CPU_AFFINITY=52
-# --cpu-bind=verbose,list:${CPU_AFFINITY} \
+export CCL_LOG_LEVEL="WARN"
+export CPU_AFFINITY="verbose,list:0-7,104-111:8-15,112-119:16-23,120-127:24-31,128-135:32-39,136-143:40-47,144-151:52-59,156-163:60-67,164-171:68-75,172-179:76-83,180-187:84-91,188-195:92-99,196-203"
 
 ulimit -c 0
 
 
 mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} \
---depth=8 --cpu-bind=verbose,depth \
+--cpu-bind ${CPU_AFFINITY} \
 python bin/exec.py \
 --config-name a21 \
 framework=tensorflow \
