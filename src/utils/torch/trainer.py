@@ -212,6 +212,10 @@ class torch_trainer(trainercore):
 
     def init_saver(self):
 
+        if not self.args.run.saver:
+            self._saver = None
+            self._aux_saver = None
+            return
 
         # This sets up the summary saver:
         dir = self.args.output_dir
@@ -501,6 +505,8 @@ class torch_trainer(trainercore):
 
 
     def summary(self, metrics,saver=""):
+        if self._saver is None:
+            return
 
         if self._global_step % self.args.mode.summary_iteration == 0:
             for metric in metrics:
@@ -518,6 +524,8 @@ class torch_trainer(trainercore):
 
 
     def summary_images(self, logits_image, labels_image, saver=""):
+        if self._saver is None:
+            return
 
         # if self._global_step % 1 * self.args.mode.summary_iteration == 0:
         if self._global_step % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:
@@ -564,6 +572,8 @@ class torch_trainer(trainercore):
         return
 
     def graph_summary(self):
+        if self._saver is None:
+            return
 
         if self._global_step % 1 * self.args.mode.summary_iteration == 0:
         # if self._global_step % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:

@@ -40,6 +40,7 @@ class Run:
     id:                 str         = MISSING
     precision:          Precision   = Precision.float32
     profile:            bool        = False
+    saver:              bool        = True
 
 cs = ConfigStore.instance()
 
