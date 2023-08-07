@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #PBS -l select=1:system=sunspot
 #PBS -l place=scatter
-#PBS -l walltime=0:30:00
+#PBS -l walltime=2:00:00
 #PBS -q workq
 #PBS -A Aurora_deployment
 
@@ -10,14 +10,14 @@
 # These are my own personal directories,
 # you will need to change these.
 #####################################################################
-OUTPUT_DIR=/lus/gila/projects/Aurora_deployment/cadams/ct-paper-measurements/
+OUTPUT_DIR=/lus/gila/projects/Aurora_deployment/cadams/ct-paper-measurements-2/
 WORKDIR=/home/cadams/CosmicTagger/
 cd ${WORKDIR}
 
 CONFIG="polaris"
 NRANKS_PER_NODE=12
-FRAMEWORKS=("tensorflow")
-# FRAMEWORKS=("torch" "tensorflow")
+# FRAMEWORKS=("tensorflow")
+FRAMEWORKS=("torch" "tensorflow")
 PRECISIONS=("float32" "float32" "bfloat16" )
 MATHMODES=(FP32 TF32 FP32)
 
@@ -110,7 +110,7 @@ do
             PYTHON_ARGUMENTS="${PYTHON_ARGUMENTS} run.iterations=${ITERATIONS}"
             PYTHON_ARGUMENTS="${PYTHON_ARGUMENTS} mode.checkpoint_iteration=20000"
 
-            RUN_ID_TEMPLATE=sunspot-${CONFIG}-${framework}-df${DATA_FORMAT}-p${precisionStr}${math_mode}-mb${batch_size}
+            RUN_ID_TEMPLATE=sunspot-${CONFIG}-${framework}-df${DATA_FORMAT}-p${precisionStr}-mb${batch_size}
 
             for (( idx=0; idx<${NRANKS_PER_NODE}; idx++ ));
             do
@@ -122,7 +122,7 @@ do
                 export ZE_AFFINITY_MASK=${GPU}
                 echo ${CPU}
                 # numactl -C ${CPU} python $PYTHON_ARGUMENTS run.id=${run_id} output_dir=${OUTPUT_DIR}/${run_id} 2>&1 &
-                # numactl -C ${CPU} python $PYTHON_ARGUMENTS run.id=${run_id} output_dir=${OUTPUT_DIR}/${run_id} > /dev/null 2>&1 &
+                numactl -C ${CPU} python $PYTHON_ARGUMENTS run.id=${run_id} output_dir=${OUTPUT_DIR}/${run_id} > /dev/null 2>&1 &
                 unset ZE_AFFINITY_MASK
             done
             jobs -p
