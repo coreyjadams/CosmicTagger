@@ -16,9 +16,10 @@ cd ${WORKDIR}
 
 CONFIG="polaris"
 NRANKS_PER_NODE=12
-FRAMEWORKS=("torch" "tensorflow")
+FRAMEWORKS=("tensorflow")
+# FRAMEWORKS=("torch" "tensorflow")
 PRECISIONS=("float32" "float32" "bfloat16" )
-MATHMODES=(0 1 0)
+MATHMODES=(FP32 TF32 FP32)
 
 BATCH_SIZE=(1 2)
 
@@ -69,6 +70,8 @@ CPU_AFFINITY_LIST=( \
     "84-91,188-195" \
     "92-99,196-203" \
 )
+export CPU_AFFINITY="verbose,list:0-7,104-111:8-15,112-119:16-23,120-127:24-31,128-135:32-39,136-143:40-47,144-151:52-59,156-163:60-67,164-171:68-75,172-179:76-83,180-187:84-91,188-195:92-99,196-203"
+
 #####################################################################
 # End of environment setup section
 #####################################################################
@@ -118,7 +121,7 @@ do
                 echo $run_id
                 export ZE_AFFINITY_MASK=${GPU}
                 echo ${CPU}
-                numactl -C ${CPU} python $PYTHON_ARGUMENTS run.id=${run_id} output_dir=${OUTPUT_DIR}/${run_id} 2>&1 &
+                # numactl -C ${CPU} python $PYTHON_ARGUMENTS run.id=${run_id} output_dir=${OUTPUT_DIR}/${run_id} 2>&1 &
                 # numactl -C ${CPU} python $PYTHON_ARGUMENTS run.id=${run_id} output_dir=${OUTPUT_DIR}/${run_id} > /dev/null 2>&1 &
                 unset ZE_AFFINITY_MASK
             done
@@ -128,22 +131,22 @@ do
             wait $(jobs -p)
 
 
-            # # Run the multitile version:
-            # run_id="${RUN_ID_TEMPLATE}/${host}/node/"
-            # mpiexec -n ${NRANKS_PER_NODE} -ppn ${NRANKS_PER_NODE} \
-            #     --cpu-bind ${CPU_AFFINITY} \
-            #     python bin/exec.py \
-            #     --config-name polaris \
-            #     framework=torch \
-            #     output_dir=${OUTPUT_DIR}/${run_id} \
-            #     run.id=${run_id} \
-            #     run.compute_mode=XPU \
-            #     run.distributed=False \
-            #     data=synthetic \
-            #     data.data_format=${DATA_FORMAT} \
-            #     run.precision=${PRECISION} \
-            #     run.minibatch_size=${GLOBAL_BATCH_SIZE} \
-            #     run.iterations=500
+            # Run the multitile version:
+            run_id="${RUN_ID_TEMPLATE}/${host}/fullnode/"
+            mpiexec -n ${NRANKS_PER_NODE} -ppn ${NRANKS_PER_NODE} \
+            --cpu-bind ${CPU_AFFINITY} \
+            python bin/exec.py \
+            --config-name ${CONFIG} \
+            framework=${framework} \
+            output_dir=${OUTPUT_DIR}/${run_id} \
+            run.id=${run_id} \
+            run.compute_mode=XPU \
+            run.distributed=True \
+            data=synthetic \
+            data.data_format=${DATA_FORMAT} \
+            run.precision=${precision} \
+            run.minibatch_size=${batch_size} \
+            run.iterations=$ITERATIONS
         done
     done
 done
@@ -168,7 +171,6 @@ done
 #####################################################################
 
 # # export CCL_LOG_LEVEL="WARN"
-# export CPU_AFFINITY="verbose,list:0-7,104-111:8-15,112-119:16-23,120-127:24-31,128-135:32-39,136-143:40-47,144-151:52-59,156-163:60-67,164-171:68-75,172-179:76-83,180-187:84-91,188-195:92-99,196-203"
 
 # ulimit -c 0
 
