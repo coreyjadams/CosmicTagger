@@ -19,6 +19,7 @@ font = {
 matplotlib.rc('font', **font)
 import matplotlib.font_manager
 
+from . create_dataframe_from_run import create_dataframe
 
 def main():
 
@@ -86,6 +87,7 @@ def plot_gpu_gpu_variation_box(df, gpus, title, output_dir):
     plt.savefig(output_dir + "gpu_gpu_box.pdf")
     # plt.show()
 
+
 def plot_gpu_gpu_variation_scatter(df, gpus, title, output_dir):
 
     fig = plt.figure(figsize=(16,9))
@@ -121,6 +123,7 @@ def plot_host_variation(df, title, output_dir):
     
     # plt.show()
 
+
 def histogram_tile_throughput(df, bins, title, output_dir):
 
     # Make a histogram of the iteration times
@@ -151,7 +154,9 @@ def histogram_tile_throughput(df, bins, title, output_dir):
     plt.title(title)
     plt.savefig(output_dir + "tile_throughput.pdf")
     
-    # plt.show()
+
+
+
 
 def plot_tile_FOM(df, bins, title, output_dir):
 
@@ -189,11 +194,10 @@ def plot_tile_FOM(df, bins, title, output_dir):
     plt.grid(zorder=0)
     plt.legend()
     plt.xlabel("Throughput [Img/s]")
-    plt.gca().tick_params(labelleft=False) 
+    plt.gca().tick_params(labelleft=False)
     plt.title(title)
     plt.savefig(output_dir + "tile_FOM.pdf")
     # plt.show()
-
 
 if __name__ == "__main__":
     main()

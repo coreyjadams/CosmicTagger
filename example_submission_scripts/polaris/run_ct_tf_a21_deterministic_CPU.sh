@@ -2,8 +2,8 @@
 #PBS -l select=1:system=polaris
 #PBS -l place=scatter
 #PBS -l walltime=1:00:00
-#PBS -q gpu-hackathon
-#PBS -A gpu_hack
+#PBS -q debug
+#PBS -A datascience
 #PBS -l filesystems=home:grand
 
 # What's the cosmic tagger work directory?
@@ -21,16 +21,14 @@ let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 LOCAL_BATCH_SIZE=8
 let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
-LEARNING_RATE=0.03
-
 echo $GLOBAL_BATCH_SIZE
 
-export NVIDIA_TF32_OVERRIDE=0
-run_id=lr${LEARNING_RATE}/single-A100-fp32-GPU-run1
+run_id=single-A100-fp32-CPU
 
-
-# GPU Params:
-COMPUTE_MODE=GPU
+# CPU params:
+# export OMP_NUM_THREADS=32
+# export KMP_BLOCKTIME=0
+COMPUTE_MODE=CPU
 
 module load conda
 conda activate /home/cadams/miniconda3/tf-2.11.0
@@ -42,6 +40,7 @@ run.distributed=False \
 run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.compute_mode=${COMPUTE_MODE} \
 data.data_directory=${DATA_DIR} \
-mode.optimizer.learning_rate=${LEARNING_RATE} \
 mode.optimizer.loss_balance_scheme=none \
+# framework.inter_op_parallelism_threads=2 \
+# framework.intra_op_parallelism_threads=32 \
 run.iterations=2500
