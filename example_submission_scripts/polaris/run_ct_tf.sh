@@ -1,8 +1,8 @@
 #!/bin/bash -l
-#PBS -l select=1:system=polaris
+#PBS -l select=6:system=polaris
 #PBS -l place=scatter
 #PBS -l walltime=0:30:00
-#PBS -q preemptable
+#PBS -q debug-scaling
 #PBS -A datascience
 #PBS -l filesystems=home
 
@@ -40,6 +40,6 @@ run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.distributed=True \
 framework=tensorflow \
 run.precision=float32 \
-run.id=convergence_${GLOBAL_BATCH_SIZE}_${NNODES} \
+run.id=convergence_${GLOBAL_BATCH_SIZE}_${NNODES}-2 \
 run.run_length=1500 \
 run.run_units=iteration 

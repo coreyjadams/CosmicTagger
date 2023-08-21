@@ -2,7 +2,7 @@
 #PBS -l select=1:system=polaris
 #PBS -l place=scatter
 #PBS -l walltime=0:30:00
-#PBS -q debug-scaling
+#PBS -q debug
 #PBS -A datascience
 #PBS -l filesystems=home
 
@@ -18,7 +18,7 @@ NDEPTH=8
 
 let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 
-LOCAL_BATCH_SIZE=2
+LOCAL_BATCH_SIZE=1
 let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
 echo "Global batch size: ${GLOBAL_BATCH_SIZE}"
@@ -37,10 +37,6 @@ python bin/exec.py \
 run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.distributed=True \
 framework=torch \
-# run.precision=mixed \
-run.id=iotest
-
-# run.id=scaing_test_${GLOBAL_BATCH_SIZE}_${NNODES} \
-# run.distributed=True \
-# run.run_length=500 \
-# run.run_units=iteration \
+run.id=convergence_${GLOBAL_BATCH_SIZE}_${NNODES} \
+run.run_length=1500 \
+run.run_units=iteration 
