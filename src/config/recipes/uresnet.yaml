@@ -3,7 +3,7 @@ defaults:
   - override framework: torch
   - _self_
 data:
-  downsample: 1
+  downsample: 0
   version: 2
   paths:
     active:
@@ -12,14 +12,14 @@ data:
 
 
 network:
-  n_initial_filters: 32
+  n_initial_filters: 16
   classification:
     active: False
   vertex:
     active: False
-  blocks_deepest_layer: 3
-  blocks_final: 3
-  depth: 6
+  blocks_deepest_layer: 2
+  blocks_final: 2
+  depth: 7
   # upsampling: convolutional
 run:
   run_length: 20000

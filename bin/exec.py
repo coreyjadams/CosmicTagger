@@ -505,7 +505,7 @@ class exec(object):
 
 
 
-@hydra.main(version_base=None, config_path="../src/config/recipes/", config_name="config")
+@hydra.main(version_base=None, config_path="../src/config/recipes/", config_name="uresnet")
 def main(cfg : OmegaConf) -> None:
 
     s = exec(cfg)

@@ -1,9 +1,7 @@
 numpy
 h5py
 larcv
-tensorflow>=2.4.0
-torch>=1.3
-#Pillow # Needed for tensorboardX
-#tensorboardX
-hydra-core==1.1
-mlflow
+tensorflow
+torch
+tensorboardX
+hydra-core

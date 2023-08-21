@@ -222,7 +222,6 @@ class tf_trainer(trainercore):
             self.savers = {ds_name : None for ds_name in datasets.keys()}
 
 
-
         # Try to restore a model?
         restored = self.restore_model()
 
@@ -317,26 +316,6 @@ class tf_trainer(trainercore):
         return name, checkpoint_file_path
 
 
-    # def init_saver(self):
-
-    #     file_path = self.get_checkpoint_dir()
-
-    #     try:
-    #         os.makedirs(file_path)
-    #     except:
-    #         logger.warning("Could not make file path")
-
-    #     # # Create a saver for snapshots of the network:
-    #     # self._saver = tf.compat.v1.train.Saver()
-
-    #     # Create a file writer for training metrics:
-    #     self._main_writer = tf.summary.create_file_writer(self.args.output_dir +  "/train/")
-
-    #     # Additionally, in training mode if there is aux data use it for validation:
-    #     if hasattr(self, "_aux_data_size"):
-    #         self._val_writer = tf.summary.create_file_writer(self.args.output_dir + "/test/")
-
-
     def init_optimizer(self):
 
         if self.args.mode.name != ModeKind.train: return
@@ -427,7 +406,6 @@ class tf_trainer(trainercore):
     def summary(self, metrics, saver=""):
 
         if self.current_step() % self.args.mode.summary_iteration == 0:
-
             if saver == "":
                 saver = self.savers['train']
 

@@ -2,7 +2,7 @@
 #PBS -l select=1:system=polaris
 #PBS -l place=scatter
 #PBS -l walltime=0:30:00
-#PBS -q preemptable
+#PBS -q debug-scaling
 #PBS -A datascience
 #PBS -l filesystems=home
 
@@ -18,7 +18,7 @@ NDEPTH=8
 
 let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 
-LOCAL_BATCH_SIZE=1
+LOCAL_BATCH_SIZE=2
 let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
 echo "Global batch size: ${GLOBAL_BATCH_SIZE}"
@@ -32,14 +32,15 @@ source /home/cadams/Polaris/polaris_conda_2022-09-08-venv/bin/activate
 export NCCL_COLLNET_ENABLE=1
 export NCCL_NET_GDR_LEVEL=PHB
 
-export TF_XLA_FLAGS="--tf_xla_auto_jit=2"
-
 mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind=numa \
 python bin/exec.py \
 run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.distributed=True \
-framework=tensorflow \
-run.precision=float32 \
-run.id=convergence_${GLOBAL_BATCH_SIZE}_${NNODES} \
-run.run_length=1500 \
-run.run_units=iteration 
+framework=torch \
+# run.precision=mixed \
+run.id=iotest
+
+# run.id=scaing_test_${GLOBAL_BATCH_SIZE}_${NNODES} \
+# run.distributed=True \
+# run.run_length=500 \
+# run.run_units=iteration \

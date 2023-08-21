@@ -1,8 +1,4 @@
 import os
-import sys
-import time
-import tempfile
-from collections import OrderedDict
 
 from src.utils import logging
 
@@ -16,8 +12,6 @@ try:
     import intel_extension_for_pytorch as ipex
 except:
     pass
-
-# torch.manual_seed(0)
 
 torch.backends.cudnn.benchmark = True
 
@@ -50,6 +44,8 @@ class torch_trainer(trainercore):
     '''
     def __init__(self, args, datasets, lr_schedule, log_keys, hparams_keys):
         trainercore.__init__(self, args)
+
+        print("Trainer init", flush=True)
 
         # self.datasets = datasets
         self.lr_calculator = lr_schedule
