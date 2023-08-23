@@ -413,7 +413,7 @@ class exec(object):
             if self.args.framework.seed != 0:
                 import torch
                 torch.manual_seed(self.args.framework.seed)
-                torch.use_deterministic_algorithms(True)
+                # torch.use_deterministic_algorithms(True)
                 
                 # Seed python too:
                 import random; random.seed(framework_seed)
