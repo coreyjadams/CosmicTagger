@@ -45,8 +45,6 @@ class torch_trainer(trainercore):
     def __init__(self, args, datasets, lr_schedule, log_keys, hparams_keys):
         trainercore.__init__(self, args)
 
-        print("Trainer init", flush=True)
-
         # self.datasets = datasets
         self.lr_calculator = lr_schedule
         self.log_keys      = log_keys
@@ -147,6 +145,8 @@ class torch_trainer(trainercore):
                     raise Exception("Can not accumulate gradients in half precision.")
 
             # example_batch = next(iter(example_ds))
+
+            # self._net = torch.compile(self._net)
 
             # self.trace_module(example_batch)
 

@@ -20,7 +20,7 @@ network:
   blocks_deepest_layer: 2
   blocks_final: 2
   depth: 7
-  # upsampling: convolutional
+  upsampling: convolutional
 run:
   run_length: 20000
   run_units: iteration
