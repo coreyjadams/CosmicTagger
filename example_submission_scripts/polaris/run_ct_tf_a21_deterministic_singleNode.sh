@@ -37,7 +37,7 @@ export NVIDIA_TF32_OVERRIDE=0
 module load conda
 conda activate /home/cadams/miniconda3/tf-2.11.0
 
-mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --depth=${NDEPTH} --cpu-bind=numa \
+mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind=numa \
 python bin/exec.py \
 --config-name a21-deterministic \
 run.id=${run_id} \
