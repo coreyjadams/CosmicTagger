@@ -18,12 +18,14 @@ class Tensorflow(Framework):
     name:                           str  = "tensorflow"
     inter_op_parallelism_threads:   int  = 2
     intra_op_parallelism_threads:   int  = 24
+    num_groups:                     int  = 0
 
 @dataclass
 class Torch(Framework):
     name:             str             = "torch"
     sparse:           bool            = False
     distributed_mode: DistributedMode = DistributedMode.DDP
+    num_groups:       int             = 0
 
 cs = ConfigStore.instance()
 cs.store(group="framework", name="tensorflow", node=Tensorflow)

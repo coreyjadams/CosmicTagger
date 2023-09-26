@@ -66,7 +66,7 @@ class distributed_trainer(tf_trainer):
 
         # Wrap the optimizer it in horovod:
         # self._opt = hvd.DistributedOptimizer(self._opt)
-        self.tape = hvd.DistributedGradientTape(self.tape, num_groups=1)
+        self.tape = hvd.DistributedGradientTape(self.tape, num_groups=self.args.framework.num_groups)
 
     def init_saver(self):
         if hvd.rank() == 0:
