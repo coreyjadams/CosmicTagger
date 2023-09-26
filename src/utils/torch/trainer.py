@@ -107,6 +107,9 @@ class torch_trainer(trainercore):
         with self.default_device_context():
             self.init_network()
 
+            # If using half precision on the model, convert it now:
+            if self.args.run.precision == Precision.bfloat16:
+                self._net = self._net.bfloat16()
 
             self._net = self._net.to(self.default_device())
 
@@ -122,11 +125,6 @@ class torch_trainer(trainercore):
             self._global_step = 0
 
             self.restore_model()
-
-            # If using half precision on the model, convert it now:
-            if self.args.run.precision == Precision.bfloat16:
-                self._net = self._net.bfloat16()
-
 
             if self.is_training():
                 self.loss_calculator = LossCalculator.LossCalculator(self.args.mode.optimizer.loss_balance_scheme)
