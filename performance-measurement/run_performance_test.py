@@ -17,10 +17,12 @@ from common import get_parser, Framework, System, make_run_id, get_affinity
 def get_env_variables(system):
     
     env_update = {}
-    if system == System.sunspot:
+    if system == System.sunspot or system == System.aurora:
 
         env_update["NUMEXPR_MAX_THREADS"] = "1"
         env_update["ITEX_FP32_MATH_MODE"] = "TF32"
+        env_update["IPEX_FP32_MATH_MODE"] = "TF32"
+        env_update["IPEX_XPU_ONEDNN_LAYOUT_OPT"] = ""
         env_update["ITEX_LAYOUT_OPT"] = ""
         env_update["FI_CXI_DEFAULT_CQ_SIZE"] = "131072"
         env_update["FI_CXI_OVFLOW_BUF_SIZE"] = "8388608"
@@ -63,9 +65,11 @@ def build_python_arguments(workdir, framework, system, precision, batch_size, it
     if system == System.sunspot:
         python_args += f" run.compute_mode=XPU "
         python_args += f" data.data_format=channels_last "
-        python_args += f" run.precision={precision} "
-        python_args += f" run.minibatch_size={batch_size} "
-        python_args += f" run.iterations={iterations}"
+
+    # General Arguments:
+    python_args += f" run.precision={precision} "
+    python_args += f" run.minibatch_size={batch_size} "
+    python_args += f" run.iterations={iterations}"
 
     return python_args
 
