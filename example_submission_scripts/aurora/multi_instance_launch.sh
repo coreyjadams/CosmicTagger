@@ -1,0 +1,44 @@
+#!/bin/bash -l
+#PBS -l place=scatter
+#PBS -l select=128
+#PBS -l walltime=1:00:00
+#PBS -q intel
+#PBS -A Aurora_deployment
+
+# Empty comment
+
+
+
+#####################################################################
+# Most of the configuration is in the subscript, check there
+#####################################################################
+
+NNODES=`wc -l < $PBS_NODEFILE`
+NRANKS_PER_NODE=1
+let NRANKS=${NNODES}*${NRANKS_PER_NODE}
+
+SUBSCRIPT=/home/cadams/CosmicTagger/example_submission_scripts/aurora/single_node_instance_spawn.sh
+
+export DATE=$(date +%F-%I)
+
+export FRAMEWORK="tensorflow"
+
+export RUN=1
+mpirun -n ${NRANKS} -ppn 1 --cpu-bind=none $SUBSCRIPT
+
+export RUN=2
+mpirun -n ${NRANKS} -ppn 1 --cpu-bind=none $SUBSCRIPT
+
+export RUN=3
+mpirun -n ${NRANKS} -ppn 1 --cpu-bind=none $SUBSCRIPT
+
+export FRAMEWORK="torch"
+
+export RUN=1
+mpirun -n ${NRANKS} -ppn 1 --cpu-bind=none $SUBSCRIPT
+
+export RUN=2
+mpirun -n ${NRANKS} -ppn 1 --cpu-bind=none $SUBSCRIPT
+
+export RUN=3
+mpirun -n ${NRANKS} -ppn 1 --cpu-bind=none $SUBSCRIPT
