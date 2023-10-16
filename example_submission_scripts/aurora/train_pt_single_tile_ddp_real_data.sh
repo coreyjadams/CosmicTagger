@@ -1,8 +1,8 @@
 #!/bin/bash -l
-#PBS -l select=512
+#PBS -l select=1
 #PBS -l place=scatter
-#PBS -l walltime=1:00:00
-#PBS -q intel
+#PBS -l walltime=0:30:00
+#PBS -q workq
 #PBS -A Aurora_deployment
 
 
@@ -13,6 +13,8 @@
 OUTPUT_DIR=/home/cadams/ct_output/
 WORKDIR=/home/cadams/CosmicTagger/
 cd ${WORKDIR}
+
+DATADIR=/lus/gecko/projects/Aurora_deployment/cadams/cosmic_tagging_2
 
 #####################################################################
 # This block configures the total number of ranks, discovering
@@ -28,10 +30,6 @@ let NRANKS=${NNODES}*${NRANKS_PER_NODE}
 export FI_CXI_DEFAULT_CQ_SIZE=131072
 export FI_CXI_OVFLOW_BUF_SIZE=8388608
 export FI_CXI_CQ_FILL_PERCENT=20
-
-export FI_LOG_LEVEL=warn
-export FI_LOG_PROV=tcp
-
 
 
 #####################################################################
@@ -50,7 +48,7 @@ PRECISION="float32"
 # PRECISION="mixed"
 
 # Adjust the local batch size:
-LOCAL_BATCH_SIZE=8
+LOCAL_BATCH_SIZE=2
 
 # NOTE: batch size 8 works ok, batch size 16 core dumps, haven't explored
 # much in between.  reduced precision should improve memory usage.
@@ -83,6 +81,7 @@ module restore
 
 module use /soft/modulefiles
 module load frameworks/2023.05.15.001
+source /home/cadams/module-extensions/2023.1/bin/activate
 
 # Fix for EVP_* symbols issue:
 export LD_LIBRARY_PATH=/home/rramer/test-lib:$LD_LIBRARY_PATH
@@ -102,7 +101,7 @@ export NUMEXPR_MAX_THREADS=1
 
 
 # This string is an identified to store log files:
-run_id=aurora-a21-single-tile-hvd-n${NRANKS}-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_SIZE}
+run_id=aurora-a21-single-tile-ddp-n${NRANKS}-df${DATA_FORMAT}-p${PRECISION}-mb${LOCAL_BATCH_SIZE}-real
 
 
 #####################################################################
@@ -127,21 +126,18 @@ export CPU_AFFINITY="verbose,list:0-7,104-111:8-15,112-119:16-23,120-127:24-31,1
 
 ulimit -c 0
 
-echo "About to mpiexec"
-date
-
 # Launch the script
 mpiexec -np ${NRANKS} -ppn ${NRANKS_PER_NODE} \
 --cpu-bind ${CPU_AFFINITY} \
 python bin/exec.py \
---config-name a21 \
+data=real \
+data.data_directory=${DATADIR} \
 framework=torch \
 output_dir=${OUTPUT_DIR}/${run_id} \
 run.id=${run_id} \
 run.compute_mode=XPU \
 run.distributed=True \
-framework.distributed_mode=horovod \
 data.data_format=${DATA_FORMAT} \
 run.precision=${PRECISION} \
 run.minibatch_size=${LOCAL_BATCH_SIZE} \
-run.iterations=500
+run.iterations=2500

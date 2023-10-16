@@ -80,7 +80,7 @@ def get_hosts(system, work_dir):
     # print(output)
     host_dest = work_dir / Path("hosts.txt")
 
-    if system == System.sunspot or system == System.polaris:
+    if system == System.sunspot or system == System.polaris or system == System.aurora:
         # CP the host file to the work_dir:
         shutil.copyfile(os.environ["PBS_NODEFILE"], host_dest)
 
@@ -96,6 +96,7 @@ def get_hosts(system, work_dir):
 def ranks_per_node(system):
 
     if system == System.sunspot: return 12
+    elif system == System.aurora: return 12
 
 def run_single_node_benchmarks(args, framework, env_vars, affinity, python_args, dir, hosts):
 
@@ -361,6 +362,7 @@ wait < <(jobs -p)
 def check_system_supported(system):
 
     if system == System.sunspot: return True
+    if system == System.aurora: return True
 
     return False
 

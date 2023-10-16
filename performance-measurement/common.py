@@ -31,7 +31,7 @@ def make_run_id(args, framework,  hosts):
 
 def get_affinity(system):
 
-    if system == System.sunspot:
+    if system == System.sunspot or system == System.aurora:
         gpu_affinity = ["0.0","0.1","1.0","1.1","2.0","2.1",
                         "3.0","3.1","4.0","4.1","5.0","5.1"]
         cpu_affinity = ["0-7,104-111",   "8-15,112-119",  "16-23,120-127", 
