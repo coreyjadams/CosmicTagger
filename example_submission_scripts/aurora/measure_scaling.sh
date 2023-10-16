@@ -1,8 +1,8 @@
 #!/bin/bash -l
-#PBS -l select=32
+#PBS -l select=48
 #PBS -l place=scatter
-#PBS -l walltime=2:00:00
-#PBS -q workq
+#PBS -l walltime=1:00:00
+#PBS -q M242798
 #PBS -A Aurora_deployment
 
 #####################################################################
@@ -18,9 +18,9 @@ export DATE=$(date "+%F-%H:%M:%S")
 echo $DATE
 
 module use /soft/modulefiles
-module load frameworks/2023.05.15.001 
+module load frameworks/.2023.08.15.002 
 # Fix missing library:
-export LD_LIBRARY_PATH=/home/rramer/test-lib:$LD_LIBRARY_PATH
+# export LD_LIBRARY_PATH=/home/rramer/test-lib:$LD_LIBRARY_PATH
 
 # Performance variables:
 unset ITEX_LAYOUT_OPT
