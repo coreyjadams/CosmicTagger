@@ -48,9 +48,9 @@ class Block(nn.Module):
             self._do_normalization = True
             self.norm = nn.BatchNorm2d(outplanes)
         elif params.normalization == Norm.layer:
-            raise Exception("Layer norm not well supported in torch vision models - use normalization=batch")
+            # raise Exception("Layer norm not well supported in torch vision models - use normalization=batch")
             self._do_normalization = True
-            self.norm = nn.LayerNorm((outplanes, 1, 1))
+            self.norm = nn.GroupNorm(num_groups=1, num_channels=outplanes)
         else:
             self._do_normalization = False
 
@@ -124,9 +124,10 @@ class ConvolutionUpsample(nn.Module):
             self._do_normalization = True
             self.norm = nn.BatchNorm2d(outplanes)
         elif params.normalization == Norm.layer:
-            raise Exception("Layer norm not well supported in torch vision models - use normalization=batch")
+            # raise Exception("Layer norm not well supported in torch vision models - use normalization=batch")
             self._do_normalization = True
-            self.norm = nn.LayerNorm((outplanes, 1, 1))
+            self.norm = nn.GroupNorm(num_groups=1, num_channels=outplanes)
+
         else:
             self._do_normalization = False
 

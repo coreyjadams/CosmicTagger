@@ -12,7 +12,7 @@ data:
 
 
 network:
-  n_initial_filters: 32
+  n_initial_filters: 16
   classification:
     active: True
     detach: True
@@ -20,8 +20,8 @@ network:
     active: True
     detach: True
   blocks_deepest_layer: 3
-  blocks_final: 3
-  depth: 6
+  blocks_final: 2
+  depth: 7
   # upsampling: convolutional
 run:
   run_length: 20000
