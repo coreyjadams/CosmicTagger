@@ -175,6 +175,8 @@ class tf_trainer(trainercore):
     def summary_images(self, labels, prediction, saver=""):
         ''' Create images of the labels and prediction to show training progress
         '''
+        if self._main_writer is None:
+            return
 
         if self.current_step() % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:
 
@@ -404,6 +406,8 @@ class tf_trainer(trainercore):
 
     # @tf.function(experimental_relax_shapes=True)
     def summary(self, metrics, saver=""):
+        if self._main_writer is None:
+            return
 
         if self.current_step() % self.args.mode.summary_iteration == 0:
             if saver == "":
@@ -708,37 +712,6 @@ class tf_trainer(trainercore):
             value = self.inference_metrics[key] / n
             logger.info(f"  {key}: {value:.4f}")
 
-    # def feed_dict(self, inputs):
-    #     '''Build the feed dict
-
-    #     Take input images, labels and match
-    #     to the correct feed dict tensorrs
-
-    #     This is probably overridden in the subclass, but here you see the idea
-
-    #     Arguments:
-    #         images {dict} -- Dictionary containing the input tensors
-
-    #     Returns:
-    #         [dict] -- Feed dictionary for a tf session run call
-
-    #     '''
-    #     fd = dict()
-
-    #     # fd[self._learning_rate] = self._base_learning_rate
-
-    #     for key in inputs:
-    #         if key == "entries" or key == "event_ids": continue
-
-    #         if inputs[key] is not None:
-    #             fd.update({self._input[key] : inputs[key]})
-
-    #     if self.is_training():
-    #         fd.update({self._learning_rate : self.lr_calculator(self.current_step())})
-    #     return fd
 
     def close_savers(self):
         pass
-        # if self.args.mode == 'inference':
-        #     if self.larcv_fetcher._writer is not None:
-        #         self.larcv_fetcher._writer.finalize()
