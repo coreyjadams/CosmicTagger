@@ -14,7 +14,8 @@ class RandomMode(Enum):
     serial_access = 1
 
 # data_top="/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/"
-data_top="/lus/gecko/projects/Aurora_deployment/cadams/cosmic_tagging_2/"
+data_top="/lus/gila/projects/Aurora_deployment/cadams/cosmic_tagger_2/"
+# data_top="/lus/gecko/projects/Aurora_deployment/cadams/cosmic_tagging_2/"
 
 @dataclass
 class DatasetPaths:

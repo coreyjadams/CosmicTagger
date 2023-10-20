@@ -132,10 +132,15 @@ class torch_trainer(trainercore):
                 if self.args.network.classification.active:
                     with self.default_device_context():
                         weight = torch.tensor([0.16, 0.1666, 0.16666, 0.5]).to(self.default_device())
+                        if self.args.run.precision == Precision.bfloat16:
+                            weight = weight.to(torch.bfloat16)
                         self.loss_calculator = LossCalculator(self.args, weight=weight)
                 else:
                     self.loss_calculator = LossCalculator(self.args)
             self.acc_calc = AccuracyCalculator(self.args)
+
+            if self.args.run.compute_mode == ComputeMode.XPU:
+                self._net, self.opt = ipex.optimize(self._net, optimizer=self.opt)
 
             # For half precision, we disable gradient accumulation.  This is to allow
             # dynamic loss scaling
@@ -222,6 +227,9 @@ class torch_trainer(trainercore):
             self.opt = torch.optim.Adagrad(self._net.parameters(), 1.0)
         elif self.args.mode.optimizer.name == OptimizerKind.adadelta:
             self.opt = torch.optim.Adadelta(self._net.parameters(), 1.0, eps=1e-6)
+        elif self.args.mode.optimizer.name == OptimizerKind.lamb:
+            import torch_optimizer as optim
+            self.opt = optim.Lamb(self._net.parameters(), 1.0)
         else:
             self.opt = torch.optim.SGD(self._net.parameters(), 1.0)
 
@@ -545,11 +553,10 @@ class torch_trainer(trainercore):
                     minibatch_data['label'].to(memory_format=torch.channels_last)
                     minibatch_data["image"].to(memory_format=torch.channels_last)
 
-            # # Cast to bfloat if needed:
-            # if self.args.run.precision == Precision.bfloat16:
-                # minibatch_data["image"] = minibatch_data["image"].to(torch.bfloat16)
-
             # print(minibatch_data["image"].dtype)
+
+            if self.args.run.precision == Precision.bfloat16:
+                minibatch_data["image"] = minibatch_data["image"].to(torch.bfloat16)
 
             labels_dict = {
                 "segmentation" : torch.chunk(minibatch_data['label'].long(), chunks=3, dim=1),
@@ -624,6 +631,9 @@ class torch_trainer(trainercore):
                         if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.CUDA:
                             with torch.cuda.amp.autocast():
                                 network_dict, labels_dict = self.forward_pass(minibatch_data)
+                        if self.args.run.precision == Precision.bfloat16 and self.args.run.compute_mode == ComputeMode.XPU:
+                            with torch.xpu.amp.autocast():
+                                network_dict, labels_dict = self.forward_pass(minibatch_data)
                         else:
                             network_dict, labels_dict = self.forward_pass(minibatch_data)
 
@@ -631,12 +641,19 @@ class torch_trainer(trainercore):
                     # Compute the loss based on the network_dict
                     with self.timing_context("loss"):
                         loss, loss_metrics = self.loss_calculator(labels_dict, network_dict)
+                        # Push loss to bfloat16 if needed:
+                        # if self.args.run.precision == Precision.bfloat16:
+                            # loss = loss.to(torch.bfloat16)
+                        # print("Loss: ", loss, loss.dtype)
 
                     # if loss.isnan(): exit()
                     # Compute the gradients for the network parameters:
                     with self.timing_context("backward"):
                         if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.CUDA:
                             self.scaler.scale(loss).backward()
+                        elif self.args.run.precision == Precision.bfloat16 and self.args.run.compute_mode == ComputeMode.XPU:
+                            with torch.xpu.amp.autocast():
+                                loss.backward()
                         else:
                             loss.backward()
 

@@ -17,7 +17,6 @@ class LossCalculator(torch.nn.Module):
 
         self._criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
-
         self.event_label_criterion = torch.nn.CrossEntropyLoss(reduction="mean", weight=weight)
 
         self.network_params = params.network
@@ -37,10 +36,13 @@ class LossCalculator(torch.nn.Module):
 
     def forward(self, labels_dict, network_dict):
 
-        
+        # Cast to fp32 if currently in fp16:
+        if network_dict["segmentation"][0].dtype == torch.float16:
+            network_dict["segmentation"] = \
+                  [ n.to(torch.float32) for n in network_dict["segmentation"] ]
         loss   = self.segmentation_loss(
             labels_dict["segmentation"],
-            [ n.to(torch.float32) for n in network_dict["segmentation"] ]
+            network_dict["segmentation"]
         )
         loss_metrics = {
             "segmentation" : loss.detach()
@@ -53,7 +55,10 @@ class LossCalculator(torch.nn.Module):
             loss =  loss +  event_loss
 
         if self.network_params.vertex.active:
-            vtx_detection, vtx_localization = self.vertex_loss(labels_dict["vertex"], network_dict["vertex"], labels_dict['event_label'])
+            vtx_detection, vtx_localization = self.vertex_loss(
+                labels_dict["vertex"], 
+                network_dict["vertex"], 
+                labels_dict['event_label'])
             vtx_detection  = self.network_params.vertex.weight * vtx_detection
             vtx_localization   = self.network_params.vertex.weight * vtx_localization
             loss_metrics["vertex/detection"] = vtx_detection.detach()
@@ -156,7 +161,7 @@ class LossCalculator(torch.nn.Module):
         return detection_loss, regression_loss
 
     def event_loss(self, labels, logits):
-        event_label_loss = self.event_label_criterion(logits.float(), labels.long())
+        event_label_loss = self.event_label_criterion(logits, labels.long())
         return event_label_loss
 
     def segmentation_loss(self, labels, logits):

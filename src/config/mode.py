@@ -19,7 +19,7 @@ class Mode:
 
 @dataclass
 class Train(Mode):
-    checkpoint_iteration:   int = 500
+    checkpoint_iteration:   int = 50
     summary_iteration:      int = 1
     logging_iteration:      int = 1
     optimizer:        Optimizer = field(default_factory= lambda : Optimizer())

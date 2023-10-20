@@ -10,7 +10,6 @@ data:
       - train
       - val
 
-
 network:
   n_initial_filters: 24
   classification:
@@ -22,6 +21,7 @@ network:
   blocks_deepest_layer: 3
   blocks_final: 2
   depth: 7
+  normalization: group
   # upsampling: convolutional
 run:
   run_length: 20000
