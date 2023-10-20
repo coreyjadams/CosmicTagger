@@ -195,7 +195,7 @@ class distributed_trainer(torch_trainer):
         torch_trainer.init_optimizer(self)
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
-            self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
+            self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters(), num_groups = self.args.run.horovod_num_groups)
             # self._opt.param_groups[0]['capturable'] = True
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
@@ -261,7 +261,7 @@ class distributed_trainer(torch_trainer):
 
             # print(self._net.parameters)
 
-            self._net = torch.nn.parallel.DistributedDataParallel(self._net, device_ids=devices, find_unused_parameters=False)
+            self._net = torch.nn.parallel.DistributedDataParallel(self._net, device_ids=devices, broadcast_buffers=self.args.run.broadcast_buffers, find_unused_parameters=False)
 
             # print(self._net.parameters)
 
