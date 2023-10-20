@@ -91,12 +91,12 @@ class LossCalculator(object):
                     weights = tf.stop_gradient(weights)
 
                     # plane_loss = tf.reduce_mean(input_tensor=plane_loss)
-                    total_weight = tf.reduce_sum(weights)
+                    # total_weight = tf.reduce_sum(weights)
 
 
-                    plane_loss = tf.reduce_sum(weights*plane_loss)
+                    plane_loss = tf.reduce_mean(weights*plane_loss)
 
-                    plane_loss /= total_weight
+                    # plane_loss /= total_weight
                 else:
                     plane_loss = tf.reduce_mean(plane_loss)
                 if loss is None:

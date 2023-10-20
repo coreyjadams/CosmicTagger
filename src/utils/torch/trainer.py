@@ -1,8 +1,4 @@
 import os
-import sys
-import time
-import tempfile
-from collections import OrderedDict
 
 from src.utils import logging
 
@@ -16,8 +12,6 @@ try:
     import intel_extension_for_pytorch as ipex
 except:
     pass
-
-# torch.manual_seed(0)
 
 torch.backends.cudnn.benchmark = True
 
@@ -151,6 +145,8 @@ class torch_trainer(trainercore):
                     raise Exception("Can not accumulate gradients in half precision.")
 
             # example_batch = next(iter(example_ds))
+
+            # self._net = torch.compile(self._net)
 
             # self.trace_module(example_batch)
 

@@ -1,8 +1,8 @@
 #!/bin/bash -l
-#PBS -l select=6:system=polaris
+#PBS -l select=1:system=polaris
 #PBS -l place=scatter
 #PBS -l walltime=0:30:00
-#PBS -q debug-scaling
+#PBS -q debug
 #PBS -A datascience
 #PBS -l filesystems=home
 
@@ -32,14 +32,11 @@ source /home/cadams/Polaris/polaris_conda_2022-09-08-venv/bin/activate
 export NCCL_COLLNET_ENABLE=1
 export NCCL_NET_GDR_LEVEL=PHB
 
-export TF_XLA_FLAGS="--tf_xla_auto_jit=2"
-
 mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind=numa \
 python bin/exec.py \
 run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.distributed=True \
-framework=tensorflow \
-run.precision=float32 \
-run.id=convergence_${GLOBAL_BATCH_SIZE}_${NNODES}-2 \
+framework=torch \
+run.id=convergence_${GLOBAL_BATCH_SIZE}_${NNODES} \
 run.run_length=1500 \
 run.run_units=iteration 
