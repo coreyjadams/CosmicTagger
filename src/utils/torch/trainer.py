@@ -103,6 +103,7 @@ class torch_trainer(trainercore):
 
             # If using half precision on the model, convert it now:
             if self.args.run.precision == Precision.bfloat16:
+                ipex.set_fp32_math_mode(mode=ipex.FP32MathMode.BF32)
                 self._net = self._net.bfloat16()
 
             self._net = self._net.to(self.default_device())
@@ -432,7 +433,7 @@ class torch_trainer(trainercore):
 
 
     def summary_images(self, logits_image, labels_image, saver=""):
-        if self._saver is None:
+        if saver not in self.savers:
             return
 
         # if self._global_step % 1 * self.args.mode.summary_iteration == 0:
@@ -538,11 +539,17 @@ class torch_trainer(trainercore):
 
         with self.default_device_context():
 
+            
             if self.args.run.compute_mode == ComputeMode.XPU:
                 if self.args.data.data_format == DataFormatKind.channels_last:
                     minibatch_data['label'].to(memory_format=torch.channels_last)
                     minibatch_data["image"].to(memory_format=torch.channels_last)
 
+            # # Cast to bfloat if needed:
+            # if self.args.run.precision == Precision.bfloat16:
+                # minibatch_data["image"] = minibatch_data["image"].to(torch.bfloat16)
+
+            # print(minibatch_data["image"].dtype)
 
             labels_dict = {
                 "segmentation" : torch.chunk(minibatch_data['label'].long(), chunks=3, dim=1),

@@ -152,11 +152,10 @@ class distributed_trainer(torch_trainer):
         torch_trainer.init_optimizer(self)
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
-            self._opt = hvd.DistributedOptimizer(self._opt, 
-                        named_parameters = self._net.named_parameters(), 
-                        num_groups       = self.args.run.horovod_num_groups)
-            # self._opt.param_groups[0]['capturable'] = True
-        self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
+            self.opt = hvd.DistributedOptimizer(self.opt, 
+                         named_parameters = self._net.named_parameters(), 
+                         num_groups       = self.args.run.horovod_num_groups)
+        self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.opt, self.lr_calculator, last_epoch=-1)
 
 
     def init_saver(self):

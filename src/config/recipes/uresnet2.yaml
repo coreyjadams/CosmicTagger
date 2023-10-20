@@ -12,7 +12,7 @@ data:
 
 
 network:
-  n_initial_filters: 16
+  n_initial_filters: 24
   classification:
     active: True
     detach: True
