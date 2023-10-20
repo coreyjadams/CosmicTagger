@@ -1,8 +1,8 @@
 #!/bin/bash -l
-#PBS -l select=48
+#PBS -l select=128
 #PBS -l place=scatter
-#PBS -l walltime=1:00:00
-#PBS -q M242798
+#PBS -l walltime=1:30:00
+#PBS -q M243203
 #PBS -A Aurora_deployment
 
 #####################################################################
