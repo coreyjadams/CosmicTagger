@@ -513,16 +513,20 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
     # Distributed strategy:
     if args.run.distributed:
         parallel_devices = accelerator.get_parallel_devices(range(accelerator.auto_device_count()))
+        print(parallel_devices)
         from src.config import DistributedMode
         if args.framework.distributed_mode == DistributedMode.horovod:
             from pytorch_lightning.strategies import DataParallelStrategy
             strategy = DataParallelStrategy(
+                accelerator         = accelerator,
                 cluster_environment = environment,
 
             )
         elif args.framework.distributed_mode == DistributedMode.DDP:
             from pytorch_lightning.strategies import DDPStrategy
             strategy = DDPStrategy(
+                # accelerator         = accelerator,
+                # parallel_devices    = parallel_devices,
                 cluster_environment = environment,
             )
         elif False:
@@ -531,6 +535,7 @@ def train(args, lightning_model, datasets, max_epochs=None, max_steps=None):
         elif args.framework.distributed_mode == DistributedMode.deepspeed:
             from pytorch_lightning.strategies import DeepSpeedStrategy
             strategy = DeepSpeedStrategy(
+                accelerator         = accelerator,
                 zero_optimization   = True,
                 stage               = 3,
                 sub_group_size      = 100000000000,
