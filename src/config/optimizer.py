@@ -1,7 +1,7 @@
 
 from enum import Enum
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hydra.core.config_store import ConfigStore
 from typing import List, Any
 from omegaconf import MISSING
@@ -45,7 +45,7 @@ class Flat(LRScheduleConfig):
 
 @dataclass
 class Optimizer:
-    lr_schedule:          LRScheduleConfig = Flat()
+    lr_schedule:          LRScheduleConfig = field(default_factory = lambda : Flat())
     loss_balance_scheme: LossBalanceScheme = LossBalanceScheme.focal
     name:                    OptimizerKind = OptimizerKind.adam
     gradient_accumulation:             int = 1

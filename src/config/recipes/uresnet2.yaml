@@ -3,7 +3,7 @@ defaults:
   - override framework: torch
   - _self_
 data:
-  downsample: 0
+  downsample: 2
   version: 2
   paths:
     active:
@@ -20,7 +20,7 @@ network:
     detach: True
   blocks_deepest_layer: 3
   blocks_final: 2
-  depth: 7
+  depth: 5
   normalization: group
   # upsampling: convolutional
 run:

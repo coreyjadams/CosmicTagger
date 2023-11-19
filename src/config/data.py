@@ -13,8 +13,8 @@ class RandomMode(Enum):
     random_blocks = 0
     serial_access = 1
 
-# data_top="/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/"
-data_top="/lus/gila/projects/Aurora_deployment/cadams/cosmic_tagger_2/"
+data_top="/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/"
+# data_top="/lus/gila/projects/Aurora_deployment/cadams/cosmic_tagger_2/"
 # data_top="/lus/gecko/projects/Aurora_deployment/cadams/cosmic_tagging_2/"
 
 @dataclass
@@ -39,7 +39,7 @@ class Real(Data):
     random_mode:      RandomMode = RandomMode.random_blocks
     img_transform:          bool = False
     seed:                    int = -1 # Random number seed
-    paths:          DatasetPaths = DatasetPaths()
+    paths:          DatasetPaths = field(default_factory = lambda : DatasetPaths() )
 
 
 @dataclass
