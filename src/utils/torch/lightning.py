@@ -262,6 +262,9 @@ class lightning_trainer(pl.LightningModule):
             opt = torch.optim.Adagrad(self.parameters(), learning_rate)
         elif self.args.mode.optimizer.name == OptimizerKind.adadelta:
             opt = torch.optim.Adadelta(self.parameters(), learning_rate, eps=1e-6)
+        elif self.args.mode.optimizer.name == OptimizerKind.lamb:
+            import torch_optimizer as optim
+            self.opt = optim.Lamb(self.parameters(), 1.0)
         else:
             opt = torch.optim.SGD(self.parameters(), learning_rate)
 

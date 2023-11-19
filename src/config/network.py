@@ -1,6 +1,6 @@
 from enum import Enum
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 
@@ -75,8 +75,8 @@ class Network:
     downsampling:         DownSampling = DownSampling.max_pooling
     upsampling:           UpSampling   = UpSampling.interpolation
     data_format:          str          = MISSING
-    vertex:               Vertex       = Vertex()
-    classification:       EventLabel   = EventLabel()
+    vertex:               Vertex       = field(default_factory= lambda : Vertex() )
+    classification:       EventLabel   = field(default_factory= lambda : EventLabel() )
 
 
 @dataclass

@@ -50,7 +50,7 @@ class Block(nn.Module):
         elif params.normalization == Norm.group:
             # raise Exception("Layer norm not well supported in torch vision models - use normalization=batch")
             self._do_normalization = True
-            self.norm = nn.GroupNorm(num_groups=1, num_channels=outplanes)
+            self.norm = nn.GroupNorm(num_groups=4, num_channels=outplanes)
         else:
             self._do_normalization = False
 
@@ -126,7 +126,7 @@ class ConvolutionUpsample(nn.Module):
         elif params.normalization == Norm.group:
             # raise Exception("Layer norm not well supported in torch vision models - use normalization=batch")
             self._do_normalization = True
-            self.norm = nn.GroupNorm(num_groups=1, num_channels=outplanes)
+            self.norm = nn.GroupNorm(num_groups=4, num_channels=outplanes)
 
         else:
             self._do_normalization = False

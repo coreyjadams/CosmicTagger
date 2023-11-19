@@ -84,7 +84,7 @@ class LossCalculator(torch.nn.Module):
 
 
         # Get the detection labels, and zero out any cosmic-only event
-        detection_labels = labels['detection']
+        detection_labels = [ l.to(target_dtype) for l in labels['detection'] ]
         # print("Min logit: ", [torch.min(l) for l in detection_logits])
         # print("Max logit: ", [torch.max(l) for l in detection_logits])
 
@@ -93,6 +93,7 @@ class LossCalculator(torch.nn.Module):
 
         # This is a computation of cross entropy
         focus = [ weight_detection *(1 - _pt)**2 for _pt in pt]
+
         bce_loss = [torch.nn.functional.binary_cross_entropy(logit, label, reduction="none")
             for logit, label in zip(detection_logits, detection_labels)
         ]
@@ -161,6 +162,8 @@ class LossCalculator(torch.nn.Module):
         return detection_loss, regression_loss
 
     def event_loss(self, labels, logits):
+        if logits.dtype == torch.float16:
+           logits = logits.to(torch.float32)
         event_label_loss = self.event_label_criterion(logits, labels.long())
         return event_label_loss
 
