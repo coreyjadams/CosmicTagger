@@ -48,9 +48,14 @@ class Block(nn.Module):
             self._do_normalization = True
             self.norm = nn.BatchNorm2d(outplanes)
         elif params.normalization == Norm.group:
-            # raise Exception("Layer norm not well supported in torch vision models - use normalization=batch")
             self._do_normalization = True
             self.norm = nn.GroupNorm(num_groups=4, num_channels=outplanes)
+        elif params.normalization == Norm.layer:
+            self._do_normalization = True
+            self.norm = "layer"
+        elif params.normalization == Norm.instance:
+            self._do_normalization = True
+            self.norm = nn.InstanceNorm2d(outplanes)
         else:
             self._do_normalization = False
 
@@ -60,7 +65,15 @@ class Block(nn.Module):
     def forward(self, x):
         out = self.conv(x)
         if self._do_normalization:
-            out = self.norm(out)
+            if self.norm == "layer":
+                norm_shape = out.shape[1:]
+                # norm_shape = torch.tensor([8,] + list(norm_shape)).to(x.device)
+                self.norm = torch.nn.LayerNorm(normalized_shape=norm_shape)
+                self.norm.to(out.device)
+                # out = torch.nn.functional.layer_norm(out, norm_shape)
+                out = self.norm(out)
+            else:
+                out = self.norm(out)
         out = self.activation(out)
         return out
 
@@ -124,10 +137,15 @@ class ConvolutionUpsample(nn.Module):
             self._do_normalization = True
             self.norm = nn.BatchNorm2d(outplanes)
         elif params.normalization == Norm.group:
-            # raise Exception("Layer norm not well supported in torch vision models - use normalization=batch")
             self._do_normalization = True
             self.norm = nn.GroupNorm(num_groups=4, num_channels=outplanes)
-
+        elif params.normalization == Norm.layer:
+            self._do_normalization = True
+            self.norm = "layer"
+            # Have to do something special here to avoid pre-computing all the shapes ...
+        elif params.normalization == Norm.instance:
+            self._do_normalization = True
+            self.norm = nn.InstanceNorm2d(outplanes)
         else:
             self._do_normalization = False
 
@@ -139,7 +157,12 @@ class ConvolutionUpsample(nn.Module):
         out = self.conv(x)
 
         if self._do_normalization:
-            out = self.norm(out)
+            if self.norm == "layer":
+                norm_shape = out.shape[1:]
+                # norm_shape[0] = 8
+                out = torch.nn.functional.layer_norm(out, norm_shape)
+            else:
+                out = self.norm(out)
         out = self.activation(out)
         return out
 
