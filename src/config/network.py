@@ -33,6 +33,7 @@ class Norm(Enum):
     batch = 1
     layer = 2
     group = 3
+    instance = 4
 
 @dataclass
 class Vertex:
