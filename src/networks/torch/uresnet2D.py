@@ -19,21 +19,30 @@ It then performs an upsampling step, and returns the upsampled tensor.
 
 '''
 
-from src.config.network import Connection, GrowthRate, DownSampling, UpSampling, Norm
+from src.config.network import Connection, GrowthRate, BlockStyle
+from src.config.network import DownSampling, UpSampling, Norm
 
+activation_function = nn.functional.leaky_relu
 
 class Block(nn.Module):
 
     def __init__(self, *,
             inplanes,
             outplanes,
-            kernel     = [3,3],
-            strides    = [1,1],
-            padding    = [1,1],
-            activation = nn.functional.leaky_relu,
+            strides    = None,
+            padding    = None,
+            kernel     = None,
+            activation = activation_function,
+            override_norm = None,
             params):
         nn.Module.__init__(self)
 
+        if kernel is None:
+            kernel = [params.kernel_size,params.kernel_size]
+        if padding is None:
+            padding = tuple( int((k - 1) / 2) for k in kernel )
+        if strides is None:
+            strides = [1,1 ]
 
         self.conv = nn.Conv2d(
             in_channels  = inplanes,
@@ -43,6 +52,7 @@ class Block(nn.Module):
             padding      = padding,
             bias         = params.bias)
 
+        norm = params.normalization if override_norm is not None else override_norm
 
         if params.normalization == Norm.batch:
             self._do_normalization = True
@@ -80,10 +90,11 @@ class Block(nn.Module):
 
 class ResidualBlock(nn.Module):
 
-    def __init__(self, *, inplanes, outplanes, kernel=[3,3], padding=[1,1], params):
+    def __init__(self, *, inplanes, outplanes, params):
         nn.Module.__init__(self)
 
-
+        kernel = [params.kernel_size,params.kernel_size]
+        padding = tuple( int((k - 1) / 2) for k in kernel )
 
         self.convolution_1 = Block(
             inplanes    = inplanes,
@@ -112,15 +123,68 @@ class ResidualBlock(nn.Module):
 
 
         out += residual
-        out = torch.nn.functional.leaky_relu(out)
+        out = activation_function(out)
 
         return out
 
+class ConvNextBlock(nn.Module):
+
+    def __init__(self, *, inplanes, outplanes, params):
+
+        nn.Module.__init__(self)
 
 
+        kernel_1  = [params.kernel_size,params.kernel_size]
+        padding_1 = tuple( int((k - 1) / 2) for k in kernel_1 )
+
+
+        self.convolution_1 = Block(
+            inplanes    = inplanes,
+            outplanes   = inplanes,
+            kernel      = kernel_1,
+            padding     = padding_1,
+            activation  = torch.nn.Identity(),
+            params      = params)
+
+
+        kernel_2  = [1, 1]
+        padding_2 = [0, 0]
+
+        self.convolution_2 = Block(
+            inplanes    = inplanes,
+            outplanes   = 4 * inplanes,
+            kernel      = kernel_2,
+            padding     = padding_2,
+            override_norm = "none", # Sets to no normalization, as opposed to the default param
+            params      = params)
+
+        self.convolution_3 = Block(
+            inplanes    = 4 * inplanes,
+            outplanes   = outplanes,
+            kernel      = kernel_2,
+            padding     = padding_2,
+            activation  = torch.nn.Identity(),
+            override_norm = "", # Sets to no normalization, as opposed tothe default param
+            params      = params)
+
+
+    def forward(self, x):
+
+        residual = x
+
+        out = self.convolution_1(x)
+
+        out = self.convolution_2(out)
+
+        out = self.convolution_3(out)
+
+        out += residual
+
+        return out
+    
 class ConvolutionUpsample(nn.Module):
 
-    def __init__(self, *, inplanes, outplanes, activation=nn.functional.leaky_relu, params):
+    def __init__(self, *, inplanes, outplanes, activation=activation_function, params):
 
         nn.Module.__init__(self)
 
@@ -170,26 +234,29 @@ class ConvolutionUpsample(nn.Module):
 class BlockSeries(torch.nn.Module):
 
 
-    def __init__(self, *, inplanes, n_blocks, kernel = [3,3], padding = [1,1], params):
+    def __init__(self, *, inplanes, n_blocks, params):
         torch.nn.Module.__init__(self)
 
 
         self.blocks = torch.nn.ModuleList()
-        if not params.residual:
+
+        if params.block_style == BlockStyle.none:
             for i in range(n_blocks):
                 self.blocks.append(Block(
                                 inplanes  = inplanes,
                                 outplanes = inplanes,
-                                kernel    = kernel,
-                                padding   = padding,
                                 params    = params))
-        else:
+        elif params.block_style == BlockStyle.residual:
             for i in range(n_blocks):
                 self.blocks.append(ResidualBlock(
                                 inplanes  = inplanes,
                                 outplanes = inplanes,
-                                kernel    = kernel,
-                                padding   = padding,
+                                params    = params))
+        elif params.block_style == BlockStyle.convnext:
+            for i in range(n_blocks):
+                self.blocks.append(ConvNextBlock(
+                                inplanes  = inplanes,
+                                outplanes = inplanes,
                                 params    = params))
 
 
@@ -229,13 +296,11 @@ class DeepestBlock(nn.Module):
                     padding    = [0,0],
                     params     = params)
 
-            kernel  = (params.filter_size_deepest, params.filter_size_deepest)
-            padding = tuple( int((k - 1) / 2) for k in kernel )
+            # kernel = [ params.kernel_size, params.kernel_size ]
+            # padding = tuple( int((k - 1) / 2) for k in kernel )
 
             self.blocks = BlockSeries(
                 inplanes    = n_filters_bottleneck,
-                kernel      = kernel,
-                padding     = padding,
                 n_blocks    = params.blocks_deepest_layer,
                 params      = params)
 
@@ -255,14 +320,10 @@ class DeepestBlock(nn.Module):
                     kernel     = [1,1],
                     padding    = [0,0],
                     params     = params)
-
-            kernel  = (params.filter_size_deepest, params.filter_size_deepest)
-            padding = tuple( int((k - 1) / 2) for k in kernel )
+            
 
             self.blocks = BlockSeries(
                 inplanes    = n_filters_bottleneck,
-                kernel      = kernel,
-                padding     = padding,
                 n_blocks    = params.blocks_deepest_layer,
                 params      = params)
 

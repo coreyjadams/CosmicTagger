@@ -35,6 +35,11 @@ class Norm(Enum):
     group = 3
     instance = 4
 
+class BlockStyle(Enum):
+    none    = 0
+    residual = 1
+    convnext = 2
+
 @dataclass
 class Vertex:
     detach:   bool = True
@@ -59,15 +64,15 @@ class EventLabel:
 class Network:
     name:                 str          = "default"
     bias:                 bool         = True
-    normalization:        Norm         = Norm.layer
+    normalization:        Norm         = Norm.batch
     n_initial_filters:    int          = 16
     blocks_per_layer:     int          = 2
     blocks_deepest_layer: int          = 5
     blocks_final:         int          = 5
     depth:                int          = 7
-    filter_size_deepest:  int          = 5
+    kernel_size:          int          = 3
     bottleneck_deepest:   int          = 256
-    residual:             bool         = True
+    block_style:          BlockStyle   = BlockStyle.residual
     block_concat:         bool         = False
     weight_decay:         float        = 0.00
     connections:          Connection   = Connection.concat
@@ -93,8 +98,8 @@ class A21(Network):
     """
     name:                 str          = "A21"
     n_initial_filters:    int          = 8
-    filter_size_deepest:  int          = 5
-    residual:             bool         = False
+    kernel_size:          int          = 3
+    block_style:          BlockStyle   = BlockStyle.none
     block_concat:         bool         = False
     blocks_final:         int          = 0
     growth_rate:          GrowthRate   = GrowthRate.additive
@@ -116,7 +121,7 @@ class Polaris(Network):
     blocks_final:         int          = 2
     depth:                int          = 7
     bottleneck_deepest:   int          = 96
-    residual:             bool         = False
+    block_style:          BlockStyle   = BlockStyle.none
     connections:          Connection   = Connection.sum
 
 @dataclass

@@ -228,7 +228,7 @@ class DeepestBlock3D(nn.Module):
             params    = params
         )
 
-        kernel  = [params.filter_size_deepest, params.filter_size_deepest]
+        kernel  = [params.kernel_size, params.kernel_size]
         padding = [ int((k - 1) / 2) for k in kernel ]
 
         self.blocks = BlockSeries3D(
