@@ -7,8 +7,6 @@ class Block(tf.keras.layers.Layer):
 
     def __init__(self, *,
                  n_filters,
-                 kernel  = [3,3],
-                 strides = [1,1],
                  activation = tf.nn.leaky_relu,
                  params):
 
@@ -18,6 +16,11 @@ class Block(tf.keras.layers.Layer):
             self.channels_axis = 1
         else:
             self.channels_axis = -1
+        
+        if kernel is None:
+            kernel = [params.kernel_size,params.kernel_size]
+        if strides is None:
+            strides = [1,1 ]
 
         self.convolution = tf.keras.layers.Conv2D(
             filters             = n_filters,
@@ -236,7 +239,7 @@ class DeepestBlock(tf.keras.layers.Layer):
 
             self.blocks = BlockSeries(
                 out_filters = n_filters_bottleneck,
-                kernel      = [params.filter_size_deepest,params.filter_size_deepest],
+                kernel      = [params.kernel_size,params.kernel_size],
                 n_blocks    = params.blocks_deepest_layer,
                 params      = params)
 
@@ -256,7 +259,7 @@ class DeepestBlock(tf.keras.layers.Layer):
 
             self.blocks = BlockSeries(
                 out_filters = n_filters_bottleneck,
-                kernel      = [params.filter_size_deepest,params.filter_size_deepest],
+                kernel      = [params.kernel_size,params.kernel_size],
                 n_blocks    = params.blocks_deepest_layer,
                 params      = params)
 

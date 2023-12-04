@@ -245,8 +245,8 @@ class DeepestBlock3D(tf.keras.models.Model):
         self.blocks = BlockSeries3D(
             out_filters = n_filters_bottleneck,
             kernel      = [1,
-                           params.filter_size_deepest,
-                           params.filter_size_deepest],
+                           params.kernel_size,
+                           params.kernel_size],
             n_blocks    = params.blocks_deepest_layer,
             params      = params)
 

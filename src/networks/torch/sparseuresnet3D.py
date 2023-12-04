@@ -20,7 +20,9 @@ and merges across the downsampled layers either before or after the convolutions
 It then performs an upsampling step, and returns the upsampled tensor.
 
 '''
-from src.config.network import Connection, GrowthRate, DownSampling, UpSampling, Norm
+from src.config.network import DownSampling, UpSampling
+from src.config.network import Connection, GrowthRate, Norm
+from src.config.network import BlockStyle
 
 class SparseBlock(nn.Module):
 
@@ -107,6 +109,66 @@ class SparseResidualBlock(nn.Module):
         return out
 
 
+class ConvNextBlock(nn.Module):
+
+    def __init__(self, *, inplanes, outplanes, nplanes=1, params):
+
+        nn.Module.__init__(self)
+
+
+        kernel_1  = [nplanes, params.kernel_size,params.kernel_size]
+
+
+        self.conv1 = scn.SubmanifoldConvolution(dimension=3,
+            nIn         = inplanes,
+            nOut        = outplanes,
+            filter_size = kernel_1,
+            bias        = params.bias)
+
+        if params.normalization == Norm.batch:
+            self.norm = scn.BatchNorm(outplanes)
+        elif params.normalization == Norm.layer:
+            raise Exception("Layer norm not supported in SCN")
+        else:
+            self.norm = lambda x: x
+
+        self.conv2 = scn.SubmanifoldConvolution(dimension=3,
+            nIn         = inplanes,
+            nOut        = 4*inplanes,
+            filter_size = [nplanes,1,1],
+            bias        = params.bias)
+
+        self.activation = scn.LeakyReLU()
+
+        self.conv3 = scn.SubmanifoldConvolution(dimension=3,
+            nIn         = 4*inplanes,
+            nOut        = inplanes,
+            filter_size = [nplanes,1,1],
+            bias        = params.bias)
+        
+
+        self.residual = scn.Identity()
+
+        self.add = scn.AddTable()
+
+
+    def forward(self, x):
+
+        residual = self.residual(x)
+
+        out = self.conv1(x)
+
+        out = self.norm(out)
+
+        out = self.conv2(out)
+
+        out = self.activation(out)
+
+        out = self.conv3(out)
+
+        out = self.add([out, residual])
+
+        return out
 
 
 class SparseConvolutionDownsample(nn.Module):
@@ -167,20 +229,30 @@ class SparseBlockSeries(torch.nn.Module):
     def __init__(self, *, inplanes, n_blocks, n_planes=1, params):
         torch.nn.Module.__init__(self)
 
-        if params.residual:
-            self.blocks = [ SparseResidualBlock(inplanes = inplanes,
-                                                outplanes = inplanes,
-                                                nplanes = n_planes,
-                                                params = params)
-                                for i in range(n_blocks)
-                            ]
-        else:
-            self.blocks = [ SparseBlock(inplanes = inplanes,
-                                        outplanes = inplanes,
-                                        nplanes = n_planes,
-                                        params = params)
-                                for i in range(n_blocks)]
-
+        if params.block_style == BlockStyle.none:
+            self.blocks = [ SparseBlock(
+                                inplanes  = inplanes,
+                                outplanes = inplanes,
+                                nplanes   = n_planes,
+                                params    = params)
+                            for i in range(n_blocks)]
+        elif params.block_style == BlockStyle.residual:
+            self.blocks = [ SparseResidualBlock(
+                                inplanes  = inplanes,
+                                outplanes = inplanes,
+                                nplanes   = n_planes,
+                                params    = params)
+                            for i in range(n_blocks)
+                ]
+        elif params.block_style == BlockStyle.convnext:
+            self.blocks = [ ConvNextBlock(
+                                inplanes  = inplanes,
+                                outplanes = inplanes,
+                                nplanes   = n_planes,
+                                params    = params)
+                            for i in range(n_blocks)
+                ]
+            
         for i, block in enumerate(self.blocks):
             self.add_module('block_{}'.format(i), block)
 
