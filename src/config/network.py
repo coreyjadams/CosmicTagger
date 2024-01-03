@@ -72,6 +72,7 @@ class Network:
     depth:                int          = 7
     kernel_size:          int          = 3
     bottleneck_deepest:   int          = 256
+    depthwise:            bool         = True
     block_style:          BlockStyle   = BlockStyle.residual
     block_concat:         bool         = False
     weight_decay:         float        = 0.00

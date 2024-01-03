@@ -34,6 +34,7 @@ class Block(nn.Module):
             kernel     = None,
             activation = activation_function,
             override_norm = None,
+            groups     = None,
             params):
         nn.Module.__init__(self)
 
@@ -44,12 +45,16 @@ class Block(nn.Module):
         if strides is None:
             strides = [1,1 ]
 
+        if groups is None:
+            groups = 1
+
         self.conv = nn.Conv2d(
             in_channels  = inplanes,
             out_channels = outplanes,
             kernel_size  = kernel,
             stride       = strides,
             padding      = padding,
+            groups       = groups,
             bias         = params.bias)
 
         norm = params.normalization if override_norm is not None else override_norm
@@ -137,18 +142,25 @@ class ConvNextBlock(nn.Module):
         kernel_1  = [params.kernel_size,params.kernel_size]
         padding_1 = tuple( int((k - 1) / 2) for k in kernel_1 )
 
+        if params.depthwise:
+            groups = inplanes
+        else:
+            groups = 1
 
         self.convolution_1 = Block(
             inplanes    = inplanes,
             outplanes   = inplanes,
             kernel      = kernel_1,
             padding     = padding_1,
+            groups      = groups,
             activation  = torch.nn.Identity(),
             params      = params)
 
 
         kernel_2  = [1, 1]
         padding_2 = [0, 0]
+
+
 
         self.convolution_2 = Block(
             inplanes    = inplanes,
