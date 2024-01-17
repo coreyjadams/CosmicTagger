@@ -144,7 +144,8 @@ class trainercore(object):
         # Write the metrics in:
         values = [ f"{v:.5f}" for v in metrics.values()]
         self.metric_files[kind].write(f"{step}," + ",".join(values)+"\n")
-
+        self.metric_files[kind].flush()
+        
     def log(self, metrics, log_keys=[], saver=''):
 
 
@@ -177,7 +178,7 @@ class trainercore(object):
                 s += " (" + " / ".join(time_string) + ")"
 
             self._previous_log_time = self._current_log_time
-            logging.getLogger("CosmicTagger""CosmicTagger").info(f"{saver} Step {step} metrics: {s}".format(s))
+            logging.getLogger("CosmicTagger").info(f"{saver} Step {step} metrics: {s}".format(s))
 
         self.write_metrics(metrics, saver, step)
 

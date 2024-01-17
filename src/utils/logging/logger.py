@@ -101,6 +101,7 @@ class logger():
             print(msg, flush=True)
             if hasattr(self, "file"):
                 self.file.write(msg + "\n")
+                self.file.flush()
 
     def info(self, message):
         self.print(
