@@ -334,6 +334,17 @@ class trainercore(object):
     def finalize_metrics(self, metrics_list):
         pass
 
+    def analyze(self, data_loader, max_steps):
+        
+        
+        for i, batch in enumerate(data_loader):
+            if max_steps is not None and i >= max_steps: break
+
+            self.on_step_start()
+            self.ana_step(batch)
+            self.on_step_end()
+
+
     def batch_process(self, data_loaders, max_epochs=None, max_steps=None):
 
         logger = logging.getLogger("CosmicTagger")
@@ -362,7 +373,17 @@ class trainercore(object):
             self.checkpoint()
 
         else:
-            self.analyze(data_loaders["test"])
+            if 'test' in data_loaders:
+                max_steps = len(data_loaders['test'])
+                self.analyze(data_loaders["test"], max_steps)
+            elif 'val' in data_loaders:
+                logger.info("Performing inference on the validation set.")
+                max_steps = len(data_loaders['val'])
+                self.analyze(data_loaders["val"], max_steps)
+            elif 'train' in data_loaders:
+                logger.info("Performing inference on the training set.")
+                max_steps = len(data_loaders['train'])
+                self.analyze(data_loaders["train"], max_steps)
 
         # Check step end condition:
         if max_steps is not None:

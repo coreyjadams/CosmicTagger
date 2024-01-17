@@ -262,7 +262,6 @@ class torch_trainer(trainercore):
         else:
             _, checkpoint_file_path = self.get_model_filepath()
 
-
         if not os.path.isfile(checkpoint_file_path):
             logger.info("No checkpoint file found, restarting from scratch")
             return None
@@ -786,6 +785,11 @@ class torch_trainer(trainercore):
 
     def checkpoint(self):
 
+    
+        #  Don't checkpoint unless training:
+        if not self.is_training(): return
+
+
         if self.args.run.run_units == RunUnit.iteration:
 
             if self._global_step % self.args.mode.checkpoint_iteration == 0 and self._global_step != 0:
@@ -796,7 +800,7 @@ class torch_trainer(trainercore):
             if self._epoch_end:
                 self.save_model()
 
-    def ana_step(self):
+    def ana_step(self, batch):
 
         # First, validation only occurs on training:
         if self.is_training(): return
@@ -807,26 +811,19 @@ class torch_trainer(trainercore):
         self._net.eval()
         # self._net.train()
 
-        # Fetch the next batch of data with larcv
-        if self._iteration == 0:
-            force_pop = False
-        else:
-            force_pop = True
-        minibatch_data = self.larcv_fetcher.fetch_next_batch("train", force_pop=force_pop)
-
 
         # Run a forward pass of the model on the input image:
         with torch.no_grad():
             if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.CUDA:
                 with torch.cuda.amp.autocast():
-                    logits_dict, labels_dict = self.forward_pass(minibatch_data)
+                    logits_dict, labels_dict = self.forward_pass(batch)
             else:
-                logits_dict, labels_dict = self.forward_pass(minibatch_data)
+                logits_dict, labels_dict = self.forward_pass(batch)
 
 
 
         # If the input data has labels available, compute the metrics:
-        if 'label' in minibatch_data:
+        if 'label' in batch:
             # Compute the loss
             # loss = self.loss_calculator(labels_dict, logits_dict)
 
@@ -839,10 +836,11 @@ class torch_trainer(trainercore):
             predicted_label = torch.softmax(logits_dict["event_label"],axis=1)
             predicted_label = torch.argmax(predicted_label, axis=1)
             prediction_score = torch.max(predicted_label)
+            # print(labels_dict['vertex'])
             additional_info = {
-                "index"            : numpy.asarray(minibatch_data["entries"]),
-                "event_id"         : numpy.asarray(minibatch_data["event_ids"]),
-                "energy"           : minibatch_data["vertex"]["energy"],
+                "index"            : numpy.asarray(batch["entries"]),
+                "event_id"         : numpy.asarray(batch["event_ids"]),
+                "energy"           : batch["vertex"]["energy"],
                 # "predicted_vertex" : predicted_vertex,
                 "predicted_vertex0h" : predicted_vertex[:,0,0],
                 "predicted_vertex0w" : predicted_vertex[:,0,1],
@@ -858,9 +856,9 @@ class torch_trainer(trainercore):
                 "true_vertex1w"      : labels_dict["vertex"]["xy_loc"][:,1,1],
                 "true_vertex2h"      : labels_dict["vertex"]["xy_loc"][:,2,0],
                 "true_vertex2w"      : labels_dict["vertex"]["xy_loc"][:,2,1],
-                "vertex_3dx"         : minibatch_data["vertex"]["xyz_loc"]["_x"],
-                "vertex_3dy"         : minibatch_data["vertex"]["xyz_loc"]["_y"],
-                "vertex_3dz"         : minibatch_data["vertex"]["xyz_loc"]["_z"],
+                # "vertex_3dx"         : batch["vertex"]["xyz_loc"]["_x"],
+                # "vertex_3dy"         : batch["vertex"]["xyz_loc"]["_y"],
+                # "vertex_3dz"         : batch["vertex"]["xyz_loc"]["_z"],
                 "N_neut_pixels0"     : n_neutrino_pixels[0],
                 "N_neut_pixels1"     : n_neutrino_pixels[1],
                 "N_neut_pixels2"     : n_neutrino_pixels[2],
@@ -883,7 +881,7 @@ class torch_trainer(trainercore):
             self.accumulate_metrics(metrics)
 
             # print(minibatch_data)
-            self.log(metrics, saver="ana")
+            self.log(metrics, log_keys=self.log_keys, saver="ana")
 
         self._global_step += 1
 
