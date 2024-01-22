@@ -1,26 +1,37 @@
 import tensorflow as tf
 
-from src.config import Connection, GrowthRate, DownSampling, UpSampling, Norm
+from src.config import Connection, GrowthRate, BlockStyle
+from src.config import DownSampling, UpSampling, Norm
 
+activation_function = tf.nn.leaky_relu
 
 class Block(tf.keras.layers.Layer):
 
     def __init__(self, *,
                  n_filters,
-                 activation = tf.nn.leaky_relu,
+                 strides    = None,
+                 padding    = None,
+                 kernel     = None,
+                 activation = activation_function,
+                 override_norm = None,
+                 groups     = None,
                  params):
 
         tf.keras.layers.Layer.__init__(self)
+
+
+        if kernel is None:
+            kernel = [params.kernel_size,params.kernel_size]
+        if padding is None:
+            padding = tuple( int((k - 1) / 2) for k in kernel )
+        if strides is None:
+            strides = [1,1 ]
 
         if params.data_format == "channels_first":
             self.channels_axis = 1
         else:
             self.channels_axis = -1
         
-        if kernel is None:
-            kernel = [params.kernel_size,params.kernel_size]
-        if strides is None:
-            strides = [1,1 ]
 
         self.convolution = tf.keras.layers.Conv2D(
             filters             = n_filters,
@@ -28,6 +39,7 @@ class Block(tf.keras.layers.Layer):
             strides             = strides,
             padding             = 'same',
             activation          = None,
+            groups              = groups,
             use_bias            = params.bias,
             data_format         = params.data_format,
             kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
@@ -36,11 +48,13 @@ class Block(tf.keras.layers.Layer):
 
         self.activation = activation
 
-        if params.normalization == Norm.batch:
+        norm = params.normalization if override_norm is not None else override_norm
+
+        if norm == Norm.batch:
             self._do_normalization = True
             self.norm = tf.keras.layers.BatchNormalization(
                 axis=self.channels_axis)
-        elif params.normalization == Norm.layer:
+        elif norm == Norm.layer:
             self._do_normalization = True
             self.norm = tf.keras.layers.LayerNormalization(
                 axis=self.channels_axis)
@@ -176,8 +190,9 @@ class BlockSeries(tf.keras.layers.Layer):
 
         tf.keras.layers.Layer.__init__(self)
 
-        self.blocks = []
-        if not params.residual:
+        self.blocks = 
+
+        if params.block_style == BlockStyle.none:
             for i in range(n_blocks):
                 self.blocks.append(
                     Block(
@@ -186,10 +201,8 @@ class BlockSeries(tf.keras.layers.Layer):
                         strides     = strides,
                         params      = params
                     )
-                 )
-
-
-        else:
+                )
+        elif params.block_style == BlockStyle.residual:
             for i in range(n_blocks):
                 self.blocks.append(
                     ResidualBlock(
@@ -198,7 +211,16 @@ class BlockSeries(tf.keras.layers.Layer):
                         strides     = strides,
                         params      = params
                     )
-                 )
+                )
+
+        elif params.block_style == BlockStyle.convnext:
+            for i in range(n_blocks):
+                raise Exception("ConvNext Not implemented in Tensorflow yet")
+                self.blocks.append(ConvNextBlock(
+                                inplanes  = inplanes,
+                                outplanes = inplanes,
+                                params    = params))
+
 
 
     def call(self, x, training):
@@ -571,6 +593,7 @@ class UResNet(tf.keras.models.Model):
         self.initial_convolution = Block(
             n_filters   = params.n_initial_filters,
             kernel      = [5,5],
+            padding     = [2,2],
             activation  = tf.nn.leaky_relu,
             params      = params)
 
