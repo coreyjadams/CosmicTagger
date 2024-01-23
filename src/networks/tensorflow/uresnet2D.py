@@ -190,7 +190,7 @@ class BlockSeries(tf.keras.layers.Layer):
 
         tf.keras.layers.Layer.__init__(self)
 
-        self.blocks = 
+        self.blocks = []
 
         if params.block_style == BlockStyle.none:
             for i in range(n_blocks):
@@ -214,8 +214,8 @@ class BlockSeries(tf.keras.layers.Layer):
                 )
 
         elif params.block_style == BlockStyle.convnext:
+            raise Exception("ConvNext Not implemented in Tensorflow yet")
             for i in range(n_blocks):
-                raise Exception("ConvNext Not implemented in Tensorflow yet")
                 self.blocks.append(ConvNextBlock(
                                 inplanes  = inplanes,
                                 outplanes = inplanes,

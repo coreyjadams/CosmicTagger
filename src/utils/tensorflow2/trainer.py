@@ -175,14 +175,11 @@ class tf_trainer(trainercore):
     def summary_images(self, labels, prediction, saver=""):
         ''' Create images of the labels and prediction to show training progress
         '''
-        if self._main_writer is None:
-            return
-
         if self.current_step() % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:
 
 
             if saver == "":
-                saver = self._main_writer
+                saver = self.savers["train"]
             with saver.as_default():
                 for p in range(len(labels)):
                     shape = labels[p][0].shape
@@ -406,8 +403,6 @@ class tf_trainer(trainercore):
 
     # @tf.function(experimental_relax_shapes=True)
     def summary(self, metrics, saver=""):
-        if self._main_writer is None:
-            return
 
         if self.current_step() % self.args.mode.summary_iteration == 0:
             if saver == "":
