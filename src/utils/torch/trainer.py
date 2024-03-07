@@ -307,6 +307,9 @@ class torch_trainer(trainercore):
                     if torch.is_tensor(v):
                         state[k] = v.cuda()
 
+        # JIT trace the model for inference
+        self.jit_trace_model()
+
         return True
 
     def save_model(self):
@@ -330,15 +333,6 @@ class torch_trainer(trainercore):
 
         torch.save(state_dict, current_file_path)
 
-        # Save jit-traced version of the model
-        dummy_input = torch.rand((1,3,640,1024)).to('cuda')
-        model_traced = self._net
-        model_traced.eval()
-        #model_traced = ipex.optimize(model_traced,dtype=torch.float32)
-        with torch.no_grad():
-            model_traced = torch.jit.trace(model_traced,dummy_input)
-        model_traced(dummy_input)
-        torch.jit.save(model_traced,"./cosmictagger_jit.pt")
 
         # Parse the checkpoint file to see what the last checkpoints were:
 
@@ -373,6 +367,23 @@ class torch_trainer(trainercore):
             _chkpt.write('{}: {}\n'.format(self._global_step, os.path.basename(current_file_path)))
             for key in past_checkpoint_files:
                 _chkpt.write('{}: {}\n'.format(key, past_checkpoint_files[key]))
+
+    def jit_trace_model(self):
+        '''JIT trace the model
+
+        '''
+        # Save jit-traced version of the model
+        dummy_input = torch.rand((1,3,352,512)).to('cuda')
+        self._net(dummy_input)
+        tmp = self._net
+        tmp.eval()
+        #model_traced = ipex.optimize(model_traced,dtype=torch.float32)
+        with torch.no_grad():
+            #tmp = torch.jit.trace(tmp,dummy_input, check_trace=False, strict=False)
+            tmp = torch.jit.script(tmp,example_inputs=[(1,3,352,512)])
+            self._net_jit(dummy_input)
+        torch.jit.save(self._net_jit,"./cosmictagger_jit.pt")
+
 
 
     def get_model_filepath(self):
@@ -818,7 +829,7 @@ class torch_trainer(trainercore):
         # perform a validation step
 
         # Set network to eval mode
-        self._net.eval()
+        #self._net.eval()
         # self._net.train()
 
 
@@ -826,10 +837,9 @@ class torch_trainer(trainercore):
         with torch.no_grad():
             if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.CUDA:
                 with torch.cuda.amp.autocast():
-                    logits_dict, labels_dict = self.forward_pass(batch)
+                    logits_dict, labels_dict = self.forward_pass(batch, net=self._net_jit)
             else:
-                logits_dict, labels_dict = self.forward_pass(batch)
-
+                logits_dict, labels_dict = self.forward_pass(batch, net=self._net_jit)
 
 
         # If the input data has labels available, compute the metrics:

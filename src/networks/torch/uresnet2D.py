@@ -652,8 +652,8 @@ class UResNet(torch.nn.Module):
                 stride       = 1,
                 padding      = 0,
                 bias         = params.bias)
-
-            self.pool = torch.nn.AvgPool2d(self.pool_size)
+            
+            self.pool = torch.nn.AvgPool2d(self.pool_size, stride=self.pool_size)
 
         if params.vertex.active:
 
