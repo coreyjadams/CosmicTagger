@@ -330,6 +330,16 @@ class torch_trainer(trainercore):
 
         torch.save(state_dict, current_file_path)
 
+        # Save jit-traced version of the model
+        dummy_input = torch.rand((1,3,640,1024)).to('cuda')
+        model_traced = self._net
+        model_traced.eval()
+        #model_traced = ipex.optimize(model_traced,dtype=torch.float32)
+        with torch.no_grad():
+            model_traced = torch.jit.trace(model_traced,dummy_input)
+        model_traced(dummy_input)
+        torch.jit.save(model_traced,"./cosmictagger_jit.pt")
+
         # Parse the checkpoint file to see what the last checkpoints were:
 
         # Keep only the last 5 checkpoints
