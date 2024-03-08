@@ -1,3 +1,4 @@
+from typing import List
 import torch
 import torch.nn as nn
 
@@ -59,6 +60,9 @@ class Block(nn.Module):
 
         norm = params.normalization if override_norm is not None else override_norm
 
+        self._do_normalization = True
+        self.norm = nn.BatchNorm2d(outplanes)
+        """
         if params.normalization == Norm.batch:
             self._do_normalization = True
             self.norm = nn.BatchNorm2d(outplanes)
@@ -73,22 +77,22 @@ class Block(nn.Module):
             self.norm = nn.InstanceNorm2d(outplanes)
         else:
             self._do_normalization = False
-
+        """
 
         self.activation = activation
 
     def forward(self, x):
         out = self.conv(x)
         if self._do_normalization:
-            if self.norm == "layer":
-                norm_shape = out.shape[1:]
-                # norm_shape = torch.tensor([8,] + list(norm_shape)).to(x.device)
-                self.norm = torch.nn.LayerNorm(normalized_shape=norm_shape)
-                self.norm.to(out.device)
-                # out = torch.nn.functional.layer_norm(out, norm_shape)
-                out = self.norm(out)
-            else:
-                out = self.norm(out)
+            #if self.norm == "layer":
+            #    norm_shape = out.shape[1:]
+            #    # norm_shape = torch.tensor([8,] + list(norm_shape)).to(x.device)
+            #    self.norm = torch.nn.LayerNorm(normalized_shape=norm_shape)
+            #    self.norm.to(out.device)
+            #    # out = torch.nn.functional.layer_norm(out, norm_shape)
+            #    out = self.norm(out)
+            #else:
+            out = self.norm(out)
         out = self.activation(out)
         return out
 
@@ -273,8 +277,10 @@ class BlockSeries(torch.nn.Module):
 
 
     def forward(self, x):
-        for i in range(len(self.blocks)):
-            x = self.blocks[i](x)
+        #for i in range(len(self.blocks)):
+        #    x = self.blocks[i](x)
+        for index, v in enumerate(self.blocks): 
+             x = v(x)
 
         return x
 
@@ -348,7 +354,7 @@ class DeepestBlock(nn.Module):
 
 
 
-    def forward(self, x):
+    def forward(self, x: List[torch.Tensor]):
 
         # THis isn't really a recommended setting to use, but we can control whether or not to connect here:
         # if FLAGS.BLOCK_CONCAT:
@@ -361,15 +367,14 @@ class DeepestBlock(nn.Module):
             classification_head = torch.cat(x, dim=1)
         else:
 
-            x = torch.cat(x, dim=1)
-            x = self.bottleneck(x)
-            x = self.blocks(x)
-            x = self.unbottleneck(x)
-            classification_head = x
-            x = torch.chunk(x, chunks=3, dim=1)
+            x1 = torch.cat(x, dim=1)
+            x1 = self.bottleneck(x1)
+            x1 = self.blocks(x1)
+            x1 = self.unbottleneck(x1)
+            classification_head = x1
+            x = torch.chunk(x1, chunks=3, dim=1)
 
-
-        return x, classification_head, None # The none is a placeholder for vertex ID YOLO
+        return x, classification_head, x # The none is a placeholder for vertex ID YOLO
 
 class NoConnection(nn.Module):
 
@@ -454,6 +459,25 @@ class InterpolationUpsample(nn.Module):
         return self.bottleneck(x)
 
 
+class DoNothing(torch.nn.Module):
+    def __init__(self):
+        torch.nn.Module.__init__(self)
+
+    def forward(self, x):
+        #for i in range(len(self.blocks)):
+        #    x = self.blocks[i](x)
+        return x
+
+class DoNothing2(torch.nn.Module):
+    def __init__(self):
+        torch.nn.Module.__init__(self)
+
+    def forward(self, x, y):
+        #for i in range(len(self.blocks)):
+        #    x = self.blocks[i](x)
+        return x
+
+
 class UNetCore(nn.Module):
 
     def __init__(self, *,  depth, inplanes,  params):
@@ -469,6 +493,11 @@ class UNetCore(nn.Module):
         if depth == 0:
             self.main_module = DeepestBlock(inplanes = inplanes,
                                             params = params)
+            self.down_blocks = DoNothing()
+            self.downsample = DoNothing()
+            self.upsample = DoNothing()
+            self.connection = DoNothing2()
+            self.up_blocks = DoNothing()
         else:
             # Residual or convolutional blocks, applied in series:
             self.down_blocks = BlockSeries(inplanes = inplanes,
@@ -530,46 +559,50 @@ class UNetCore(nn.Module):
                 self.connection = NoConnection()
 
 
-    def forward(self, x):
+    def forward(self, x: List[torch.Tensor]):
 
 
         # Take the input and apply the downward pass convolutions.  Save the residual
         # at the correct time.
+        residual = x
         if self.depth != 0:
 
-            residual = x
+            #residual = x
 
-            x = tuple( self.down_blocks(_x) for _x in x )
+            #x = tuple( self.down_blocks(_x) for _x in x )
+            x = [self.down_blocks(_x) for _x in x ]
 
             # perform the downsampling operation:
-            x = tuple( self.downsample(_x) for _x in x )
+            #x = tuple( self.downsample(_x) for _x in x )
+            x = [self.downsample(_x) for _x in x]
         #
         # if FLAGS.VERBOSITY >1:
         #     for p in range(len(x)):
         #         print("plane {} Depth {}, shape: ".format(p, self.depth), x[p].shape)
-
 
         # Apply the main module:
         x, classification_head, vertex_head = self.main_module(x)
 
         # The vertex_head is None after the DEEPEST layer.  But, if we're returning it, do it here:
 
-
         if self.depth != 0:
 
             # perform the upsampling step:
             # perform the downsampling operation:
-            x = tuple( self.upsample(_x) for _x in x )
+            #x = tuple( self.upsample(_x) for _x in x )
+            x = [self.upsample(_x) for _x in x]
 
             # Connect with the residual if necessary:
             # for i in range(len(x)):
             #     x[i] = self.connection(x[i], residual=residual[i])
 
-            x = tuple( self.connection(_x, _r) for _x, _r in zip(x, residual))
+            #x = tuple( self.connection(_x, _r) for _x, _r in zip(x, residual))
+            x = [self.connection(_x, _r) for _x, _r in zip(x, residual)]
 
 
             # Apply the convolutional steps:
-            x = tuple( self.up_blocks(_x) for _x in x )
+            #x = tuple( self.up_blocks(_x) for _x in x )
+            x = [self.up_blocks(_x) for _x in x]
 
         if self.depth == self.vertex_depth: vertex_head = x
 
@@ -619,7 +652,7 @@ class UResNet(torch.nn.Module):
 
             # The image size here is going to be the orignal / 2**depth
             # We need to know it for the pooling layer
-            self.pool_size = [d // 2**params.depth for d in spatial_size]
+            self.pool_size = [int(d // 2**params.depth) for d in spatial_size]
 
             n_filters = params.n_initial_filters
             for i in range(params.depth):
@@ -653,7 +686,7 @@ class UResNet(torch.nn.Module):
                 padding      = 0,
                 bias         = params.bias)
             
-            self.pool = torch.nn.AvgPool2d(self.pool_size, stride=self.pool_size)
+            self.pool = torch.nn.AvgPool2d(self.pool_size)
 
         if params.vertex.active:
 
@@ -712,6 +745,7 @@ class UResNet(torch.nn.Module):
         return_dict = {
             "event_label" : None,
             "vertex"      : None,
+            "segmentation"      : None,
         }
 
 
@@ -722,7 +756,8 @@ class UResNet(torch.nn.Module):
         x = torch.chunk(x, chunks=3, dim=1)
 
         # Apply the initial convolutions:
-        x = tuple( self.initial_convolution(_x) for _x in x )
+        #x = tuple( self.initial_convolution(_x) for _x in x )
+        x = [self.initial_convolution(_x) for _x in x]
 
 
 
@@ -730,8 +765,10 @@ class UResNet(torch.nn.Module):
         seg_labels, classification_head, vertex_head = self.net_core(x)
 
         # Apply the final residual block to each plane:
-        seg_labels = tuple( self.final_layer(_x) for _x in seg_labels )
-        seg_labels = tuple( self.bottleneck(_x) for _x in seg_labels )
+        #seg_labels = tuple( self.final_layer(_x) for _x in seg_labels )
+        seg_labels = [self.final_layer(_x) for _x in seg_labels]
+        #seg_labels = tuple( self.bottleneck(_x) for _x in seg_labels )
+        seg_labels = [self.bottleneck(_x) for _x in seg_labels]
 
         # Always return the segmentation
         return_dict["segmentation"] = seg_labels
