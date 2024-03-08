@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict, Tuple, Optional, Union
 import torch
 import torch.nn as nn
 
@@ -742,11 +742,12 @@ class UResNet(torch.nn.Module):
 
         batch_size = input_tensor.shape[0]
 
-        return_dict = {
-            "event_label" : None,
-            "vertex"      : None,
-            "segmentation"      : None,
-        }
+        return_dict: Dict[str, Union[torch.Tensor, List[torch.Tensor]]] = {}
+        #return_dict = {
+        #    "event_label" : None,
+        #    "vertex"      : None,
+        #    "segmentation"      : None,
+        #}
 
 
         # Reshape this tensor into the right shape to apply this multiplane network.
