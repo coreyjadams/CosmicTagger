@@ -374,14 +374,13 @@ class torch_trainer(trainercore):
         '''
         # Save jit-traced version of the model
         dummy_input = torch.rand((1,3,352,512)).to('cuda')
-        #self._net(dummy_input)
-        #tmp = self._net
-        #tmp.eval()
         #model_traced = ipex.optimize(model_traced,dtype=torch.float32)
+        #torch.jit.set_fusion_strategy([("STATIC",2),("DYNAMIC",2)])
+        #torch.jit.enable_onednn_fusion(True)
         with torch.no_grad():
-            #tmp = torch.jit.trace(tmp,dummy_input, check_trace=False, strict=False)
-            #tmp = torch.jit.script(tmp,example_inputs=[(1,3,352,512)])
             self._net_jit = torch.jit.script(self._net.eval(),example_inputs=[(1,3,352,512)])
+            self._net_jit = torch.jit.freeze(self._net_jit)
+            self._net_jit = torch.jit.optimize_for_inference(self._net_jit)
             self._net_jit(dummy_input)
         torch.jit.save(self._net_jit,"./cosmictagger_jit.pt")
 
@@ -830,7 +829,7 @@ class torch_trainer(trainercore):
         # perform a validation step
 
         # Set network to eval mode
-        #self._net.eval()
+        self._net.eval()
         # self._net.train()
 
 
