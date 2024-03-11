@@ -149,7 +149,7 @@ class torch_trainer(trainercore):
                 if self.is_training() and  self.args.mode.optimizer.gradient_accumulation > 1:
                     raise Exception("Can not accumulate gradients in half precision.")
 
-            # example_batch = next(iter(example_ds))
+            example_batch = next(iter(example_ds))
 
             # self._net = torch.compile(self._net)
 
@@ -158,6 +158,11 @@ class torch_trainer(trainercore):
             if self.args.mode.name == ModeKind.inference:
                 self.inference_metrics = {}
                 self.inference_metrics['n'] = 0
+                
+                # JIT trace the model for inference
+                if self.args.mode.torch_jit: 
+                    self.jit_trace_model(example_batch["image"].shape)
+
 
         # Turn the datasets into torch dataloaders
         for key in datasets.keys():
@@ -307,9 +312,6 @@ class torch_trainer(trainercore):
                     if torch.is_tensor(v):
                         state[k] = v.cuda()
 
-        # JIT trace the model for inference
-        self.jit_trace_model()
-
         return True
 
     def save_model(self):
@@ -368,21 +370,19 @@ class torch_trainer(trainercore):
             for key in past_checkpoint_files:
                 _chkpt.write('{}: {}\n'.format(key, past_checkpoint_files[key]))
 
-    def jit_trace_model(self):
+    def jit_trace_model(self, input_shape):
         '''JIT trace the model
 
         '''
         # Save jit-traced version of the model
-        dummy_input = torch.rand((1,3,352,512)).to('cuda')
-        #model_traced = ipex.optimize(model_traced,dtype=torch.float32)
-        #torch.jit.set_fusion_strategy([("STATIC",2),("DYNAMIC",2)])
-        #torch.jit.enable_onednn_fusion(True)
+        torch.jit.set_fusion_strategy([("STATIC",2),("DYNAMIC",2)])
         with torch.no_grad():
-            self._net_jit = torch.jit.script(self._net.eval(),example_inputs=[(1,3,352,512)])
-            self._net_jit = torch.jit.freeze(self._net_jit)
-            self._net_jit = torch.jit.optimize_for_inference(self._net_jit)
-            self._net_jit(dummy_input)
-        torch.jit.save(self._net_jit,"./cosmictagger_jit.pt")
+            if self.args.run.compute_mode == ComputeMode.XPU:
+                self._net = ipex.optimize(self._net)
+                torch.jit.enable_onednn_fusion(True)
+            self._net = torch.jit.script(self._net.eval(),example_inputs=[input_shape])
+            self._net = torch.jit.freeze(self._net)
+            self._net = torch.jit.optimize_for_inference(self._net)
 
 
 
@@ -829,7 +829,8 @@ class torch_trainer(trainercore):
         # perform a validation step
 
         # Set network to eval mode
-        self._net.eval()
+        if self.args.mode.name == ModeKind.inference and not self.args.mode.torch_jit:
+            self._net.eval()
         # self._net.train()
 
 
@@ -837,9 +838,9 @@ class torch_trainer(trainercore):
         with torch.no_grad():
             if self.args.run.precision == Precision.mixed and self.args.run.compute_mode == ComputeMode.CUDA:
                 with torch.cuda.amp.autocast():
-                    logits_dict, labels_dict = self.forward_pass(batch, net=self._net_jit)
+                    logits_dict, labels_dict = self.forward_pass(batch)
             else:
-                logits_dict, labels_dict = self.forward_pass(batch, net=self._net_jit)
+                logits_dict, labels_dict = self.forward_pass(batch)
 
 
         # If the input data has labels available, compute the metrics:

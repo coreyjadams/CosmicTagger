@@ -185,54 +185,55 @@ class distributed_trainer(torch_trainer):
 
 
         # Broadcast from rank 0 to sync weights
-        if self.args.framework.distributed_mode == DistributedMode.horovod:
+        if self.is_training():
+            if self.args.framework.distributed_mode == DistributedMode.horovod:
 
-            # Broadcast the global step:
-            self._global_step = hvd.broadcast_object(self._global_step, root_rank = 0)
+                # Broadcast the global step:
+                self._global_step = hvd.broadcast_object(self._global_step, root_rank = 0)
 
-            # Broadcast the state of the model:
-            hvd.broadcast_parameters(self._net.state_dict(), root_rank = 0)
+                # Broadcast the state of the model:
+                hvd.broadcast_parameters(self._net.state_dict(), root_rank = 0)
 
-            # Broadcast the optimizer state:
-            hvd.broadcast_optimizer_state(self.opt, root_rank = 0)
+                # Broadcast the optimizer state:
+                hvd.broadcast_optimizer_state(self.opt, root_rank = 0)
 
-            # Horovod doesn't actually move the optimizer onto a GPU:
-            if self.args.run.compute_mode == ComputeMode.CUDA:
-                for state in self.opt.state.values():
-                    for k, v in state.items():
-                        if torch.is_tensor(v):
-                            state[k] = v.cuda()
+                # Horovod doesn't actually move the optimizer onto a GPU:
+                if self.args.run.compute_mode == ComputeMode.CUDA:
+                    for state in self.opt.state.values():
+                        for k, v in state.items():
+                            if torch.is_tensor(v):
+                                state[k] = v.cuda()
 
 
 
-            # Broadcast the LR Schedule state:
-            state_dict = hvd.broadcast_object(self.lr_scheduler.state_dict(), root_rank = 0)
+                # Broadcast the LR Schedule state:
+                state_dict = hvd.broadcast_object(self.lr_scheduler.state_dict(), root_rank = 0)
 
-        elif self.args.framework.distributed_mode == DistributedMode.DDP:
+            elif self.args.framework.distributed_mode == DistributedMode.DDP:
 
-            devices = None
-            if self.args.run.compute_mode == ComputeMode.XPU:
-                devices = ["xpu:{}".format(self.local_rank)]
-                self._net.to(devices[0])
-            elif self.args.run.compute_mode == ComputeMode.CUDA:
-                self._net.cuda()
+                devices = None
+                if self.args.run.compute_mode == ComputeMode.XPU:
+                    devices = ["xpu:{}".format(self.local_rank)]
+                    self._net.to(devices[0])
+                elif self.args.run.compute_mode == ComputeMode.CUDA:
+                    self._net.cuda()
 
-            # print(self._net.parameters)
+                # print(self._net.parameters)
 
-            self._net = torch.nn.parallel.DistributedDataParallel(self._net, device_ids=devices, broadcast_buffers=self.args.run.broadcast_buffers, find_unused_parameters=False)
+                self._net = torch.nn.parallel.DistributedDataParallel(self._net, device_ids=devices, broadcast_buffers=self.args.run.broadcast_buffers, find_unused_parameters=False)
 
-            # print(self._net.parameters)
+                # print(self._net.parameters)
 
-            self._global_step = MPI.COMM_WORLD.bcast(self._global_step, root=0)
-            if self.is_training():
+                self._global_step = MPI.COMM_WORLD.bcast(self._global_step, root=0)
+                #if self.is_training():
                 state_dict = MPI.COMM_WORLD.bcast(self.lr_scheduler.state_dict(), root=0)
 
-        elif self.args.framework.distributed_mode == DistributedMode.DeepSpeed:
+            elif self.args.framework.distributed_mode == DistributedMode.DeepSpeed:
 
-            model_engine, optimizer
+                model_engine, optimizer
 
-        # Load the state dict:
-        if self.is_training():
+            # Load the state dict:
+            #if self.is_training():
             self.lr_scheduler.load_state_dict(state_dict)
 
     def summary(self, metrics, saver=""):
