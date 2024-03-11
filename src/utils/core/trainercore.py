@@ -379,7 +379,6 @@ class trainercore(object):
             elif 'val' in data_loaders:
                 logger.info("Performing inference on the validation set.")
                 max_steps = len(data_loaders['val'])
-                max_steps = 25
                 self.analyze(data_loaders["val"], max_steps)
             elif 'train' in data_loaders:
                 logger.info("Performing inference on the training set.")
