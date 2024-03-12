@@ -194,36 +194,6 @@ class exec(object):
         else:
             logger.setLevel(999)
 
-        # logger = logging.getLogger("CosmicTagger")
-        # logger.propogate=False
-        # # Create a handler for STDOUT, but only on the root rank.
-        # # If not distributed, we still get 0 passed in here.
-        # if rank == 0:
-        #     stream_handler = logging.StreamHandler(sys.stdout)
-        #     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        #     stream_handler.setFormatter(formatter)
-        #     handler = handlers.MemoryHandler(capacity = 0, target=stream_handler)
-        #     handler.setLevel(logging.INFO)
-        #     logger.addHandler(handler)
-        #
-        #     # Add a file handler too:
-        #     log_file = self.args.output_dir + "/process.log"
-        #     file_handler = logging.FileHandler(log_file)
-        #     file_handler.setFormatter(formatter)
-        #     file_handler = handlers.MemoryHandler(capacity=10, target=file_handler)
-        #     file_handler.setLevel(logging.INFO)
-        #     logger.addHandler(file_handler)
-        #
-        #     logger.setLevel(logging.INFO)
-        # else:
-        #     # in this case, MPI is available but it's not rank 0
-        #     # create a null handler
-        #     handler = logging.NullHandler()
-        #     logger.addHandler(handler)
-        #     logger.setLevel(logging.INFO)
-        #     # logging.getLogger("CosmicTagger").setLevel(logging.ERROR)
-
-
     def batch_process(self):
 
         logger = logging.getLogger("CosmicTagger")
@@ -499,6 +469,12 @@ class exec(object):
             if self.args.mode.name == ModeKind.train:
                 if self.args.mode.quantization_aware:
                     logger.error("Quantization aware training not implemented in tensorflow.")
+            if self.args.network.vertex.active:
+                logger.warning("Disabling vertex ID in Tensorflow")
+                self.args.network.vertex.active=False
+            if self.args.network.classification.active:
+                logger.warning("Disabling classification in Tensorflow")
+                self.args.network.classification.active=False
 
         self.args.network.data_format = self.args.data.data_format.name
 
