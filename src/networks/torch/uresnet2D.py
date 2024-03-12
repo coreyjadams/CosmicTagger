@@ -60,39 +60,46 @@ class Block(nn.Module):
 
         norm = params.normalization if override_norm is not None else override_norm
 
-        self._do_normalization = True
-        self.norm = nn.BatchNorm2d(outplanes)
-        """
         if params.normalization == Norm.batch:
             self._do_normalization = True
+            self.norm_type = "batch"
             self.norm = nn.BatchNorm2d(outplanes)
         elif params.normalization == Norm.group:
             self._do_normalization = True
+            self.norm_type = "group"
             self.norm = nn.GroupNorm(num_groups=4, num_channels=outplanes)
         elif params.normalization == Norm.layer:
             self._do_normalization = True
-            self.norm = "layer"
+            self.norm_type = "layer"
+            # from https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+            # h_out = (h_in+2*padding[0]-dilation[0]*(kernel[0]-1)-1)/stride[0]+1
+            # w_out = (w_in+2*padding[1]-dilation[1]*(kernel[1]-1)-1)/stride[1]+1
+            # h_out = (h_in+2*padding[0]-1*(kernel[0]-1)-1)/stride[0]+1
+            # w_out = (w_in+2*padding[1]-1*(kernel[1]-1)-1)/stride[1]+1
+            self.norm = nn.LayerNorm(normalized_shape=[outplanes,44,64])
         elif params.normalization == Norm.instance:
             self._do_normalization = True
+            self.norm_type = "instance"
             self.norm = nn.InstanceNorm2d(outplanes)
         else:
             self._do_normalization = False
-        """
+            self.norm_type = "none"
+            self.norm = nn.Module()
 
         self.activation = activation
 
     def forward(self, x):
         out = self.conv(x)
         if self._do_normalization:
-            #if self.norm == "layer":
-            #    norm_shape = out.shape[1:]
-            #    # norm_shape = torch.tensor([8,] + list(norm_shape)).to(x.device)
-            #    self.norm = torch.nn.LayerNorm(normalized_shape=norm_shape)
-            #    self.norm.to(out.device)
-            #    # out = torch.nn.functional.layer_norm(out, norm_shape)
-            #    out = self.norm(out)
-            #else:
-            out = self.norm(out)
+            if self.norm_type == "layer":
+                #norm_shape = out.shape[1:]
+                # norm_shape = torch.tensor([8,] + list(norm_shape)).to(x.device)
+                #self.norm = torch.nn.LayerNorm(normalized_shape=norm_shape)
+                #self.norm.to(out.device)
+                # out = torch.nn.functional.layer_norm(out, norm_shape)
+                out = self.norm(out)
+            else:
+                out = self.norm(out)
         out = self.activation(out)
         return out
 
