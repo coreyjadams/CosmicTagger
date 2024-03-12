@@ -373,17 +373,29 @@ class trainercore(object):
             self.checkpoint()
 
         else:
+            # First, select the target data loader for inference, only
+            # one used at a time:
             if 'test' in data_loaders:
-                max_steps = len(data_loaders['test'])
-                self.analyze(data_loaders["test"], max_steps)
+                dl = data_loaders["test"]
             elif 'val' in data_loaders:
                 logger.info("Performing inference on the validation set.")
-                max_steps = len(data_loaders['val'])
-                self.analyze(data_loaders["val"], max_steps)
+                dl = data_loaders["val"]
             elif 'train' in data_loaders:
                 logger.info("Performing inference on the training set.")
-                max_steps = len(data_loaders['train'])
-                self.analyze(data_loaders["train"], max_steps)
+                dl = data_loaders["train"]
+            
+            # we use the number of iterations as max steps
+            # if the run_units are iterations, otherwise
+            # The length of the dataset * num_epochs
+            
+            if self.args.run.run_units == RunUnit.iteration:
+                max_steps = self.args.run.run_length
+            else:
+                max_steps = self.args.run.run_length * len(dl)
+
+            self.analyze(dl, max_steps)
+            
+
 
         # Check step end condition:
         if max_steps is not None:
