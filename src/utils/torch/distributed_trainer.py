@@ -179,13 +179,11 @@ class distributed_trainer(torch_trainer):
         else:
             state = None
 
-        # Restore the weights on rank 0:
-        if state is not None and self.rank == 0:
-            self.restore_state(state)
-
-
         # Broadcast from rank 0 to sync weights
         if self.args.framework.distributed_mode == DistributedMode.horovod:
+            # Restore the weights on rank 0:
+            if state is not None and self.rank == 0:
+                self.restore_state(state)
 
             # Broadcast the global step:
             self._global_step = hvd.broadcast_object(self._global_step, root_rank = 0)
@@ -209,6 +207,18 @@ class distributed_trainer(torch_trainer):
             state_dict = hvd.broadcast_object(self.lr_scheduler.state_dict(), root_rank = 0)
 
         elif self.args.framework.distributed_mode == DistributedMode.DDP:
+            # Broadcast and restore model state
+            state = MPI.COMM_WORLD.bcast(state, root=0)
+            self.restore_state(state)
+            
+            # Compare this rank state to the one on rank 0 to make sure
+            # broadcast and restore were successful
+            #state_b = str(self._net.cpu().state_dict())
+            #state_0 = MPI.COMM_WORLD.bcast(state_b, root=0)
+            #if state_b != state_0:
+            #    print(f"rank {self.rank} state differs from rank 0", flush=True)
+            #else:
+            #    print(f"rank {self.rank} state is same as state from rank 0", flush=True)
 
             devices = None
             if self.args.run.compute_mode == ComputeMode.XPU:
@@ -219,7 +229,10 @@ class distributed_trainer(torch_trainer):
 
             # print(self._net.parameters)
 
-            self._net = torch.nn.parallel.DistributedDataParallel(self._net, device_ids=devices, broadcast_buffers=self.args.run.broadcast_buffers, find_unused_parameters=False)
+            if self.is_training():
+                self._net = torch.nn.parallel.DistributedDataParallel(self._net, device_ids=devices, 
+                                broadcast_buffers=self.args.run.broadcast_buffers, 
+                                find_unused_parameters=False)
 
             # print(self._net.parameters)
 

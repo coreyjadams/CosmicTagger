@@ -149,7 +149,7 @@ class torch_trainer(trainercore):
                 if self.is_training() and  self.args.mode.optimizer.gradient_accumulation > 1:
                     raise Exception("Can not accumulate gradients in half precision.")
 
-            # example_batch = next(iter(example_ds))
+            example_batch = next(iter(example_ds))
 
             # self._net = torch.compile(self._net)
 
@@ -158,6 +158,11 @@ class torch_trainer(trainercore):
             if self.args.mode.name == ModeKind.inference:
                 self.inference_metrics = {}
                 self.inference_metrics['n'] = 0
+                
+                # JIT trace the model for inference
+                if self.args.mode.torch_jit: 
+                    self.jit_trace_model(example_batch["image"].shape)
+
 
         # Turn the datasets into torch dataloaders
         for key in datasets.keys():
@@ -330,6 +335,7 @@ class torch_trainer(trainercore):
 
         torch.save(state_dict, current_file_path)
 
+
         # Parse the checkpoint file to see what the last checkpoints were:
 
         # Keep only the last 5 checkpoints
@@ -363,6 +369,21 @@ class torch_trainer(trainercore):
             _chkpt.write('{}: {}\n'.format(self._global_step, os.path.basename(current_file_path)))
             for key in past_checkpoint_files:
                 _chkpt.write('{}: {}\n'.format(key, past_checkpoint_files[key]))
+
+    def jit_trace_model(self, input_shape):
+        '''JIT trace the model
+
+        '''
+        # Save jit-traced version of the model
+        torch.jit.set_fusion_strategy([("STATIC",2),("DYNAMIC",2)])
+        with torch.no_grad():
+            if self.args.run.compute_mode == ComputeMode.XPU:
+                self._net = ipex.optimize(self._net)
+                torch.jit.enable_onednn_fusion(True)
+            self._net = torch.jit.script(self._net.eval(),example_inputs=[input_shape])
+            self._net = torch.jit.freeze(self._net)
+            self._net = torch.jit.optimize_for_inference(self._net)
+
 
 
     def get_model_filepath(self):
@@ -808,7 +829,8 @@ class torch_trainer(trainercore):
         # perform a validation step
 
         # Set network to eval mode
-        self._net.eval()
+        if self.args.mode.name == ModeKind.inference and not self.args.mode.torch_jit:
+            self._net.eval()
         # self._net.train()
 
 
@@ -819,7 +841,6 @@ class torch_trainer(trainercore):
                     logits_dict, labels_dict = self.forward_pass(batch)
             else:
                 logits_dict, labels_dict = self.forward_pass(batch)
-
 
 
         # If the input data has labels available, compute the metrics:

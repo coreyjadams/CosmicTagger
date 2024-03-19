@@ -31,6 +31,7 @@ class Inference(Mode):
     start_index:       int  = 0
     summary_iteration: int  = 1
     logging_iteration: int  = 1
+    torch_jit:         bool = False
 
 @dataclass
 class IOTest(Mode):
