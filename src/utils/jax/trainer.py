@@ -65,7 +65,6 @@ def prepare_input_data(args, default_device_context, minibatch_data):
 def create_train_val_steps(args, default_device_context):
     
     # Define the loss function:
-    print(default_device_context)
     if args.network.classification.active:
         with default_device_context:
             weight = numpy.asarray([0.16, 0.1666, 0.16666, 0.5])
@@ -374,12 +373,24 @@ class jax_trainer(trainercore):
         # Now, we create a training and inference function that takes 
 
 
-    def print_network_info(self, params, verbose=False):
+    def print_network_info(self, params, verbose=True):
         logger = logging.getLogger("CosmicTagger")
 
         
 
-        # if verbose:
+        if verbose:
+        
+            def resolve_keys(key_list):
+                return ".".join([k.key for k in key_list ])
+        
+            jax.tree_util.tree_map_with_path(
+                lambda key, val : logger.info(f"{resolve_keys(key)}: {val.shape}"),
+                params
+            )
+
+            # vals, tree_def = jax.tree_util.tree_flatten(params)
+            # print(flat_params)
+            # for key, val in flat_params:
         #     tabulate_fn = flax.linen.tabulate(
         #     self.net, random.PRNGKey(0),
         #     compute_flops=True, 
@@ -532,6 +543,9 @@ class jax_trainer(trainercore):
 
         # Run the training step:
         with self.timing_context("train"):
+
+            # Important: purge some parts of the input data to ensure compatible types:
+            minibatch_data.pop("event_ids")
             state, metrics = self.function_lookup["train_step"](minibatch_data, self.train_state)
             self.train_state = state
 
@@ -578,7 +592,7 @@ class jax_trainer(trainercore):
         # Validation steps can optionally accumulate over several minibatches, to
         # fit onto a gpu or other accelerator
 
-
+        minibatch_data.pop("event_ids")
         metrics = self.function_lookup["val_step"](minibatch_data, self.train_state)
 
 

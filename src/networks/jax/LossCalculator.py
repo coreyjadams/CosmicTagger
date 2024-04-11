@@ -113,7 +113,7 @@ def LossCalculator(params, weight = None):
     def event_loss_fn(labels, logits):
         if logits.dtype == numpy.float16:
            logits = logits.astype(numpy.float32)
-        event_label_loss = event_label_criterion(logits, labels.astype(numpy.int64))
+        event_label_loss = event_label_criterion(logits, labels.astype(numpy.int32))
         return event_label_loss.mean()
 
 
