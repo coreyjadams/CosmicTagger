@@ -9,6 +9,8 @@ class DistributedMode(Enum):
     horovod   = 1
     deepspeed = 2
     sharded   = 3
+    mpi4jax   = 4
+    pmap      = 5
 
 @dataclass
 class Framework:
@@ -24,17 +26,25 @@ class Tensorflow(Framework):
 
 @dataclass
 class Torch(Framework):
-    name:             str             = "torch"
+    name:                         str = "torch"
     distributed_mode: DistributedMode = DistributedMode.DDP
     oversubscribe:                int = 1
 
 @dataclass
 class Lightning(Framework):
-    name:             str             = "lightning"
+    name:                         str = "lightning"
     distributed_mode: DistributedMode = DistributedMode.DDP
     oversubscribe:                int = 1
 
+@dataclass
+class Jax(Framework):
+    name:                         str = "jax"
+    distributed_mode: DistributedMode = DistributedMode.mpi4jax
+    oversubscribe:                int = 1
+
+
 cs = ConfigStore.instance()
 cs.store(group="framework", name="tensorflow", node=Tensorflow)
-cs.store(group="framework", name="torch", node=Torch)
-cs.store(group="framework", name="lightning", node=Lightning)
+cs.store(group="framework", name="torch",      node=Torch)
+cs.store(group="framework", name="lightning",  node=Lightning)
+cs.store(group="framework", name="jax",        node=Jax)

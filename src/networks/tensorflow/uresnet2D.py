@@ -125,9 +125,10 @@ class ConvolutionUpsample(tf.keras.layers.Layer):
 
     def call(self, inputs, training):
 
-        x = self.convolution(inputs)
         if self._do_normalization:
             x = self.norm(x)
+        x = self.convolution(inputs)
+        
         return self.activation(x)
 
 

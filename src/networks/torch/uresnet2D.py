@@ -134,6 +134,8 @@ class ResidualBlock(nn.Module):
 
 class ConvNextBlock(nn.Module):
 
+
+
     def __init__(self, *, inplanes, outplanes, params):
 
         nn.Module.__init__(self)
@@ -230,7 +232,6 @@ class ConvolutionUpsample(nn.Module):
 
     def forward(self, x):
 
-        out = self.conv(x)
 
         if self._do_normalization:
             if self.norm == "layer":
@@ -239,6 +240,9 @@ class ConvolutionUpsample(nn.Module):
                 out = torch.nn.functional.layer_norm(out, norm_shape)
             else:
                 out = self.norm(out)
+        
+        out = self.conv(x)
+
         out = self.activation(out)
         return out
 
