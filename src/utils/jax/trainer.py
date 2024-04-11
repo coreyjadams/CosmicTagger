@@ -169,13 +169,13 @@ def init_checkpointer(save_path, restore_path=None, should_do_io=False):
 
         def save_weights(train_state):
 
-            # ckpt = {
-            #     'model' : parameters,
-            #     'opt'   : opt_state,
-            # }
-            # save_args = orbax_utils.save_args_from_target(ckpt)
+            ckpt = {
+                'model' : train_state.params,
+                'opt'   : train_state.opt_state,
+            }
+            save_args = orbax_utils.save_args_from_target(ckpt)
 
-            checkpoint_manager.save(train_state.step, train_state)
+            checkpoint_manager.save(train_state.step, ckpt, save_kwargs={'save_args': save_args})
 
             return
 
@@ -184,18 +184,12 @@ def init_checkpointer(save_path, restore_path=None, should_do_io=False):
 
             global_step = restore_manager.latest_step()
 
-            return restore_manager.restore(global_step)
+            checkpoint = restore_manager.restore(global_step)
             restored_state = checkpoint['model']
             # restored_model = target_type(checkpoint['model'])
             restored_opt   = checkpoint['opt']
 
-            # This is a manual hack ...
-            restored_opt["g2_i"] = restored_opt["g2_i"]
-            restored_opt["m_i"]  = restored_opt["m_i"]
-            # restored_opt["g2_i"] = frozen_dict.FrozenDict(restored_opt["g2_i"])
-            # restored_opt["m_i"] = frozen_dict.FrozenDict(restored_opt["m_i"])
-
-            return restored_model, restored_opt, global_step
+            return restored_state, restored_opt, global_step
 
 
         return save_weights, restore_weights
@@ -304,10 +298,10 @@ class jax_trainer(trainercore):
                 opt = self.init_optimizer()
                 opt_state = opt.init(params)
                 self.train_state = TrainState(
-                    step = 0,
-                    apply_fn = apply_fn,
-                    params = params,
-                    tx = opt,
+                    step      = 0,
+                    apply_fn  = apply_fn,
+                    params    = params,
+                    tx        = opt,
                     opt_state = opt_state,
                 )
 
@@ -373,7 +367,7 @@ class jax_trainer(trainercore):
         # Now, we create a training and inference function that takes 
 
 
-    def print_network_info(self, params, verbose=True):
+    def print_network_info(self, params, verbose=False):
         logger = logging.getLogger("CosmicTagger")
 
         
@@ -387,19 +381,6 @@ class jax_trainer(trainercore):
                 lambda key, val : logger.info(f"{resolve_keys(key)}: {val.shape}"),
                 params
             )
-
-            # vals, tree_def = jax.tree_util.tree_flatten(params)
-            # print(flat_params)
-            # for key, val in flat_params:
-        #     tabulate_fn = flax.linen.tabulate(
-        #     self.net, random.PRNGKey(0),
-        #     compute_flops=True, 
-        #     compute_vjp_flops=True)
-
-        #     tabulate_str = tabulate_fn(numpy.ones(image_size + [3,]))
-            
-        #     logger.info(tabulate_str)
-
 
 
         logger.info("Total number of trainable parameters in this network: {}".format(self.n_parameters(params)))
@@ -416,12 +397,35 @@ class jax_trainer(trainercore):
 
     def restore_model(self):
         logger = logging.getLogger("CosmicTagger")
+        return
+        # from typing import TypeVar, Any
+        # from jax import tree_util
+        # TX = TypeVar("TX", bound=optax.OptState)
+        # # From https://github.com/google-deepmind/optax/discussions/180        
+        # def restore_optimizer_state(opt_state: TX, restored: Any) -> TX:
+        #     """Restore optimizer state from loaded checkpoint (or .msgpack file)."""
+        #     return tree_util.tree_unflatten(
+        #         tree_util.tree_structure(opt_state), tree_util.tree_leaves(restored)
+        #     )
+
 
         try:
-            restored_state = self.restore_fn()
-            if restored_state is not None:
-                self.train_state = restored_state
+            restored_state, restored_opt, global_step = self.restore_fn()
+            restored_opt = restore_optimizer_state(self.train_state.tx, restored_opt)
+            # print(self.train_state.opt_state.keys())
+            # print(restored_state["opt_state"].keys())
+            self.training_state.replace(
+                    params    = restored_state,
+                    opt_state = restored_opt,
+                    step      = global_step,
 
+            )
+            # if restored_state is not None:
+            #     self.train_state = TrainState(
+            #         apply_fn  = self.train_state.apply_fn,
+            #         tx        = self.train_state.tx,
+            #     )
+                
         except FileNotFoundError:
             logger.info("Could not restore model because the weights do not exist.")
         finally:

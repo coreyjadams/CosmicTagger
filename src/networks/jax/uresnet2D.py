@@ -254,9 +254,10 @@ class BlockSeries(nn.Module):
         inplanes = x[0].shape[-1]
         kernel = [self.params.kernel_size, self.params.kernel_size]
 
+
         if self.params.block_style == BlockStyle.none:
             for i in range(self.n_blocks):
-                block = Block(
+                x = Block(
                     outplanes    = inplanes,
                     strides      = [1,1],
                     padding      = "SAME",
@@ -268,7 +269,8 @@ class BlockSeries(nn.Module):
                 )(x, training)
 
         elif self.params.block_style == BlockStyle.residual:
-                block = ResidualBlock(
+            for i in range(self.n_blocks):
+                x = ResidualBlock(
                     outplanes    = inplanes,
                     strides      = [1,1],
                     padding      = "SAME",
@@ -646,7 +648,7 @@ class UResNet(nn.Module):
                 strides      = 1,
                 padding      = 0,
                 feature_group_count = 1,
-                use_bias     = self.params.bias)(classification_head)
+                use_bias     = self.params.bias)(classification_x)
 
             classification_x = nn.avg_pool(
                 classification_x,
