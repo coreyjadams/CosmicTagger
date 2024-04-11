@@ -353,11 +353,6 @@ class jax_trainer(trainercore):
                 if self.is_training() and  self.args.mode.optimizer.gradient_accumulation > 1:
                     raise Exception("Can not accumulate gradients in half precision.")
 
-            # example_batch = next(iter(example_ds))
-
-            # self._net = torch.compile(self._net)
-
-            # self.trace_module(example_batch)
 
             if self.args.mode.name == ModeKind.inference:
                 self.inference_metrics = {}
@@ -420,6 +415,8 @@ class jax_trainer(trainercore):
                     step      = global_step,
 
             )
+            self._global_step = global_step
+
             # if restored_state is not None:
             #     self.train_state = TrainState(
             #         apply_fn  = self.train_state.apply_fn,
@@ -439,8 +436,6 @@ class jax_trainer(trainercore):
 
         lr_function = lambda x : self.lr_calculator(x)
 
-        # IMPORTANT: the scheduler in torch is a multiplicative factor,
-        # but I've written it as learning rate itself.  So set the LR to 1.0
         if self.args.mode.optimizer.name == OptimizerKind.rmsprop:
             opt = optax.rmsprop(lr_function)
         elif self.args.mode.optimizer.name == OptimizerKind.adam:
@@ -454,12 +449,9 @@ class jax_trainer(trainercore):
         else:
             opt = optax.SGD(lr_function)
 
-        # This is handled in the training state:
-        # opt_state = opt.init(params)
 
         return opt
 
-        # self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.opt, , last_epoch=-1)
 
 
     def _calculate_accuracy(self, network_dict, labels_dict, batch_reduce=True):
@@ -476,21 +468,6 @@ class jax_trainer(trainercore):
             network_dict['predicted_vertex'] = predict_vertex(network_dict, self.vertex_meta)
 
         return self.acc_calc(network_dict, labels_dict, batch_reduce)
-
-
-    def _compute_metrics(self, network_dict, labels_dict, loss_dict, batch_reduce=True):
-
-        with torch.no_grad():
-
-            metrics = self._calculate_accuracy(network_dict, labels_dict, batch_reduce)
-
-            if loss_dict is not None:
-                for key in loss_dict:
-                    metrics[f'loss/{key}'] = loss_dict[key].detach()
-
-            ## TODO - add vertex resolution????
-
-        return metrics
 
 
     def summary(self, metrics, saver):
@@ -581,7 +558,7 @@ class jax_trainer(trainercore):
             self._seconds_per_global_step = (global_end_time - global_start_time).total_seconds()
 
             # Increment the global step value:
-            self.increment_global_step()
+            self._global_step = self.train_state.step
 
         return
 
