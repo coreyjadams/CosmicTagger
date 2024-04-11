@@ -835,7 +835,6 @@ class torch_trainer(trainercore):
             additional_info = {
                 "index"            : numpy.asarray(batch["entries"]),
                 "event_id"         : numpy.asarray(batch["event_ids"]),
-                "energy"           : batch["vertex"]["energy"],
                 "N_neut_pixels0"     : n_neutrino_pixels[0],
                 "N_neut_pixels1"     : n_neutrino_pixels[1],
                 "N_neut_pixels2"     : n_neutrino_pixels[2],
@@ -843,6 +842,7 @@ class torch_trainer(trainercore):
             if self.args.network.vertex.active:
                 predicted_vertex = predict_vertex(logits_dict, self.vertex_meta)
                 additional_info.update({
+                    "energy"             : batch["vertex"]["energy"],
                     "predicted_vertex0h" : predicted_vertex[:,0,0],
                     "predicted_vertex0w" : predicted_vertex[:,0,1],
                     "predicted_vertex1h" : predicted_vertex[:,1,0],

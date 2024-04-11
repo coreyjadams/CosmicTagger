@@ -24,7 +24,6 @@ except:
 
 try:
     import horovod.torch as hvd
-    hvd.init()
 except:
     pass
 
@@ -54,6 +53,7 @@ class distributed_trainer(torch_trainer):
         if self.args.framework.distributed_mode == DistributedMode.horovod:
             # if self.args.run.compute_mode == "GPU":
                 # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
+            hvd.init()
             self.rank            = hvd.rank()
             self.local_rank      = hvd.local_rank()
             self.size            = hvd.size()
