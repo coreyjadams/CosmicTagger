@@ -179,6 +179,7 @@ class distributed_trainer(torch_trainer):
         else:
             state = None
 
+
         # Restore the weights on rank 0:
         if state is not None and self.rank == 0:
             self.restore_state(state)
@@ -217,11 +218,9 @@ class distributed_trainer(torch_trainer):
             elif self.args.run.compute_mode == ComputeMode.CUDA:
                 self._net.cuda()
 
-            # print(self._net.parameters)
 
             self._net = torch.nn.parallel.DistributedDataParallel(self._net, device_ids=devices, broadcast_buffers=self.args.run.broadcast_buffers, find_unused_parameters=False)
 
-            # print(self._net.parameters)
 
             self._global_step = MPI.COMM_WORLD.bcast(self._global_step, root=0)
             if self.is_training():
