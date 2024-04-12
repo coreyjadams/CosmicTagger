@@ -415,6 +415,15 @@ class exec(object):
                 lr_schedule,
                 log_keys     = self.log_keys(),
                 hparams_keys = self.hparams_keys())
+        elif self.args.framework.name == "jax":
+            from src.utils.jax import trainer
+            self.trainer = trainer.jax_trainer(
+                self.args,
+                self.datasets,
+                lr_schedule,
+                log_keys     = self.log_keys(),
+                hparams_keys = self.hparams_keys()
+            )
 
 
     def dictionary_to_str(self, in_dict, indentation = 0):

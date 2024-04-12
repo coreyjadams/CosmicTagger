@@ -194,7 +194,7 @@ class torch_trainer(trainercore):
 
 
 
-    def print_network_info(self, verbose=False):
+    def print_network_info(self, verbose=True):
         logger = logging.getLogger("CosmicTagger")
         if verbose:
             for name, var in self._net.named_parameters():
@@ -840,41 +840,43 @@ class torch_trainer(trainercore):
 
             # We can count the number of neutrino id'd pixels per plane:
             n_neutrino_pixels = [ torch.sum(torch.argmax(p, axis=1) == 2, axis=(1,2)) for p in logits_dict["segmentation"]]
-            predicted_vertex = predict_vertex(logits_dict, self.vertex_meta)
-            predicted_label = torch.softmax(logits_dict["event_label"],axis=1)
-            predicted_label = torch.argmax(predicted_label, axis=1)
-            prediction_score = torch.max(predicted_label)
-            # print(labels_dict['vertex'])
             additional_info = {
                 "index"            : numpy.asarray(batch["entries"]),
                 "event_id"         : numpy.asarray(batch["event_ids"]),
-                "energy"           : batch["vertex"]["energy"],
-                # "predicted_vertex" : predicted_vertex,
-                "predicted_vertex0h" : predicted_vertex[:,0,0],
-                "predicted_vertex0w" : predicted_vertex[:,0,1],
-                "predicted_vertex1h" : predicted_vertex[:,1,0],
-                "predicted_vertex1w" : predicted_vertex[:,1,1],
-                "predicted_vertex2h" : predicted_vertex[:,2,0],
-                "predicted_vertex2w" : predicted_vertex[:,2,1],
-                # "predicted_vertex2" : predicted_vertex[:,2,:],
-                # "true_vertex"      : labels_dict["vertex"]["xy_loc"],
-                "true_vertex0h"      : labels_dict["vertex"]["xy_loc"][:,0,0],
-                "true_vertex0w"      : labels_dict["vertex"]["xy_loc"][:,0,1],
-                "true_vertex1h"      : labels_dict["vertex"]["xy_loc"][:,1,0],
-                "true_vertex1w"      : labels_dict["vertex"]["xy_loc"][:,1,1],
-                "true_vertex2h"      : labels_dict["vertex"]["xy_loc"][:,2,0],
-                "true_vertex2w"      : labels_dict["vertex"]["xy_loc"][:,2,1],
-                # "vertex_3dx"         : batch["vertex"]["xyz_loc"]["_x"],
-                # "vertex_3dy"         : batch["vertex"]["xyz_loc"]["_y"],
-                # "vertex_3dz"         : batch["vertex"]["xyz_loc"]["_z"],
                 "N_neut_pixels0"     : n_neutrino_pixels[0],
                 "N_neut_pixels1"     : n_neutrino_pixels[1],
                 "N_neut_pixels2"     : n_neutrino_pixels[2],
-                "predicted_label"  : predicted_label,
-                "prediction_score"  : prediction_score,
-                "true_label"       : labels_dict["event_label"],
             }
-
+            if self.args.network.vertex.active:
+                predicted_vertex = predict_vertex(logits_dict, self.vertex_meta)
+                additional_info.update({
+                    "energy"             : batch["vertex"]["energy"],
+                    "predicted_vertex0h" : predicted_vertex[:,0,0],
+                    "predicted_vertex0w" : predicted_vertex[:,0,1],
+                    "predicted_vertex1h" : predicted_vertex[:,1,0],
+                    "predicted_vertex1w" : predicted_vertex[:,1,1],
+                    "predicted_vertex2h" : predicted_vertex[:,2,0],
+                    "predicted_vertex2w" : predicted_vertex[:,2,1],
+                    # "predicted_vertex2" : predicted_vertex[:,2,:],
+                    # "true_vertex"      : labels_dict["vertex"]["xy_loc"],
+                    "true_vertex0h"      : labels_dict["vertex"]["xy_loc"][:,0,0],
+                    "true_vertex0w"      : labels_dict["vertex"]["xy_loc"][:,0,1],
+                    "true_vertex1h"      : labels_dict["vertex"]["xy_loc"][:,1,0],
+                    "true_vertex1w"      : labels_dict["vertex"]["xy_loc"][:,1,1],
+                    "true_vertex2h"      : labels_dict["vertex"]["xy_loc"][:,2,0],
+                    "true_vertex2w"      : labels_dict["vertex"]["xy_loc"][:,2,1],
+                })
+            if self.args.network.classification.active: 
+                predicted_label = torch.softmax(logits_dict["event_label"],axis=1)
+                predicted_label = torch.argmax(predicted_label, axis=1)
+                prediction_score = torch.max(predicted_label)
+                additional_info.update({
+                    "predicted_label"   : predicted_label,
+                    "prediction_score"  : prediction_score,
+                    "true_label"        : labels_dict["event_label"],
+                })
+            # print(labels_dict['vertex'])
+           
             # Move everything in the dictionary to CPU:
             additional_info.update(metrics)
             for key in additional_info.keys():
@@ -912,7 +914,6 @@ class torch_trainer(trainercore):
         if hasattr(self, "local_df") and self.local_df is not None:
             local_df = pd.concat(self.local_df)
             outdir = self.args.output_dir
-            print(outdir)
             local_df.to_csv(f"{outdir}/rank_{self.rank}_{self.args.run.id}.csv")
 
         if not hasattr(self, "inference_metrics"):

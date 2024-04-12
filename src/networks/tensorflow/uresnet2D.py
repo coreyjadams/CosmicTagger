@@ -58,6 +58,12 @@ class Block(tf.keras.layers.Layer):
             self._do_normalization = True
             self.norm = tf.keras.layers.LayerNormalization(
                 axis=self.channels_axis)
+        elif norm == Norm.instance:
+            self._do_normalization = True
+            self.norm = tf.keras.layers.GroupNormalization(
+                groups=-1,
+                axis=self.channels_axis)
+
         else:
             self._do_normalization = False
 
@@ -117,6 +123,12 @@ class ConvolutionUpsample(tf.keras.layers.Layer):
             self._do_normalization = True
             self.norm = tf.keras.layers.LayerNormalization(
                 axis=self.channels_axis)
+        elif params.normalization == Norm.instance:
+            self._do_normalization = True
+            self.norm = tf.keras.layers.GroupNormalization(
+                groups=-1,
+                axis=self.channels_axis)
+
         else:
             self._do_normalization = False
 
@@ -125,9 +137,10 @@ class ConvolutionUpsample(tf.keras.layers.Layer):
 
     def call(self, inputs, training):
 
-        x = self.convolution(inputs)
         if self._do_normalization:
             x = self.norm(x)
+        x = self.convolution(inputs)
+        
         return self.activation(x)
 
 

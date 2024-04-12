@@ -84,6 +84,7 @@ class Network:
     data_format:          str          = MISSING
     vertex:               Vertex       = field(default_factory= lambda : Vertex() )
     classification:       EventLabel   = field(default_factory= lambda : EventLabel() )
+    activation:           str          = "leaky_relu"
 
 
 @dataclass
