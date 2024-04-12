@@ -60,7 +60,7 @@ class Block(nn.Module):
         elif self.normalization == Norm.layer:
             x = nn.GroupNorm(num_groups=1)(x)
         elif self.normalization == Norm.instance:
-            x = nn.GroupNorm(group_size=1)(x)
+            x = nn.GroupNorm(group_size=1, num_groups=None)(x)
 
         return self.activation(x)
 

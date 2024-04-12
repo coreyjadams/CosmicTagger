@@ -188,7 +188,7 @@ class torch_trainer(trainercore):
 
 
 
-    def print_network_info(self, verbose=False):
+    def print_network_info(self, verbose=True):
         logger = logging.getLogger("CosmicTagger")
         if verbose:
             for name, var in self._net.named_parameters():

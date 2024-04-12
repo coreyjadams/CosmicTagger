@@ -42,7 +42,7 @@ def prepare_input_data(args, default_device_context, minibatch_data):
         minibatch_data["image"] = minibatch_data["image"].astype(numpy.bfloat16)
 
     labels_dict = {
-        "segmentation" : numpy.split(minibatch_data['label'].astype(numpy.int64),
+        "segmentation" : numpy.split(minibatch_data['label'].astype(numpy.int32),
                                         indices_or_sections=3, 
                                         axis=-1),
     }
@@ -51,9 +51,9 @@ def prepare_input_data(args, default_device_context, minibatch_data):
         labels_dict.update({"event_label"  : minibatch_data['event_label']})
     if args.network.vertex.active:
         labels_dict.update({"vertex"  : minibatch_data['vertex']})
-
+    shape = labels_dict["segmentation"][0].shape
     labels_dict["segmentation"] = [
-        _label.squeeze()
+        _label.reshape(shape[:-1])
             for _label in labels_dict["segmentation"]
     ]
 
@@ -340,6 +340,8 @@ class jax_trainer(trainercore):
                 self.function_lookup["train_step"] = jax.jit(temp_train_step)
                 self.function_lookup["val_step"]   = jax.jit(temp_val_step)
 
+                # self.function_lookup["train_step"] = temp_train_step
+                # self.function_lookup["val_step"]   = temp_val_step
 
 
                 # And here, create a function that computes the loss and gradients:

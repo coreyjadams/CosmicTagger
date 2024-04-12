@@ -293,6 +293,7 @@ class trainercore(object):
 
     def train_one_epoch(self, train_loader, val_loader=None, max_steps=None):
         self.on_epoch_start()
+        
         for i, batch in enumerate(train_loader):
 
             # Check step end condition:
