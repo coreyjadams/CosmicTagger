@@ -394,41 +394,33 @@ class jax_trainer(trainercore):
 
     def restore_model(self):
         logger = logging.getLogger("CosmicTagger")
-        return
-        # from typing import TypeVar, Any
-        # from jax import tree_util
-        # TX = TypeVar("TX", bound=optax.OptState)
-        # # From https://github.com/google-deepmind/optax/discussions/180        
-        # def restore_optimizer_state(opt_state: TX, restored: Any) -> TX:
-        #     """Restore optimizer state from loaded checkpoint (or .msgpack file)."""
-        #     return tree_util.tree_unflatten(
-        #         tree_util.tree_structure(opt_state), tree_util.tree_leaves(restored)
-        #     )
+        
+        from typing import TypeVar, Any
+        from jax import tree_util
+        TX = TypeVar("TX", bound=optax.OptState)
+        # From https://github.com/google-deepmind/optax/discussions/180        
+        def restore_optimizer_state(opt_state: TX, restored: Any) -> TX:
+            """Restore optimizer state from loaded checkpoint (or .msgpack file)."""
+            return tree_util.tree_unflatten(
+                tree_util.tree_structure(opt_state), tree_util.tree_leaves(restored)
+            )
 
 
         try:
             restored_state, restored_opt, global_step = self.restore_fn()
-            restored_opt = restore_optimizer_state(self.train_state.tx, restored_opt)
-            # print(self.train_state.opt_state.keys())
-            # print(restored_state["opt_state"].keys())
-            self.training_state.replace(
+            restored_opt = restore_optimizer_state(self.train_state.opt_state, restored_opt)
+            self.train_state = self.train_state.replace(
                     params    = restored_state,
                     opt_state = restored_opt,
                     step      = global_step,
 
             )
             self._global_step = global_step
-
-            # if restored_state is not None:
-            #     self.train_state = TrainState(
-            #         apply_fn  = self.train_state.apply_fn,
-            #         tx        = self.train_state.tx,
-            #     )
                 
         except FileNotFoundError:
             logger.info("Could not restore model because the weights do not exist.")
-        finally:
-            logger.info("Could not restore model so training from stratch.")
+        except Exception as e:
+            logger.info(f"Could not restore model ({e}) so training from stratch.")
         
 
     def init_optimizer(self):
@@ -474,14 +466,14 @@ class jax_trainer(trainercore):
 
     def summary(self, metrics, saver):
 
-        if self._global_step % self.args.mode.summary_iteration == 0:
+        if self.train_state.step % self.args.mode.summary_iteration == 0:
             for metric in metrics:
                 name = metric
                 value = metrics[metric]
                 # if isinstance(value, torch.Tensor):
                 #     # Cast metrics to 32 bit float
                 #     value = value.float()
-                saver.add_scalar(metric, value, self._global_step)
+                saver.add_scalar(metric, value, self.train_state.step)
 
 
 
@@ -513,6 +505,7 @@ class jax_trainer(trainercore):
         return device
 
     def train_step(self, minibatch_data):
+
 
         # For a train step, we fetch data, run a forward and backward pass, and
         # if this is a logging step, we compute some logging metrics.
@@ -561,6 +554,7 @@ class jax_trainer(trainercore):
 
             # Increment the global step value:
             self._global_step = self.train_state.step
+        
 
         return
 
@@ -608,7 +602,7 @@ class jax_trainer(trainercore):
 
         if self.args.run.run_units == RunUnit.iteration:
 
-            if self._global_step % self.args.mode.checkpoint_iteration == 0 and self._global_step != 0:
+            if self.train_state.step % self.args.mode.checkpoint_iteration == 0 and self.train_state.step != 0:
                 # Save a checkpoint, but don't do it on the first pass
                 self.save_fn(self.train_state)
         else:
