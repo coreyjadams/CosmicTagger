@@ -60,6 +60,8 @@ class Block(nn.Module):
         elif self.normalization == Norm.layer:
             x = nn.GroupNorm(num_groups=1)(x)
         elif self.normalization == Norm.instance:
+            # print(x)
+            # print(x.mean())
             x = nn.GroupNorm(group_size=1, num_groups=None)(x)
 
         return self.activation(x)
@@ -425,10 +427,13 @@ class InterpolationUpsample(nn.Module):
     @nn.compact
     def __call__(self, x, training : bool = True):
 
-        input_size = x.shape[0:2]
-        output_size = [ 2 * i for i in input_size ] + [x.shape[-1]]
-
+        input_size = x.shape[1:3]
+        # CHANGED HERE TO AVOID VMAP
+        output_size = [x.shape[0]] + [ 2 * i for i in input_size ] + [x.shape[-1]]
+        # print("Target shape: ", output_size)
+        # print("Pre shape: ", x.shape)
         x = jax.image.resize(x, output_size, method="bilinear")
+        # print("Post shape: ", x.shape)
 
         x = Block(
             outplanes    = self.outplanes,

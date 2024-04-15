@@ -265,12 +265,13 @@ class jax_trainer(trainercore):
         key = random.PRNGKey(self.args.framework.seed)
 
         # Initialize the network:
-        params = self.net.init(key, numpy.zeros(image_size + [3,]) )
+        params = self.net.init(key, numpy.zeros([self.args.run.minibatch_size,] + image_size + [3,]) )
 
         # Use a partial to remote the batch norm control flow:
 
         # VMAP and JIT the model:
-        model_fn = jax.vmap(self.net.apply, in_axes=[None, 0, None])
+        # model_fn = jax.jit(jax.vmap(self.net.apply, in_axes=[None, 0, None]))
+        model_fn = self.net.apply
 
         return params, model_fn
 
