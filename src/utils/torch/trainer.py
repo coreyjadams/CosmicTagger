@@ -140,8 +140,14 @@ class torch_trainer(trainercore):
                     self.loss_calculator = LossCalculator(self.args)
             self.acc_calc = AccuracyCalculator(self.args)
 
-            if self.args.run.compute_mode == ComputeMode.XPU:
-                self._net, self.opt = ipex.optimize(self._net, optimizer=self.opt)
+            if not self.is_training():
+                self._net.eval()
+
+            # if self.args.run.compute_mode == ComputeMode.XPU:
+            #     if self.is_training():
+            #         self._net, self.opt = ipex.optimize(self._net, optimizer=self.opt)
+            #     else:
+            #         self._net = ipex.optimize(self._net)
 
             # For half precision, we disable gradient accumulation.  This is to allow
             # dynamic loss scaling
@@ -274,8 +280,10 @@ class torch_trainer(trainercore):
                     chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
                     logger.info(f"Restoring weights from {chkp_file}")
                     break
+        # state = torch.load(chkp_file)
         try:
-            state = torch.load(chkp_file)
+            # state = torch.load(chkp_file)
+            state = torch.load(chkp_file, map_location=self.default_device())
             return state
         except:
             logger.warning("Could not load from checkpoint file")
