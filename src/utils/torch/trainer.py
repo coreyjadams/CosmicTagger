@@ -194,7 +194,7 @@ class torch_trainer(trainercore):
 
 
 
-    def print_network_info(self, verbose=True):
+    def print_network_info(self, verbose=False):
         logger = logging.getLogger("CosmicTagger")
         if verbose:
             for name, var in self._net.named_parameters():
@@ -610,7 +610,6 @@ class torch_trainer(trainercore):
 
         grad_accum = self.args.mode.optimizer.gradient_accumulation
 
-        use_cuda=torch.cuda.is_available()
         with self.default_device_context():
             for interior_batch in range(grad_accum):
 
@@ -626,7 +625,19 @@ class torch_trainer(trainercore):
 
                 if self.args.run.profile:
                     if not self.args.run.distributed or self.rank == 0:
-                        autograd_prof = torch.autograd.profiler.profile(use_cuda = use_cuda)
+                        activities = [
+                            torch.profiler.ProfilerActivity.CPU,
+                        ]
+                        if torch.cuda.is_available():
+                            activities.append(torch.profiler.ProfilerActivity.CUDA)
+                        if self.args.run.compute_mode == ComputeMode.XPU and torch.xpu.is_available():
+                            activities.append(torch.profiler.ProfilerActivity.XPU)
+                        autograd_prof = torch.profiler.profile(
+                            activities     = activities,
+                            record_shapes  = True,
+                            profile_memory = True,
+                            with_flops     = True,
+                        )
                     else:
                         autograd_prof = dummycontext()
                 else:
@@ -680,6 +691,12 @@ class torch_trainer(trainercore):
                 if self.args.run.profile:
                     if not self.args.run.distributed or self.rank == 0:
                         prof.export_chrome_trace("timeline_" + str(self._global_step) + ".json")
+                        # Print dumps of the profile to file too:
+                        # prof.export_stacks("profile_stack_" + str(self._global_step) + ".stacks")
+                        averages = prof.key_averages(group_by_input_shape=True).table()
+                        with open("table_" + str(self._global_step) + ".txt", 'w') as out_f:
+                            out_f.write(averages)
+
 
             step_start_time = datetime.datetime.now()
             # Putting the optimization step here so the metrics and such can be concurrent:
@@ -705,7 +722,6 @@ class torch_trainer(trainercore):
                 metrics['global_step_per_sec'] = 0.0
                 metrics['images_per_second'] = 0.0
 
-            metrics['io_fetch_time'] = io_fetch_time
 
 
 
@@ -713,9 +729,7 @@ class torch_trainer(trainercore):
             metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
 
 
-            with self.timing_context("log"):
-                self.log(metrics, self.log_keys, saver="train")
-
+            
 
             with self.timing_context("summary"):
 
@@ -734,7 +748,7 @@ class torch_trainer(trainercore):
             # Increment the global step value:
             self.increment_global_step()
 
-        return
+        return metrics
 
     def val_step(self, minibatch_data, store=True):
 

@@ -294,7 +294,9 @@ class trainercore(object):
     def train_one_epoch(self, train_loader, val_loader=None, max_steps=None):
         self.on_epoch_start()
         
+        io_start_time = datetime.datetime.now()
         for i, batch in enumerate(train_loader):
+            io_fetch_time =  (datetime.datetime.now() - io_start_time).total_seconds()
 
             # Check step end condition:
             if max_steps is not None:
@@ -304,13 +306,21 @@ class trainercore(object):
 
             self.on_step_start()
             with self.timing_context("train"):
-                self.train_step(batch)
+                metrics = self.train_step(batch)
+            metrics['io_fetch_time'] =  io_fetch_time
+
+
+            with self.timing_context("log"):
+                self.log(metrics, self.log_keys, saver="train")
+
             # Validate one batch if:
             if self._iteration % self.args.run.val_iteration == 0:
                 if val_loader is not None: self.validate(val_loader, max_steps=1)
 
             self.on_step_end()
             self._iteration += 1
+
+            io_start_time = datetime.datetime.now()
 
         if self.args.run.run_units == RunUnit.epoch:
             # Validate an entire epoch if we're using epochs:
