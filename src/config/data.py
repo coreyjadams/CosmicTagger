@@ -13,10 +13,19 @@ class RandomMode(Enum):
     random_blocks = 0
     serial_access = 1
 
-# data_top="/data/datasets/SBND/cosmic_tagging_2"
-data_top="/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/"
-# data_top="/lus/gila/projects/Aurora_deployment/cadams/cosmic_tagger_2/"
-# data_top="/lus/gecko/projects/Aurora_deployment/cadams/cosmic_tagging_2/"
+
+# Go through a series of locations where the data might be stored.
+import os
+data_top = "/missing/data/folder/"
+for test_path in [
+    "/data/datasets/SBND/cosmic_tagging_2",
+    "/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/",
+    "/lus/gila/projects/Aurora_deployment/cadams/cosmic_tagger_2/",
+    "/lus/gecko/projects/Aurora_deployment/cadams/cosmic_tagging_2/",
+]:
+    if os.path.isdir(test_path):
+        data_top = test_path
+        break
 
 @dataclass
 class DatasetPaths:

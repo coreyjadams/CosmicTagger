@@ -11,13 +11,10 @@ import pathlib
 import flax
 import flax.linen as nn
 from flax.training.train_state import TrainState
-from flax.training import orbax_utils
 
 import optax
-from orbax import checkpoint
 
 from src.utils.core.trainercore import trainercore
-from src.networks.jax           import LossCalculator, AccuracyCalculator
 # from src.networks.jax           import create_vertex_meta, predict_vertex
 
 import contextlib
@@ -32,188 +29,12 @@ from src.config import ComputeMode, Precision, ConvMode, ModeKind, DataFormatKin
 
 
 
-def prepare_input_data(args, default_device_context, minibatch_data):
-    
-    # with default_device_context():
 
-    # print(minibatch_data["image"].dtype)
+from . utils import init_checkpointer
+from . utils import create_train_val_steps
+from . utils import init_optax_lr_schedule
 
-    if args.run.precision == Precision.bfloat16:
-        minibatch_data["image"] = minibatch_data["image"].astype(numpy.bfloat16)
-
-    labels_dict = {
-        "segmentation" : numpy.split(minibatch_data['label'].astype(numpy.int32),
-                                        indices_or_sections=3, 
-                                        axis=-1),
-    }
-
-    if args.network.classification.active or args.network.vertex.active:
-        labels_dict.update({"event_label"  : minibatch_data['event_label']})
-    if args.network.vertex.active:
-        labels_dict.update({"vertex"  : minibatch_data['vertex']})
-    shape = labels_dict["segmentation"][0].shape
-    labels_dict["segmentation"] = [
-        _label.reshape(shape[:-1])
-            for _label in labels_dict["segmentation"]
-    ]
-
-    return minibatch_data, labels_dict
-
-
-
-
-def create_train_val_steps(args, default_device_context):
-    
-    # Define the loss function:
-    if args.network.classification.active:
-        with default_device_context:
-            weight = numpy.asarray([0.16, 0.1666, 0.16666, 0.5])
-            if args.run.precision == Precision.bfloat16:
-                weight = weight.to(numpy.bfloat16)
-            loss_calculator = LossCalculator(args, weight=weight)
-    else:
-        loss_calculator = LossCalculator(args)
-
-    compute_metrics = AccuracyCalculator(args)
-
-
-    def create_train_step():
-
-
-        def train_step(batch, state):
-
-            # Pull off the apply function:
-            apply_fn = state.apply_fn
-            
-            def forward_to_loss(parameters, network_inputs, batch_labels):
-
-                # True is training
-                logits = apply_fn(parameters, network_inputs, True)
-                loss, metrics = loss_calculator(batch_labels, logits)
-                # Returning this as loss, aux:
-                return loss, (logits, metrics)
-
-
-            batch, labels = prepare_input_data(args, default_device_context, batch)
-
-            # Go forward:
-            grad_fn = jax.value_and_grad(forward_to_loss, has_aux=True)
-
-            (loss, (logits, loss_metrics)), grads = grad_fn(state.params, batch["image"], labels)
-
-            acc_metrics = compute_metrics(logits, labels)
-
-            state = state.apply_gradients(grads=grads)
-            # This could be an issues, it's not a pure function:
-            acc_metrics.update(loss_metrics)
-
-            return state, acc_metrics
-    
-
-        return train_step
-    
-    def create_val_step():
-    
-        def val_step(batch, state):
-        
-            # Pull off the apply function:
-            apply_fn = state.apply_fn
-            
-            batch, labels = prepare_input_data(args, default_device_context, batch)
-            
-            # False is training=False
-            logits = apply_fn(state.params, batch["image"], False)
-            loss, metrics = loss_calculator(labels, logits)
-
-            acc_metrics = compute_metrics(logits, labels)
-
-            # This could be an issues, it's not a pure function:
-            acc_metrics.update(metrics)
-
-            return acc_metrics
-
-
-
-
-        return val_step
-    
-    
-
-    return create_train_step(), create_val_step()
-
-
-def init_checkpointer(save_path, restore_path=None, should_do_io=False):
-
-    if restore_path is None:
-        restore_path = save_path
-
-    restore_ckpt_path = pathlib.Path(restore_path) / pathlib.Path("checkpoint") / pathlib.Path("model")
-    save_ckpt_path    = pathlib.Path(save_path)    / pathlib.Path("checkpoint") / pathlib.Path("model")
-    
-    restore_checkpointer = checkpoint.PyTreeCheckpointer()
-    save_checkpointer    = checkpoint.PyTreeCheckpointer()
-
-    options = checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
-    if should_do_io:
-        checkpoint_manager = checkpoint.CheckpointManager(
-            save_ckpt_path.resolve(),
-            save_checkpointer,
-            options
-        )
-        restore_manager = checkpoint.CheckpointManager(
-            restore_ckpt_path.resolve(),
-            restore_checkpointer,
-            options
-        )
-    
-
-        def save_weights(train_state):
-
-            ckpt = {
-                'model' : train_state.params,
-                'opt'   : train_state.opt_state,
-            }
-            save_args = orbax_utils.save_args_from_target(ckpt)
-
-            checkpoint_manager.save(train_state.step, ckpt, save_kwargs={'save_args': save_args})
-
-            return
-
-
-        def restore_weights():
-
-            global_step = restore_manager.latest_step()
-
-            checkpoint = restore_manager.restore(global_step)
-            restored_state = checkpoint['model']
-            # restored_model = target_type(checkpoint['model'])
-            restored_opt   = checkpoint['opt']
-
-            return restored_state, restored_opt, global_step
-
-
-        return save_weights, restore_weights
-    
-    else:
-
-        return lambda * args, **kwargs : None, lambda * args, **kwargs : None
-
-
-
-def init_optax_lr_schedule(original_schedule):
-    '''
-    Convert a python schedule into an optax schedule to hack jax together
-    '''
-
-    from ..core import learning_rate_scheduler
-
-    print(type(original_schedule))
-
-    if isinstance(original_schedule, learning_rate_scheduler.FlatSchedule):
-        return optax.constant_schedule(original_schedule(1))
-    # elif isinstance
-    else:
-        raise Exception(f"Couldn't convert {type(original_schedule)} to optax")
+from . reduction import create_reduction_op
 
 class jax_trainer(trainercore):
     '''
@@ -333,9 +154,12 @@ class jax_trainer(trainercore):
 
             if self.is_training():
 
+                self.reduction_op = create_reduction_op(self.args)
+
                 temp_train_step, temp_val_step = create_train_val_steps(
                     self.args,
                     self.default_device_context(),
+                    self.reduction_op,
                 )
 
                 self.function_lookup["train_step"] = jax.jit(temp_train_step)
@@ -348,7 +172,6 @@ class jax_trainer(trainercore):
                 # And here, create a function that computes the loss and gradients:
                 # loss_fn = lambda p, mb : self.loss_calculator(*self.forward_pass(p, mb))
 
-            self.acc_calc = AccuracyCalculator(self.args)
 
             # For half precision, we disable gradient accumulation.  This is to allow
             # dynamic loss scaling
@@ -447,24 +270,6 @@ class jax_trainer(trainercore):
 
         return opt
 
-
-
-    def _calculate_accuracy(self, network_dict, labels_dict, batch_reduce=True):
-        ''' Calculate the accuracy.
-
-            Images received here are not sparse but dense.
-            This is to ensure equivalent metrics are computed for sparse and dense networks.
-
-        '''
-
-
-        # Predict the vertex, if needed:
-        if self.args.network.vertex.active:
-            network_dict['predicted_vertex'] = predict_vertex(network_dict, self.vertex_meta)
-
-        return self.acc_calc(network_dict, labels_dict, batch_reduce)
-
-
     def summary(self, metrics, saver):
 
         if self.train_state.step % self.args.mode.summary_iteration == 0:
@@ -534,12 +339,7 @@ class jax_trainer(trainercore):
             metrics['global_step_per_sec'] = 0.0
             metrics['images_per_second'] = 0.0
 
-        metrics['io_fetch_time'] = io_fetch_time
         global_end_time = datetime.datetime.now()
-
-
-        with self.timing_context("log"):
-            self.log(metrics, self.log_keys, saver="train")
 
 
         with self.timing_context("summary"):
@@ -557,7 +357,7 @@ class jax_trainer(trainercore):
             self._global_step = self.train_state.step
         
 
-        return
+        return metrics
 
     def val_step(self, minibatch_data, store=True):
 
