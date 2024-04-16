@@ -9,6 +9,8 @@ from functools import reduce
 import numpy
 
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = "true"
 # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4'
 
@@ -21,6 +23,7 @@ import datetime
 
 
 import tensorflow as tf
+tf.get_logger().setLevel('INFO')
 
 tf.get_logger().setLevel('INFO')
 

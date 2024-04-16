@@ -7,12 +7,7 @@ import pathlib
 
 import numpy
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-try:
-    import tensorflow as tf
-    tf.get_logger().setLevel('INFO')
-except:
-    pass
+
 
 # For configuration:
 from omegaconf import DictConfig, OmegaConf

@@ -55,7 +55,6 @@ class distributed_trainer(torch_trainer):
             
             # if self.args.run.compute_mode == "GPU":
                 # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
-            hvd.init()
             self.rank            = hvd.rank()
             # if self.rank == 0:
                 # monitoring_thread = start_monitoring()

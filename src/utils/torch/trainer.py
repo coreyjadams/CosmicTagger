@@ -25,10 +25,10 @@ import contextlib
 def dummycontext():
     yield None
 
-try:
-    from torch.utils.tensorboard import SummaryWriter
-except:
-    from tensorboardX import SummaryWriter
+# try:
+#     from torch.utils.tensorboard import SummaryWriter
+# except:
+from tensorboardX import SummaryWriter
 
 import datetime
 from src.config import ComputeMode, Precision, ConvMode, ModeKind, DataFormatKind, RunUnit
@@ -103,8 +103,8 @@ class torch_trainer(trainercore):
 
             # If using half precision on the model, convert it now:
             if self.args.run.precision == Precision.bfloat16:
-                if self.args.run.compute_mode == ComputeMode.XPU:
-                    ipex.set_fp32_math_mode(mode=ipex.FP32MathMode.BF32)
+                # if self.args.run.compute_mode == ComputeMode.XPU:
+                #     ipex.set_fp32_math_mode(mode=ipex.FP32MathMode.BF32)
                 self._net = self._net.bfloat16()
 
             self._net = self._net.to(self.default_device())
