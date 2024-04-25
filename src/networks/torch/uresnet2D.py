@@ -24,6 +24,8 @@ from src.config.network import DownSampling, UpSampling, Norm
 
 activation_function = nn.functional.leaky_relu
 
+import copy
+
 class Block(nn.Module):
 
     def __init__(self, *,
@@ -78,7 +80,13 @@ class Block(nn.Module):
         self.activation = activation
 
     def forward(self, x):
+        # conv1 = copy.deepcopy(self.conv).to("cpu")
+        # out1 = conv1(x.to("cpu"))
+        # out = out1.to("xpu")
+        # print(f"Input tensor of {x.shape} has min/mean/max/std of {x.min()}/{x.mean()}/{x.max()}/{x.std()}")
         out = self.conv(x)
+        # print(f"output tensor of {out.shape} has min/mean/max/std of {out.min()}/{out.mean()}/{out.max()}/{out.std()}")
+
         if self._do_normalization:
             if self.norm == "layer":
                 norm_shape = out.shape[1:]
@@ -133,6 +141,8 @@ class ResidualBlock(nn.Module):
         return out
 
 class ConvNextBlock(nn.Module):
+
+
 
     def __init__(self, *, inplanes, outplanes, params):
 
@@ -230,7 +240,6 @@ class ConvolutionUpsample(nn.Module):
 
     def forward(self, x):
 
-        out = self.conv(x)
 
         if self._do_normalization:
             if self.norm == "layer":
@@ -239,6 +248,9 @@ class ConvolutionUpsample(nn.Module):
                 out = torch.nn.functional.layer_norm(out, norm_shape)
             else:
                 out = self.norm(out)
+        
+        out = self.conv(x)
+
         out = self.activation(out)
         return out
 

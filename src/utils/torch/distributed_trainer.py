@@ -5,7 +5,8 @@ from collections import OrderedDict
 
 import contextlib
 
-
+# from hanging_threads import start_monitoring
+# monitoring_thread = start_monitoring()
 
 import numpy
 
@@ -24,7 +25,6 @@ except:
 
 try:
     import horovod.torch as hvd
-    hvd.init()
 except:
     pass
 
@@ -48,13 +48,17 @@ class distributed_trainer(torch_trainer):
         # Rely on the base class for most standard parameters, only
         # search for parameters relevant for distributed computing here
 
-
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
+            hvd.init()
+            
             # if self.args.run.compute_mode == "GPU":
                 # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
             self.rank            = hvd.rank()
+            # if self.rank == 0:
+                # monitoring_thread = start_monitoring()
+            
             self.local_rank      = hvd.local_rank()
             self.size            = hvd.size()
         else:
@@ -65,6 +69,9 @@ class distributed_trainer(torch_trainer):
             from torch.nn.parallel import DistributedDataParallel as DDP
 
             rank       = int(os.environ['RANK'])
+            # if rank == 0:
+                # monitoring_thread = start_monitoring()
+            
             local_rank = int(os.environ['LOCAL_RANK'])
             size       = int(os.environ['WORLD_SIZE'])
 
@@ -73,6 +80,7 @@ class distributed_trainer(torch_trainer):
             self.rank = rank
             self.size = size
             self.local_rank = local_rank
+
 
             # What backend?  nccl on GPU, gloo on CPU
             if self.args.run.compute_mode == ComputeMode.XPU:
@@ -87,6 +95,7 @@ class distributed_trainer(torch_trainer):
 
             init_method = 'env://'
 
+
             torch.distributed.init_process_group(
                 backend     = backend,
                 init_method = init_method,
@@ -94,7 +103,13 @@ class distributed_trainer(torch_trainer):
                 rank        = rank,
                 timeout     = datetime.timedelta(seconds=120)
             )
+            # print("Call DDP barrier", flush=True)
+            # torch.distributed.barrier()
 
+            # print("DDP Init done, call all_reduce", flush=True)
+            # # Including a dummy barrier:    
+            # dummy_tensor = torch.ones((100,), device=self.default_device())
+            # torch.distributed.all_reduce(dummy_tensor)
 
     def save_model(self):
 

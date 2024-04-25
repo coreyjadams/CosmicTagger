@@ -25,10 +25,10 @@ import contextlib
 def dummycontext():
     yield None
 
-try:
-    from torch.utils.tensorboard import SummaryWriter
-except:
-    from tensorboardX import SummaryWriter
+# try:
+#     from torch.utils.tensorboard import SummaryWriter
+# except:
+from tensorboardX import SummaryWriter
 
 import datetime
 from src.config import ComputeMode, Precision, ConvMode, ModeKind, DataFormatKind, RunUnit
@@ -103,8 +103,8 @@ class torch_trainer(trainercore):
 
             # If using half precision on the model, convert it now:
             if self.args.run.precision == Precision.bfloat16:
-                if self.args.run.compute_mode == ComputeMode.XPU:
-                    ipex.set_fp32_math_mode(mode=ipex.FP32MathMode.BF32)
+                # if self.args.run.compute_mode == ComputeMode.XPU:
+                #     ipex.set_fp32_math_mode(mode=ipex.FP32MathMode.BF32)
                 self._net = self._net.bfloat16()
 
             self._net = self._net.to(self.default_device())
@@ -140,8 +140,14 @@ class torch_trainer(trainercore):
                     self.loss_calculator = LossCalculator(self.args)
             self.acc_calc = AccuracyCalculator(self.args)
 
-            if self.args.run.compute_mode == ComputeMode.XPU:
-                self._net, self.opt = ipex.optimize(self._net, optimizer=self.opt)
+            if not self.is_training():
+                self._net.eval()
+
+            # if self.args.run.compute_mode == ComputeMode.XPU:
+            #     if self.is_training():
+            #         self._net, self.opt = ipex.optimize(self._net, optimizer=self.opt)
+            #     else:
+            #         self._net = ipex.optimize(self._net)
 
             # For half precision, we disable gradient accumulation.  This is to allow
             # dynamic loss scaling
@@ -274,8 +280,10 @@ class torch_trainer(trainercore):
                     chkp_file = os.path.dirname(checkpoint_file_path) + "/" + chkp_file
                     logger.info(f"Restoring weights from {chkp_file}")
                     break
+        # state = torch.load(chkp_file)
         try:
-            state = torch.load(chkp_file)
+            # state = torch.load(chkp_file)
+            state = torch.load(chkp_file, map_location=self.default_device())
             return state
         except:
             logger.warning("Could not load from checkpoint file")
@@ -602,7 +610,6 @@ class torch_trainer(trainercore):
 
         grad_accum = self.args.mode.optimizer.gradient_accumulation
 
-        use_cuda=torch.cuda.is_available()
         with self.default_device_context():
             for interior_batch in range(grad_accum):
 
@@ -618,7 +625,19 @@ class torch_trainer(trainercore):
 
                 if self.args.run.profile:
                     if not self.args.run.distributed or self.rank == 0:
-                        autograd_prof = torch.autograd.profiler.profile(use_cuda = use_cuda)
+                        activities = [
+                            torch.profiler.ProfilerActivity.CPU,
+                        ]
+                        if torch.cuda.is_available():
+                            activities.append(torch.profiler.ProfilerActivity.CUDA)
+                        if self.args.run.compute_mode == ComputeMode.XPU and torch.xpu.is_available():
+                            activities.append(torch.profiler.ProfilerActivity.XPU)
+                        autograd_prof = torch.profiler.profile(
+                            activities     = activities,
+                            record_shapes  = True,
+                            profile_memory = True,
+                            with_flops     = True,
+                        )
                     else:
                         autograd_prof = dummycontext()
                 else:
@@ -672,6 +691,12 @@ class torch_trainer(trainercore):
                 if self.args.run.profile:
                     if not self.args.run.distributed or self.rank == 0:
                         prof.export_chrome_trace("timeline_" + str(self._global_step) + ".json")
+                        # Print dumps of the profile to file too:
+                        # prof.export_stacks("profile_stack_" + str(self._global_step) + ".stacks")
+                        averages = prof.key_averages(group_by_input_shape=True).table()
+                        with open("table_" + str(self._global_step) + ".txt", 'w') as out_f:
+                            out_f.write(averages)
+
 
             step_start_time = datetime.datetime.now()
             # Putting the optimization step here so the metrics and such can be concurrent:
@@ -697,7 +722,6 @@ class torch_trainer(trainercore):
                 metrics['global_step_per_sec'] = 0.0
                 metrics['images_per_second'] = 0.0
 
-            metrics['io_fetch_time'] = io_fetch_time
 
 
 
@@ -705,9 +729,7 @@ class torch_trainer(trainercore):
             metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
 
 
-            with self.timing_context("log"):
-                self.log(metrics, self.log_keys, saver="train")
-
+            
 
             with self.timing_context("summary"):
 
@@ -726,7 +748,7 @@ class torch_trainer(trainercore):
             # Increment the global step value:
             self.increment_global_step()
 
-        return
+        return metrics
 
     def val_step(self, minibatch_data, store=True):
 
@@ -835,7 +857,6 @@ class torch_trainer(trainercore):
             additional_info = {
                 "index"            : numpy.asarray(batch["entries"]),
                 "event_id"         : numpy.asarray(batch["event_ids"]),
-                "energy"           : batch["vertex"]["energy"],
                 "N_neut_pixels0"     : n_neutrino_pixels[0],
                 "N_neut_pixels1"     : n_neutrino_pixels[1],
                 "N_neut_pixels2"     : n_neutrino_pixels[2],
@@ -843,6 +864,7 @@ class torch_trainer(trainercore):
             if self.args.network.vertex.active:
                 predicted_vertex = predict_vertex(logits_dict, self.vertex_meta)
                 additional_info.update({
+                    "energy"             : batch["vertex"]["energy"],
                     "predicted_vertex0h" : predicted_vertex[:,0,0],
                     "predicted_vertex0w" : predicted_vertex[:,0,1],
                     "predicted_vertex1h" : predicted_vertex[:,1,0],
