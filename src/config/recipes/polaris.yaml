@@ -8,5 +8,3 @@ defaults:
 
 data:
   downsample: 0
-  paths:
-    active: [train,val]
