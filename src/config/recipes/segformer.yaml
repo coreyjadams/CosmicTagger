@@ -1,0 +1,26 @@
+defaults:
+  - base_config
+  - override framework: torch
+  - override network: segformer
+  - _self_
+data:
+  downsample: 2
+  version: 2
+  paths:
+    active:
+      - train
+      - val
+
+network:
+  classification:
+    active: False
+    detach: False
+  vertex:
+    active: False
+    detach: False
+run:
+  run_length: 20000
+  run_units: iteration
+  precision: float32
+  # epoch: 1000
+output_dir: "output/"

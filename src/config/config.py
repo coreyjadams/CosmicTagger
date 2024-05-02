@@ -5,7 +5,7 @@ from hydra.core.config_store import ConfigStore
 from typing import List, Any
 from omegaconf import MISSING
 
-from .network   import Network
+from .network   import Backbone
 from .mode      import Mode
 from .framework import Framework
 from .data      import Data
@@ -83,7 +83,7 @@ class Config:
     mode:       Mode      = MISSING
     data:       Data      = MISSING
     framework:  Framework = MISSING
-    network:    Network   = MISSING
+    network:    Backbone  = MISSING
     output_dir: str       = "output/"
 
 

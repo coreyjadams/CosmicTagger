@@ -32,6 +32,7 @@ from tensorboardX import SummaryWriter
 
 import datetime
 from src.config import ComputeMode, Precision, ConvMode, ModeKind, DataFormatKind, RunUnit
+from src.config.network import ConvNetwork
 
 from . data import create_torch_larcv_dataloader
 
@@ -65,17 +66,21 @@ class torch_trainer(trainercore):
     def init_network(self, image_size, image_meta):
         from src.config import ConvMode
 
-        if self.args.network.conv_mode == ConvMode.conv_2D and not self.args.framework.sparse:
-            from src.networks.torch.uresnet2D import UResNet
-            self._raw_net = UResNet(self.args.network, image_size)
+        if isinstance(self.args.network, ConvNetwork):
+            if self.args.network.conv_mode == ConvMode.conv_2D and not self.args.framework.sparse:
+                from src.networks.torch.uresnet2D import UResNet
+                self._raw_net = UResNet(self.args.network, image_size)
 
-        else:
-            if self.args.framework.sparse and self.args.mode.name != ModeKind.iotest:
-                from src.networks.torch.sparseuresnet3D import UResNet3D
             else:
-                from src.networks.torch.uresnet3D       import UResNet3D
+                if self.args.framework.sparse and self.args.mode.name != ModeKind.iotest:
+                    from src.networks.torch.sparseuresnet3D import UResNet3D
+                else:
+                    from src.networks.torch.uresnet3D       import UResNet3D
 
-            self._raw_net = UResNet3D(self.args.network, image_size)
+                self._raw_net = UResNet3D(self.args.network, image_size)
+        else:
+            from src.networks.torch.segformer import SegFormer
+            self._raw_net = SegFormer(self.args.network, image_size)
 
         if self.args.data.data_format == DataFormatKind.channels_last:
             if self.args.run.compute_mode == ComputeMode.XPU:

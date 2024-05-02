@@ -5,5 +5,5 @@ from . data      import Real, Synthetic
 from . framework import Framework, DistributedMode
 from . mode      import ModeKind, Mode, Train, Inference, IOTest
 from . optimizer import Optimizer, OptimizerKind, LossBalanceScheme
-from . network   import Network, BlockStyle
+from . network   import ConvNetwork, Segformer, BlockStyle
 from . network   import Connection, GrowthRate, DownSampling, UpSampling, ConvMode, Norm

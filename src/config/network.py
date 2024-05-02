@@ -3,6 +3,7 @@ from enum import Enum
 from dataclasses import dataclass, field
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
+from typing import List, Any
 
 
 # @dataclass
@@ -59,9 +60,23 @@ class EventLabel:
     n_filters: int = 128
     n_layers:  int = 4
 
+@dataclass
+class Backbone:
+    name: str = ""
+    vertex:               Vertex       = field(default_factory= lambda : Vertex() )
+    classification:       EventLabel   = field(default_factory= lambda : EventLabel() )
+    activation:           str          = "leaky_relu"
+    data_format:          str          = MISSING
+
 
 @dataclass
-class Network:
+class Segformer(Backbone):
+    in_dims: List[int] = field(default_factory= lambda : [32, 64, 160, 256])
+    decoder_dim: int =256
+
+
+@dataclass
+class ConvNetwork(Backbone):
     name:                 str          = "default"
     bias:                 bool         = True
     normalization:        Norm         = Norm.batch
@@ -81,19 +96,15 @@ class Network:
     growth_rate:          GrowthRate   = GrowthRate.additive
     downsampling:         DownSampling = DownSampling.max_pooling
     upsampling:           UpSampling   = UpSampling.interpolation
-    data_format:          str          = MISSING
-    vertex:               Vertex       = field(default_factory= lambda : Vertex() )
-    classification:       EventLabel   = field(default_factory= lambda : EventLabel() )
-    activation:           str          = "leaky_relu"
 
 
 @dataclass
-class UResNet(Network):
+class UResNet(ConvNetwork):
     name:                 str          = "uresnet"
     normalization:        Norm         = Norm.layer
 
 @dataclass
-class A21(Network):
+class A21(ConvNetwork):
     """
     In tensorflow, this model should have 8516083 parameters total.
     In pytorch, this model should have 8510547 parameters total.
@@ -111,12 +122,12 @@ class A21(Network):
     depth:                int          = 6
 
 @dataclass
-class SCC21(Network):
+class SCC21(ConvNetwork):
     name:                 str          = "scc21"
     normalization:        Norm         =  Norm.none
 
 @dataclass
-class Polaris(Network):
+class Polaris(ConvNetwork):
     name:                 str          = "polaris"
     bias:                 bool         = True
     blocks_deepest_layer: int          = 2
@@ -127,7 +138,7 @@ class Polaris(Network):
     connections:          Connection   = Connection.sum
 
 @dataclass
-class UResNet3D(Network):
+class UResNet3D(ConvNetwork):
     name:                 str          = "uresnet3d"
     conv_mode:            ConvMode     = ConvMode.conv_3D
 
@@ -140,3 +151,4 @@ cs.store(group="network", name="a21",       node=A21)
 cs.store(group="network", name="scc21",     node=SCC21)
 cs.store(group="network", name="polaris",   node=Polaris)
 cs.store(group="network", name="uresnet3d", node=UResNet3D)
+cs.store(group="network", name="segformer", node=Segformer)

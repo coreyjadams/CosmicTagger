@@ -447,7 +447,7 @@ class exec(object):
         return substr
 
     def __str__(self):
-
+        print(self.args)
         s = "\n\n-- CONFIG --\n"
         substring = s +  self.dictionary_to_str(self.args)
 
