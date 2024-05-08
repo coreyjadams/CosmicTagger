@@ -32,7 +32,7 @@ from tensorboardX import SummaryWriter
 
 import datetime
 from src.config import ComputeMode, Precision, ConvMode, ModeKind, DataFormatKind, RunUnit
-from src.config.network import ConvNetwork
+import src.config.network as cfg_network
 
 from . data import create_torch_larcv_dataloader
 
@@ -65,8 +65,23 @@ class torch_trainer(trainercore):
 
     def init_network(self, image_size, image_meta):
         from src.config import ConvMode
+        # from omegaconf import OmegaConf
+        # print(OmegaConf.get_type(self.args.network))
 
-        if isinstance(self.args.network, ConvNetwork):
+        # print(type(self.args.network))
+        # print(type(cfg_network.CvT))
+        # print(isinstance(self.args.network, cfg_network.CvT))
+
+        # Go through the named networks first:
+        if self.args.network.name == "cvt":
+            from src.networks.torch.cvt import CvT
+            self._raw_net = CvT(self.args.network, image_size)
+        elif self.args.network.name == "segformer":
+            from src.networks.torch.segformer import SegFormer
+            self._raw_net = SegFormer(self.args.network, image_size)
+        else:
+            assert self.args.network.name in ["default", "uresnet", "A21", "scc21", "polaris", "uresnet3d"]
+            # We're probably doing a convolutional network:
             if self.args.network.conv_mode == ConvMode.conv_2D and not self.args.framework.sparse:
                 from src.networks.torch.uresnet2D import UResNet
                 self._raw_net = UResNet(self.args.network, image_size)
@@ -78,9 +93,6 @@ class torch_trainer(trainercore):
                     from src.networks.torch.uresnet3D       import UResNet3D
 
                 self._raw_net = UResNet3D(self.args.network, image_size)
-        else:
-            from src.networks.torch.segformer import SegFormer
-            self._raw_net = SegFormer(self.args.network, image_size)
 
         if self.args.data.data_format == DataFormatKind.channels_last:
             if self.args.run.compute_mode == ComputeMode.XPU:

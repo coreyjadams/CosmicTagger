@@ -62,18 +62,26 @@ class EventLabel:
 
 @dataclass
 class Backbone:
-    name: str = ""
-    vertex:               Vertex       = field(default_factory= lambda : Vertex() )
-    classification:       EventLabel   = field(default_factory= lambda : EventLabel() )
-    activation:           str          = "leaky_relu"
-    data_format:          str          = MISSING
+    name:           str        = ""
+    vertex:         Vertex     = field(default_factory= lambda : Vertex() )
+    classification: EventLabel = field(default_factory= lambda : EventLabel() )
+    activation:     str        = "leaky_relu"
+    data_format:    str        = MISSING
 
 
 @dataclass
 class Segformer(Backbone):
+    name: str = "segformer"
     in_dims: List[int] = field(default_factory= lambda : [32, 64, 160, 256])
     decoder_dim: int =256
 
+@dataclass
+class CvT(Backbone):
+    name:  str = "cvt"
+    depth: int = 2
+    n_initial_filters:    int          = 8
+    blocks_per_layer:     int          = 1
+    num_heads: int = 2
 
 @dataclass
 class ConvNetwork(Backbone):
@@ -152,3 +160,4 @@ cs.store(group="network", name="scc21",     node=SCC21)
 cs.store(group="network", name="polaris",   node=Polaris)
 cs.store(group="network", name="uresnet3d", node=UResNet3D)
 cs.store(group="network", name="segformer", node=Segformer)
+cs.store(group="network", name="cvt",       node=CvT)
