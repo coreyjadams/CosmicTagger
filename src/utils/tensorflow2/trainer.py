@@ -100,7 +100,7 @@ class tf_trainer(trainercore):
         minibatch_data = next(iter(example_dataset))
         image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
-        self.forward_pass(image, label, training=False)
+        self.forward_pass(image, label)
 
 
 
@@ -385,13 +385,13 @@ class tf_trainer(trainercore):
         return image, label
 
     @tf.function
-    def forward_pass(self, image, label, training):
+    def forward_pass(self, image, label):
 
         if self.args.run.precision == Precision.bfloat16:
             image = tf.cast(image, tf.bfloat16)
 
         # Run a forward pass of the model on the input image:
-        logits = self._net(image, training=training)
+        logits = self._net(image)
 
         if self.args.run.precision == Precision.mixed:
             logits = [ tf.cast(l, tf.float32) for l in logits ]
@@ -442,7 +442,7 @@ class tf_trainer(trainercore):
 
         image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
-        labels, logits, prediction = self.forward_pass(image, label, training=False)
+        labels, logits, prediction = self.forward_pass(image, label)
 
         loss, current_reg_loss = self.loss_calculator(labels, logits)
 
@@ -465,7 +465,7 @@ class tf_trainer(trainercore):
 
         with self.tape:
             with self.timing_context("forward"):
-                labels, logits, prediction = self.forward_pass(image, label, training=True)
+                labels, logits, prediction = self.forward_pass(image, label)
 
             with self.timing_context("loss"):
 
@@ -634,7 +634,7 @@ class tf_trainer(trainercore):
             if not self.args.distributed or self._rank == 0:
                 tf.profiler.experimental.start(self.args.output_dir + "/train/")
         # Get the logits:
-        labels, logits, prediction = self.forward_pass(image, label, training=False)
+        labels, logits, prediction = self.forward_pass(image, label)
 
         # # And the loss:
         # loss = self.loss_calculator(labels, logits)

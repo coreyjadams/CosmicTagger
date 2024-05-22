@@ -124,7 +124,7 @@ class distributed_trainer(torch_trainer):
                 # Then, it's manually set, use it
                 return torch.cuda.device(0)
             else:
-                return torch.cuda.device(int(self.local_rank))
+                return torch.cuda.device(int(self.local_rank) // self.args.framework.oversubscribe)
         elif self.args.run.compute_mode == ComputeMode.XPU:
             # return contextlib.nullcontext
             try:
@@ -149,7 +149,8 @@ class distributed_trainer(torch_trainer):
                 # Then, it's manually set, use it
                 return torch.device("cuda:0")
             else:
-                return torch.device(f"cuda:{self.local_rank}")
+                gpu = self.local_rank // self.args.framework.oversubscribe
+                return torch.device(f"cuda:{gpu}")
         elif self.args.run.compute_mode == ComputeMode.XPU:
             device = torch.device(f"xpu:{self.local_rank}")
         elif self.args.run.compute_mode == ComputeMode.DPCPP:

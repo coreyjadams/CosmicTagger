@@ -32,6 +32,7 @@ class Block(tf.keras.layers.Layer):
         else:
             self.channels_axis = -1
         
+        if groups is None: groups = 1
 
         self.convolution = tf.keras.layers.Conv2D(
             filters             = n_filters,
@@ -42,7 +43,7 @@ class Block(tf.keras.layers.Layer):
             groups              = groups,
             use_bias            = params.bias,
             data_format         = params.data_format,
-            kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
+            kernel_regularizer  = tf.keras.regularizers.l2(params.weight_decay)
         )
 
 
@@ -67,7 +68,7 @@ class Block(tf.keras.layers.Layer):
         else:
             self._do_normalization = False
 
-    def call(self, inputs, training):
+    def call(self, inputs):
 
         x = self.convolution(inputs)
         if self._do_normalization:
@@ -109,7 +110,7 @@ class ConvolutionUpsample(tf.keras.layers.Layer):
             activation          = None,
             use_bias            = params.bias,
             data_format         = params.data_format,
-            kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
+            kernel_regularizer  = tf.keras.regularizers.l2(params.weight_decay)
         )
 
         self.activation = activation
@@ -135,7 +136,7 @@ class ConvolutionUpsample(tf.keras.layers.Layer):
 
 
 
-    def call(self, inputs, training):
+    def call(self, inputs):
 
         if self._do_normalization:
             x = self.norm(x)
@@ -172,14 +173,14 @@ class ResidualBlock(tf.keras.layers.Layer):
             activation  = tf.identity,
             params      = params)
 
-    def call(self, inputs, training):
+    def call(self, inputs):
 
         x = inputs
         y = inputs
 
-        x = self.convolution_1(x, training)
+        x = self.convolution_1(x)
 
-        x = self.convolution_2(x, training)
+        x = self.convolution_2(x)
 
         x = y + x
 
@@ -236,9 +237,9 @@ class BlockSeries(tf.keras.layers.Layer):
 
 
 
-    def call(self, x, training):
+    def call(self, x):
         for i in range(len(self.blocks)):
-            x = self.blocks[i](x, training)
+            x = self.blocks[i](x)
 
         return x
 
@@ -305,23 +306,23 @@ class DeepestBlock(tf.keras.layers.Layer):
                     params     = params)
 
 
-    def call(self, x, training):
+    def call(self, x):
 
         if not self.block_concat:
             x = tf.concat(x, axis=self.channels_axis)
 
-            x = self.bottleneck(x, training)
-            x = self.blocks(x, training)
-            x = self.unbottleneck(x, training)
+            x = self.bottleneck(x)
+            x = self.blocks(x)
+            x = self.unbottleneck(x)
 
             classification_head = x
 
             x = tf.split(x, 3, self.channels_axis)
 
         else:
-            x = [ self.bottleneck(_x, training) for _x in x ]
-            x = [ self.blocks(_x, training) for _x in x ]
-            x = [ self.unbottleneck(_x, training) for _x in x ]
+            x = [ self.bottleneck(_x) for _x in x ]
+            x = [ self.blocks(_x) for _x in x ]
+            x = [ self.unbottleneck(_x) for _x in x ]
             classification_head = tf.concat(x)
         return x, classification_head
 
@@ -336,7 +337,7 @@ class NoConnection(tf.keras.layers.Layer):
     def __init__(self):
         tf.keras.layers.Layer.__init__(self)
 
-    def call(self, x, residual, training):
+    def call(self, x, residual):
         return x
 
     def reg_loss(self): return 0.0
@@ -346,7 +347,7 @@ class SumConnection(tf.keras.layers.Layer):
     def __init__(self):
         tf.keras.layers.Layer.__init__(self)
 
-    def call(self, x, residual, training):
+    def call(self, x, residual):
         return x + residual
 
     def reg_loss(self): return 0.0
@@ -370,9 +371,9 @@ class ConcatConnection(tf.keras.layers.Layer):
             strides     = (1,1),
             params      = params)
 
-    def call(self, x, residual, training):
+    def call(self, x, residual):
         x = tf.concat([x, residual] , axis=self.channels_axis)
-        x = self.bottleneck(x, training)
+        x = self.bottleneck(x)
         return x
 
     def reg_loss(self):
@@ -394,10 +395,10 @@ class MaxPooling(tf.keras.models.Model):
             strides     = (1,1),
             params      = params)
 
-    def call(self, x, training):
+    def call(self, x):
         x = self.pool(x)
 
-        return self.bottleneck(x, training)
+        return self.bottleneck(x)
 
     def reg_loss(self): return 0.0
 
@@ -420,9 +421,9 @@ class InterpolationUpsample(tf.keras.models.Model):
             params      = params,
             )
 
-    def call(self, x, training):
+    def call(self, x):
         x = self.up(x)
-        return self.bottleneck(x, training)
+        return self.bottleneck(x)
 
     def reg_loss(self):
         return self.bottleneck.reg_loss()
@@ -526,7 +527,7 @@ class UNetCore(tf.keras.models.Model):
                 self.connection = NoConnection()
 
 
-    def call(self, x, training):
+    def call(self, x):
 
         # print("depth ", self._depth_of_network, ", x[0] pre call ", x[0].shape)
 
@@ -534,7 +535,7 @@ class UNetCore(tf.keras.models.Model):
         # at the correct time.
         if self._depth_of_network != 0:
             # Perform a series of convolutional or residual blocks:
-            x = [ self.down_blocks(_x, training) for _x in x ]
+            x = [ self.down_blocks(_x) for _x in x ]
             # print("depth ", self._depth_of_network, ", x[0] post resblocks shape ", x[0].shape)
 
             # Capture the residual right before downsampling:
@@ -542,7 +543,7 @@ class UNetCore(tf.keras.models.Model):
             # print("depth ", self._depth_of_network, ", residual[0] shape ", residual[0].shape)
 
             # perform the downsampling operation:
-            x = [ self.downsample(_x, training) for _x in x ]
+            x = [ self.downsample(_x) for _x in x ]
             # print("depth ", self._depth_of_network, ", x[0] post downsample shape ", x[0].shape)
 
         # Apply the main module:
@@ -553,7 +554,7 @@ class UNetCore(tf.keras.models.Model):
         # The deepest layer returns it directly.
         # All subsequent layers return it from there.
 
-        x, classification_head = self.main_module(x, training)
+        x, classification_head = self.main_module(x)
 
 
         if self._depth_of_network != 0:
@@ -561,15 +562,15 @@ class UNetCore(tf.keras.models.Model):
             # perform the upsampling step:
             # perform the downsampling operation:
             # print("depth ", self._depth_of_network, ", x[0] pre upsample shape ", x[0].shape)
-            x = [ self.upsample(_x, training) for _x in x ]
+            x = [ self.upsample(_x) for _x in x ]
             # print("depth ", self._depth_of_network, ", x[0] after upsample shape ", x[0].shape)
 
 
             # Apply the convolutional steps:
-            x = [ self.up_blocks(_x, training) for _x in x ]
+            x = [ self.up_blocks(_x) for _x in x ]
             # print("depth ", self._depth_of_network, ", x[0] after res blocks shape ", x[0].shape)
 
-            x = [self.connection(residual[i], x[i], training) for i in range(len(x)) ]
+            x = [self.connection(residual[i], x[i]) for i in range(len(x)) ]
             # print("depth ", self._depth_of_network, ", x[0] after connection shape ", x[0].shape)
 
         return x, classification_head
@@ -641,7 +642,7 @@ class UResNet(tf.keras.models.Model):
             strides             = [1,1],
             use_bias            = params.bias,
             data_format         = params.data_format,
-            kernel_regularizer  = tf.keras.regularizers.l2(l=params.weight_decay)
+            kernel_regularizer  = tf.keras.regularizers.l2(params.weight_decay)
         )
 
 
@@ -658,7 +659,7 @@ class UResNet(tf.keras.models.Model):
         return self.weight_decay * tf.sqrt(l)
 
     @tf.function
-    def call(self, input_tensor, training):
+    def call(self, input_tensor):
 
 
         batch_size = input_tensor.get_shape()[0]
@@ -674,16 +675,16 @@ class UResNet(tf.keras.models.Model):
 
 
         # Apply the initial convolutions:
-        x = [ self.initial_convolution(_x, training) for _x in x ]
+        x = [ self.initial_convolution(_x) for _x in x ]
 
 
         # Apply the main unet architecture:
-        x, classification_head = self.net_core(x, training)
+        x, classification_head = self.net_core(x)
 
 
         # Apply the final residual block to each plane:
         if self.final_blocks:
-            x = [ self.final_layer(_x, training) for _x in x ]
+            x = [ self.final_layer(_x) for _x in x ]
 
         # x = [ tf.concat([x[i], split_input[i]], axis=self.channels_axis) for i in range(3)]
         x = [ self.bottleneck(_x) for _x in x ]

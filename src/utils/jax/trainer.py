@@ -5,7 +5,7 @@ from src.utils import logging
 import jax
 from jax import numpy
 from jax import random
-import pandas as pd
+# import pandas as pd
 import pathlib
 
 import flax
@@ -327,7 +327,7 @@ class jax_trainer(trainercore):
         with self.timing_context("train"):
 
             # Important: purge some parts of the input data to ensure compatible types:
-            minibatch_data.pop("event_ids")
+            if "event_ids" in minibatch_data.keys():   minibatch_data.pop("event_ids")
             state, metrics = self.function_lookup["train_step"](minibatch_data, self.train_state)
             self.train_state = state
 

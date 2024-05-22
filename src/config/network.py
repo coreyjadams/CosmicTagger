@@ -78,10 +78,9 @@ class Segformer(Backbone):
 @dataclass
 class CvT(Backbone):
     name:  str = "cvt"
-    depth: int = 2
-    n_initial_filters:    int          = 8
-    blocks_per_layer:     int          = 1
-    num_heads: int = 2
+    layer_embed: List[int] = field(default_factory= lambda : [ 32, 64, 64])
+    blocks:      List[int] = field(default_factory= lambda : [ 2, 2, 2])
+    num_heads:   List[int] = field(default_factory= lambda : [ 2, 8, 8])
 
 @dataclass
 class ConvNetwork(Backbone):

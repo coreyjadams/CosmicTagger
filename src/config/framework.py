@@ -29,6 +29,7 @@ class Torch(Framework):
     name:                         str = "torch"
     distributed_mode: DistributedMode = DistributedMode.DDP
     oversubscribe:                int = 1
+    compile:                     bool = False
 
 @dataclass
 class Lightning(Framework):

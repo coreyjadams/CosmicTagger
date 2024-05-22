@@ -243,11 +243,11 @@ class ConvolutionUpsample(nn.Module):
 
         if self._do_normalization:
             if self.norm == "layer":
-                norm_shape = out.shape[1:]
+                norm_shape = x.shape[1:]
                 # norm_shape[0] = 8
-                out = torch.nn.functional.layer_norm(out, norm_shape)
+                x = torch.nn.functional.layer_norm(x, norm_shape)
             else:
-                out = self.norm(out)
+                x = self.norm(x)
         
         out = self.conv(x)
 

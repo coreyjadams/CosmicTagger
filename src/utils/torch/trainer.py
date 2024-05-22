@@ -173,8 +173,8 @@ class torch_trainer(trainercore):
                     raise Exception("Can not accumulate gradients in half precision.")
 
             # example_batch = next(iter(example_ds))
-
-            # self._net = torch.compile(self._net)
+            if self.args.framework.compile:
+                self._net = torch.compile(self._net)
 
             # self.trace_module(example_batch)
 
