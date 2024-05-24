@@ -7,7 +7,7 @@ from jax import jit
 import math
 
 
-@jit
+# @jit
 def unflatten_tensor_into_tree(inputs, shapes, treedef):
 
     # Use this to keep track of where the flat index is:
@@ -27,7 +27,7 @@ def unflatten_tensor_into_tree(inputs, shapes, treedef):
 
     return jax.tree_util.tree_unflatten(treedef, input_leaf_values)
 
-@jit
+# @jit
 def flatten_tree_into_tensor(input_tree):
 
     # Flatten the tree structure into a flat structure:
@@ -45,13 +45,14 @@ def flatten_tree_into_tensor(input_tree):
     return flat_tensor, shapes, treedef
 
 
-@jit
+# @jit
 def allreduce_dict(dictionary):
     '''
     To Do - this could likely benefit from bucketing.
     '''
     from mpi4py import MPI
     import mpi4jax
+
 
     # First, we flatten the dictionary:
     flat_tensor, shapes, treedef = flatten_tree_into_tensor(dictionary)

@@ -92,22 +92,26 @@ class exec(object):
 
     def configure_lr_schedule(self, epoch_length, max_epochs):
 
+        # TF is a pain:
+        if self.args.framework.name == "tensorflow":
+            from src.utils.tensorflow2 import lr_schedule as lr_loader
+        else:
+            import src.utils.core as lr_loader
+
+
         if self.args.mode.optimizer.lr_schedule.name == "one_cycle":
-            from src.utils.core import OneCycle
-            lr_schedule = OneCycle(self.args.mode.optimizer.lr_schedule)
+            lr_schedule = lr_loader.OneCycle(self.args.mode.optimizer.lr_schedule)
         elif self.args.mode.optimizer.lr_schedule.name == "flat":
-            from src.utils.core import FlatSchedule
             schedule_args = self.args.mode.optimizer.lr_schedule
-            lr_schedule = FlatSchedule(
+            lr_schedule = lr_loader.FlatSchedule(
                 start_value  = schedule_args.peak_learning_rate,
                 epoch_length = epoch_length,
                 total_epochs = max_epochs,
             ) 
 
         elif self.args.mode.optimizer.lr_schedule.name == "standard":
-            from src.utils.core import WarmupFlatDecay
             schedule_args = self.args.mode.optimizer.lr_schedule
-            lr_schedule = WarmupFlatDecay(
+            lr_schedule = lr_loader.WarmupFlatDecay(
                 peak_learning_rate = schedule_args.peak_learning_rate,
                 decay_floor  = schedule_args.decay_floor,
                 epoch_length = epoch_length,
@@ -447,7 +451,6 @@ class exec(object):
         return substr
 
     def __str__(self):
-        print(self.args)
         s = "\n\n-- CONFIG --\n"
         substring = s +  self.dictionary_to_str(self.args)
 

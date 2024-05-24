@@ -36,6 +36,8 @@ logger = logging.getLogger("CosmicTagger")
 
 from src.config import Precision, ComputeMode, ModeKind, DataFormatKind
 
+
+
 class tf_trainer(trainercore):
     '''
     This is the tensorflow version of the trainer
@@ -102,8 +104,6 @@ class tf_trainer(trainercore):
 
         self.forward_pass(image, label)
 
-
-
         self.acc_calculator  = AccuracyCalculator.AccuracyCalculator()
         if self.is_training():
             reg_loss_fn = self._net.reg_loss
@@ -123,22 +123,15 @@ class tf_trainer(trainercore):
         # Extra info on the weights:
         deterministic = self.args.framework.seed != 0 and self.args.data.seed != 0
 
+
         for var in self._net.variables:
-            n_trainable_parameters += numpy.prod(var.get_shape())
+            n_trainable_parameters += numpy.prod(var.shape)
             if deterministic:
                 logger.info(f"{var.name} has min/mean/max {tf.reduce_min(var)}/{tf.reduce_mean(var)}/{tf.reduce_max(var)}.")
                 logger.info(f"{var.device}")
             if verbose:
-                logger.info(f"{var.name}: {var.get_shape()}")
+                logger.info(f"{var.name}: {var.shape()}")
         logger.info(f"Total number of trainable parameters in this network: {n_trainable_parameters}")
-
-
-    def n_parameters(self):
-        n_trainable_parameters = 0
-        for var in tf.compat.v1.trainable_variables():
-            n_trainable_parameters += numpy.prod(var.get_shape())
-
-        return n_trainable_parameters
 
     def current_step(self):
         return self._global_step
@@ -234,12 +227,13 @@ class tf_trainer(trainercore):
 
     def init_learning_rate(self):
         # Use a place holder for the learning rate :
-        self._learning_rate = tf.Variable(
-            initial_value=0.0, 
-            trainable=False, 
-            dtype=floating_point_format, 
-            name="lr"
-        )
+        # self._learning_rate = tf.Variable(
+        #     initial_value=0.0, 
+        #     trainable=False, 
+        #     dtype=floating_point_format, 
+        #     name="lr"
+        # )
+        self._learning_rate = self.lr_schedule
 
     def restore_model(self):
         ''' This function attempts to restore the model from file
@@ -298,11 +292,11 @@ class tf_trainer(trainercore):
 
         file_path = self.get_checkpoint_dir()
 
-        # # Make sure the path actually exists:
-        # if not os.path.isdir(os.path.dirname(file_path)):
-        #     os.makedirs(os.path.dirname(file_path))
+        # Make sure the path actually exists:
+        if not os.path.isdir(os.path.dirname(file_path)):
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-        saved_path = self._net.save_weights(file_path + "model_{}.ckpt".format(global_step))
+        saved_path = self._net.save_weights(file_path + "model_{}.weights.h5".format(global_step))
 
 
     def get_model_filepath(self, global_step):
@@ -312,7 +306,7 @@ class tf_trainer(trainercore):
 
         file_path = self.get_checkpoint_dir()
 
-        name = file_path + 'model-{}.ckpt'.format(global_step)
+        name = file_path + 'model-{}.weights.h5'.format(global_step)
         checkpoint_file_path = file_path + "checkpoint"
 
         return name, checkpoint_file_path
@@ -479,7 +473,7 @@ class tf_trainer(trainercore):
                 # loss = loss + reg_loss
 
                 if self.args.run.precision == Precision.mixed:
-                    scaled_loss = self._opt.get_scaled_loss(loss)
+                    scaled_loss = self._opt.scale_loss(loss)
 
         # Do the backwards pass for gradients:
         with self.timing_context("backward"):
@@ -553,7 +547,7 @@ class tf_trainer(trainercore):
             metrics['images_per_second'] = 0.0
 
         metrics['io_fetch_time'] = io_fetch_time
-        metrics['learning_rate'] = self._learning_rate
+        metrics['learning_rate'] = self._learning_rate(self._global_step)
 
         # After the accumulation, weight the gradients as needed and apply them:
         if gradient_accumulation != 1:
@@ -577,10 +571,10 @@ class tf_trainer(trainercore):
             self.summary(metrics)
             self.summary_images(labels, prediction)
 
-        with self.timing_context("log"):
-            # Report metrics on the terminal:
-            # self.log(metrics, kind="Train", step=int(self.current_step().numpy()))
-            self.log(metrics, self.log_keys, saver="train")
+        # with self.timing_context("log"):
+        #     # Report metrics on the terminal:
+        #     # self.log(metrics, kind="Train", step=int(self.current_step().numpy()))
+        #     self.log(metrics, self.log_keys, saver="train")
 
 
         global_end_time = datetime.datetime.now()
@@ -591,10 +585,10 @@ class tf_trainer(trainercore):
         # Update the global step:
         self._global_step.assign_add(1)
         # Update the learning rate:
-        self._learning_rate.assign(self.lr_schedule(int(self._global_step.numpy())))
-        self._opt.lr.assign(self._learning_rate)
+        # self._learning_rate.assign(self.lr_schedule(int(self._global_step.numpy())))
+        # self._opt.lr.assign(self._learning_rate)
 
-        return self.current_step()
+        return metrics
 
 
     def current_step(self):

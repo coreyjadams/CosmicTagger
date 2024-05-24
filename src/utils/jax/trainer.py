@@ -72,6 +72,13 @@ class jax_trainer(trainercore):
         # Hold a set of pure functions that offload the main computational parts:
         self.function_lookup = {}
 
+        # In case it's distributed, update the rank and local rank:
+        if self.args.run.distributed:
+            
+            self.rank       = int(os.environ["RANK"])
+            self.local_rank = int(os.environ["LOCAL_RANK"])
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = os.environ["LOCAL_RANK"]
 
     def init_network(self, image_size, image_meta):
         from src.config import ConvMode
@@ -347,7 +354,6 @@ class jax_trainer(trainercore):
             # try to get the learning rate
             current_lr = self.lr_calculator(self.train_state.step)
             metrics["learning_rate"] = current_lr
-
             self.summary(metrics, saver=self.savers["train"])
 
             # Compute global step per second:

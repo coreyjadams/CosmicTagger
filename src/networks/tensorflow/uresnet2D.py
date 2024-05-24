@@ -76,7 +76,6 @@ class Block(tf.keras.layers.Layer):
         if self.activation is not None:
             x = self.activation(x)
 
-        self.reg_loss()
         return  x
 
 
@@ -536,15 +535,12 @@ class UNetCore(tf.keras.models.Model):
         if self._depth_of_network != 0:
             # Perform a series of convolutional or residual blocks:
             x = [ self.down_blocks(_x) for _x in x ]
-            # print("depth ", self._depth_of_network, ", x[0] post resblocks shape ", x[0].shape)
 
             # Capture the residual right before downsampling:
             residual = x
-            # print("depth ", self._depth_of_network, ", residual[0] shape ", residual[0].shape)
 
             # perform the downsampling operation:
             x = [ self.downsample(_x) for _x in x ]
-            # print("depth ", self._depth_of_network, ", x[0] post downsample shape ", x[0].shape)
 
         # Apply the main module:
 
@@ -561,17 +557,13 @@ class UNetCore(tf.keras.models.Model):
 
             # perform the upsampling step:
             # perform the downsampling operation:
-            # print("depth ", self._depth_of_network, ", x[0] pre upsample shape ", x[0].shape)
             x = [ self.upsample(_x) for _x in x ]
-            # print("depth ", self._depth_of_network, ", x[0] after upsample shape ", x[0].shape)
 
 
             # Apply the convolutional steps:
             x = [ self.up_blocks(_x) for _x in x ]
-            # print("depth ", self._depth_of_network, ", x[0] after res blocks shape ", x[0].shape)
 
             x = [self.connection(residual[i], x[i]) for i in range(len(x)) ]
-            # print("depth ", self._depth_of_network, ", x[0] after connection shape ", x[0].shape)
 
         return x, classification_head
 
@@ -648,7 +640,7 @@ class UResNet(tf.keras.models.Model):
 
         self.weight_decay = params.weight_decay
 
-    @tf.function
+    
     def reg_loss(self):
         l = tf.reduce_sum(self.initial_convolution.losses)
         l += self.net_core.reg_loss()
@@ -658,7 +650,7 @@ class UResNet(tf.keras.models.Model):
 
         return self.weight_decay * tf.sqrt(l)
 
-    @tf.function
+    
     def call(self, input_tensor):
 
 

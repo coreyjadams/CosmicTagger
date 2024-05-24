@@ -94,7 +94,7 @@ class ConvNetwork(Backbone):
     depth:                int          = 7
     kernel_size:          int          = 3
     bottleneck_deepest:   int          = 256
-    depthwise:            bool         = True
+    depthwise:            bool         = False
     block_style:          BlockStyle   = BlockStyle.residual
     block_concat:         bool         = False
     weight_decay:         float        = 0.00
