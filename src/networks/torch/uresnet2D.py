@@ -26,6 +26,20 @@ activation_function = nn.functional.leaky_relu
 
 import copy
 
+# This is a work around to avoid an issue on XPU:
+class InstanceNorm2d(torch.nn.Module):
+
+    def __init__(self, num_features):
+        nn.Module.__init__(self)
+
+
+    def forward(self, x):
+        x_mean = torch.mean(x, axis=(-2,-1), keepdims=True)
+        x_var = torch.var(x, axis=(-2,-1), keepdims=True, correction=0)
+        x_norm = (x - x_mean) / torch.sqrt(x_var + 1e-5)
+
+        return x_norm
+
 class Block(nn.Module):
 
     def __init__(self, *,
@@ -72,7 +86,7 @@ class Block(nn.Module):
             self.norm = "layer"
         elif params.normalization == Norm.instance:
             self._do_normalization = True
-            self.norm = nn.InstanceNorm2d(outplanes)
+            self.norm = InstanceNorm2d(outplanes)
         else:
             self._do_normalization = False
 
@@ -80,12 +94,8 @@ class Block(nn.Module):
         self.activation = activation
 
     def forward(self, x):
-        # conv1 = copy.deepcopy(self.conv).to("cpu")
-        # out1 = conv1(x.to("cpu"))
-        # out = out1.to("xpu")
-        # print(f"Input tensor of {x.shape} has min/mean/max/std of {x.min()}/{x.mean()}/{x.max()}/{x.std()}")
+
         out = self.conv(x)
-        # print(f"output tensor of {out.shape} has min/mean/max/std of {out.min()}/{out.mean()}/{out.max()}/{out.std()}")
 
         if self._do_normalization:
             if self.norm == "layer":
@@ -186,7 +196,7 @@ class ConvNextBlock(nn.Module):
             kernel      = kernel_2,
             padding     = padding_2,
             activation  = torch.nn.Identity(),
-            override_norm = "", # Sets to no normalization, as opposed tothe default param
+            override_norm = "", # Sets to no normalization, as opposed to the default param
             params      = params)
 
 
@@ -231,7 +241,7 @@ class ConvolutionUpsample(nn.Module):
             # Have to do something special here to avoid pre-computing all the shapes ...
         elif params.normalization == Norm.instance:
             self._do_normalization = True
-            self.norm = nn.InstanceNorm2d(outplanes)
+            self.norm = InstanceNorm2d(outplanes)
         else:
             self._do_normalization = False
 
