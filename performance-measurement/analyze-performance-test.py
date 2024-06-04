@@ -231,6 +231,7 @@ def plot_scale_out(scale_out_df, scale_up_df, single_tile_df, bins, title, outpu
 
     # Normalize to peak at 1.0:
     scale_tile = numpy.max(counts_tile)
+    print(scale_tile)
     counts_tile = counts_tile / scale_tile
 
 

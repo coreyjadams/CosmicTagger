@@ -46,7 +46,41 @@ def get_hosts(top_dir):
     hosts = [os.path.basename(h) for h in hosts]
     return hosts
 
+def validate_run_success(hosts, gpus, prefix):
+    '''
+    Return the success/failure of jobs based on whether or not the final profiling
+    data was created.  We test if it was created by reading it in.
 
+    Return is a dictionary, perhaps nested by GPU identifier, of True/False
+    meaning pass/fail.
+    '''
+    run_results = {}
+    print(prefix)
+    
+    for i_host, host in enumerate(hosts):
+        if gpus is not None:
+        
+            if host not in run_results: run_results[host] = {}
+
+            for i_gpu, GPU in enumerate(gpus):
+                try:
+                    this_data = read_numpy_profile_data(host, GPU, prefix)
+                    run_results[host][GPU] = True
+                except:
+                    run_results[host][GPU] = False
+                    print(f"Host {host} and GPU {GPU} FAILED")
+                    continue
+        else:
+            try:
+                this_data = read_numpy_profile_data(host, GPU=None, prefix=prefix)
+                run_results[host] = True
+            except:
+                run_results[host] = False
+                print(f"Host {host} and GPU {GPU} FAILED")
+                continue
+
+    return run_results
+    
 def create_dataframe_single_tile(local_batch_size, hosts, gpus, nranks, prefix):
     host_vals  = []
     host_index = []

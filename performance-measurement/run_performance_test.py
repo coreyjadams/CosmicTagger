@@ -9,6 +9,7 @@ from enum import Enum
 
 
 from common import get_parser, Framework, System, make_run_id, get_affinity
+from create_dataframe_from_run import validate_run_success
 
 # This script wraps the cosmic tagger performance measurement into a comprehensive test suite.
 
@@ -93,7 +94,8 @@ def get_hosts(system, work_dir):
         hosts = _f.readlines()
 
     # remove new lines:
-    hosts = [h.rstrip('\n') for h in hosts]
+    # hosts = [h.rstrip('\n') for h in hosts]
+    hosts = [h.split('.')[0] for h in hosts]
 
     return hosts
 
@@ -102,7 +104,7 @@ def ranks_per_node(system):
     if system == System.sunspot: return 12
     elif system == System.aurora: return 12
 
-def run_single_node_benchmarks(args, framework, env_vars, affinity, python_args, dir, hosts):
+def run_single_node_benchmarks(args, framework, env_vars, affinity, python_args, dir, hosts, timeout=1200):
 
     # This function makes a small script to run the single-node benchmark, doing collectives
     # over the whole node.
@@ -131,11 +133,9 @@ def run_single_node_benchmarks(args, framework, env_vars, affinity, python_args,
 
     for host in hosts:
         host = host.split(".")[0]
-        print(host)
 
         this_single_node_dir = dir / Path(run_id) / Path(host)
         this_single_node_dir.mkdir(exist_ok=True, parents=True)
-        print(this_single_node_dir)
 
         script_template = """#!/bin/bash -l
 
@@ -183,16 +183,31 @@ run.id=${run_id} > ${{out_file}} 2>&1
         # Launch the script with a POpen and don't wait ...     
         procs.append(subprocess.Popen([str(script_path)], ))
     
-
+    total_time = 0
     while len(procs) > 0:
-        print(procs)
+        print(f"Remaining single node processes: {len(procs)}")
         for proc in procs:
             if proc.poll() is None:
                 continue
             else:
                 procs.remove(proc)
         time.sleep(5)
-    return
+        total_time += 5
+        if total_time > timeout:
+            print("Timeout exceeded, killing jobs that did not return")
+            for proc in procs: proc.kill()
+
+    # Now, check which hosts succeeded with single-node jobs:
+    # (gpus=None for single-node runs)
+    run_results = validate_run_success(hosts, None, prefix=str(dir) + "/" + str(run_id))
+
+    # Loop over the hosts and return the list of ones where every tile succeeded:
+    
+    good_hosts = []
+    for host in run_results.keys():
+        if run_results[host]: good_hosts.append(host)
+        
+    return good_hosts
 
 
 def run_multi_node_benchmarks(args, framework, env_vars, affinity, python_args, dir, hosts):
@@ -221,12 +236,12 @@ def run_multi_node_benchmarks(args, framework, env_vars, affinity, python_args, 
 
     multinode_dir = dir / Path(run_id) 
     multinode_dir.mkdir(exist_ok=True, parents=True)
-    print(multinode_dir)
+    # print(multinode_dir)
 
     n_hosts = len(hosts)
     hosts = [ h.split(".")[0] for h in hosts]
     hosts = ",".join(hosts)
-    print(hosts)
+    # print(hosts)
 
     script_template = """#!/bin/bash -l
 
@@ -280,7 +295,7 @@ run.id=${run_id} > ${{out_file}} 2>&1
     return
 
 
-def run_single_tile_benchmarks(args, framework, env_vars, affinity, python_args, dir, hosts):
+def run_single_tile_benchmarks(args, framework, env_vars, affinity, python_args, dir, hosts, timeout=1200):
 
     # This function builds a small script to launch with mpirun.
 
@@ -359,9 +374,23 @@ wait < <(jobs -p)
     mpi_args = ["mpiexec", "-n", len(hosts), "-ppn", 1, "--cpu-bind=none", script_path]
     proc = subprocess.Popen([ str(s) for s in mpi_args ])
     print(proc)
-    proc.wait()
+    try:
+        proc.wait(timeout)
+    except:
+        print("Timeout expired, likely some nodes are in a bad state")
 
-    return
+    # print("Dir is ", dir, flush=True)
+    # print("run_id is ", run_id, flush=True)
+
+    run_results = validate_run_success(hosts, affinity["gpu_affinity"], prefix=str(dir) + "/" + str(run_id))
+
+    # Loop over the hosts and return the list of ones where every tile succeeded:
+    
+    good_hosts = []
+    for host in run_results.keys():
+        if all(run_results[host].values()): good_hosts.append(host)
+        
+    return good_hosts
 
 def check_system_supported(system):
 
@@ -390,7 +419,7 @@ def run_main_benchmark(args):
     hosts = get_hosts(args.system, hosts_dir)
 
     # Next, run the single-tile benchmarks
-
+    print("Running single tile benchmarks", flush=True)
     for framework in [Framework.pt, Framework.tf]:
 
         # Build the python arguments:
@@ -406,8 +435,10 @@ def run_main_benchmark(args):
 
 
         single_tile_dir = args.out_dir / Path("single-tile/")
-        run_single_tile_benchmarks(args, framework, env_vars, affinity, python_args, single_tile_dir, hosts)
+        hosts = run_single_tile_benchmarks(args, framework, env_vars, affinity, python_args, single_tile_dir, hosts)
+        print(f"  Hosts remaining after {framework} run: {len(hosts)}")
 
+    print("Running single node benchmarks", flush=True)
 
     for framework in [Framework.ptddp, Framework.pthvd, Framework.tfhvd]:
 
@@ -424,8 +455,10 @@ def run_main_benchmark(args):
 
 
         single_node_dir = args.out_dir / Path("single-node/")
-        run_single_node_benchmarks(args, framework, env_vars, affinity, python_args, single_node_dir, hosts)
+        hosts = run_single_node_benchmarks(args, framework, env_vars, affinity, python_args, single_node_dir, hosts)
+        print(f"  Hosts remaining after single-node {framework} run: {len(hosts)}")
 
+    print(f"Running full benchmarks on {len(hosts)} nodes", flush=True)
     for framework in [Framework.ptddp, Framework.pthvd, Framework.tfhvd]:
 
         # Build the python arguments:
