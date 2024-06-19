@@ -13,6 +13,33 @@ from create_dataframe_from_run import validate_run_success
 
 # This script wraps the cosmic tagger performance measurement into a comprehensive test suite.
 
+# We need the interposer script at scale.  Here's a few tries to get it.
+interposer_raw = """
+#!/bin/bash
+if [ $PMIX_RANK -eq 0 ]
+then
+  $*
+else
+  $* >& /dev/null
+fi
+"""
+
+if 'INTERPOSER' in os.environ:
+    # First, try to get it from the env if it's set.
+    INTERPOSER = os.environ["INTERPOSER"]
+else:
+    # See if we can get it from the current dir?
+    cwd = os.getcwd()
+    CT_DIR = os.path.dirname(cwd)
+    
+    interposer_tmp = CT_DIR + "/interposer.sh"
+
+    if os.path.isfile(interposer_tmp): INTERPOSER = interposer_tmp
+    else:
+        # Try making it manually:
+        with open(CT_DIR + "/interposer.sh", 'w') as ip:
+            ip.write(interposer_raw)
+        INTERPOSER = CT_DIR + "/interposer.sh"
 
 
 def get_env_variables(system):
@@ -131,7 +158,10 @@ def run_single_node_benchmarks(args, framework, env_vars, affinity, python_args,
     # a list of processes to track, one per node:
     procs = []
 
-    for host in hosts:
+    n_hosts = len(hosts)
+    host_ten_percent = max(int(0.1*n_hosts), 1)
+
+    for i, host in enumerate(hosts):
         host = host.split(".")[0]
 
         this_single_node_dir = dir / Path(run_id) / Path(host)
@@ -142,7 +172,7 @@ def run_single_node_benchmarks(args, framework, env_vars, affinity, python_args,
 # Set env variables:
 {env_setup}
 
-echo "Launching job from $(hostname) to {host}"
+# echo "Launching job from $(hostname) to {host}"
 
 run_id="{run_id}-{host}-fullnode/"
 
@@ -153,6 +183,7 @@ touch ${{out_file}}
 mpiexec -n {rpn} -ppn {rpn} \
 --hosts={host} \
 --cpu-bind=verbose,list:{cpu_affinity} \
+{interposer} \
 python {python_args} \
 output_dir={output_dir} \
 run.id=${run_id} > ${{out_file}} 2>&1 
@@ -165,6 +196,7 @@ run.id=${run_id} > ${{out_file}} 2>&1
             host        = host,
             python_args = python_args,
             cpu_affinity = cpu_affinity,
+            interposer  = INTERPOSER,
         )
 
 
@@ -179,7 +211,8 @@ run.id=${run_id} > ${{out_file}} 2>&1
         # Make the script executable:
         subprocess.run(['chmod', 'u+x', str(script_path) ])
 
-
+        if i % host_ten_percent == 0:
+            print(f"Single node launch status: {i} of {n_hosts} launched.")
         # Launch the script with a POpen and don't wait ...     
         procs.append(subprocess.Popen([str(script_path)], ))
     
@@ -259,6 +292,7 @@ touch ${{out_file}}
 mpiexec -n {n_nodes} -ppn {rpn} \
 --hosts={hosts} \
 --cpu-bind=verbose,list:{cpu_affinity} \
+{interposer} \
 python {python_args} \
 output_dir={output_dir} \
 run.id=${run_id} > ${{out_file}} 2>&1 
@@ -272,6 +306,7 @@ run.id=${run_id} > ${{out_file}} 2>&1
         hosts       = hosts,
         python_args = python_args,
         cpu_affinity = cpu_affinity,
+        interposer  = INTERPOSER,
     )
 
 
@@ -371,9 +406,12 @@ wait < <(jobs -p)
 
     # Build up the MPI call:
 
-    mpi_args = ["mpiexec", "-n", len(hosts), "-ppn", 1, "--cpu-bind=none", script_path]
+    mpi_args = ["mpiexec", "-n", len(hosts), "-ppn", 1, "--cpu-bind=none", INTERPOSER, script_path]
     proc = subprocess.Popen([ str(s) for s in mpi_args ])
     print(proc)
+    # Include a sleep here before testing for the process status:
+    print("Sleeping 3 minutes")
+    time.sleep(180)
     try:
         proc.wait(timeout)
     except:
@@ -404,7 +442,6 @@ def run_main_benchmark(args):
     # Infer the work directory for CosmicTagger based on the location of this script:
     cwd = os.getcwd()
     CT_DIR = os.path.dirname(cwd)
-    print(CT_DIR)
 
     env_vars = get_env_variables(args.system)
     affinity = get_affinity(args.system)

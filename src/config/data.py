@@ -21,8 +21,8 @@ class Real(Data):
     synthetic:      bool = False
     data_directory: str  = "/data/datasets/SBND/cosmic_tagging_1/"
     # data_directory: str  = "/grand/projects/datascience/cadams/datasets/SBND/"
-    file:           str  = "cosmic_tagging_val.h5"
-    aux_file:       str  = "cosmic_tagging_val.h5"
+    file:           str  = "cosmic_tagging_train.h5"
+    aux_file:       str  = "cosmic_tagging_test.h5"
 
 
 

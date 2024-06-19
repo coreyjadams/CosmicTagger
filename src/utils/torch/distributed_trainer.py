@@ -262,7 +262,10 @@ class distributed_trainer(torch_trainer):
 
             # print(self._net.parameters)
 
-            self._net = torch.nn.parallel.DistributedDataParallel(self._net, device_ids=devices, broadcast_buffers=self.args.run.broadcast_buffers, find_unused_parameters=False)
+            self._net = torch.nn.parallel.DistributedDataParallel(
+                self._net, device_ids=devices, 
+                broadcast_buffers=self.args.run.broadcast_buffers, 
+                find_unused_parameters=False)
 
             # print(self._net.parameters)
 

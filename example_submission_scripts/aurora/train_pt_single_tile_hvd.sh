@@ -1,8 +1,8 @@
 #!/bin/bash -l
-#PBS -l select=4
+#PBS -l select=512
 #PBS -l place=scatter
 #PBS -l walltime=1:00:00
-#PBS -q M242798
+#PBS -q EarlyAppAccess
 #PBS -A Aurora_deployment
 
 
@@ -29,8 +29,8 @@ export FI_CXI_DEFAULT_CQ_SIZE=131072
 export FI_CXI_OVFLOW_BUF_SIZE=8388608
 export FI_CXI_CQ_FILL_PERCENT=20
 
-export FI_LOG_LEVEL=warn
-export FI_LOG_PROV=tcp
+# export FI_LOG_LEVEL=warn
+# export FI_LOG_PROV=tcp
 
 
 
@@ -79,16 +79,15 @@ unset IPEX_XPU_ONEDNN_LAYOUT_OPT
 #####################################################################
 
 # Frameworks have a different oneapi backend at the moment:
-module restore
+module load frameworks
 
-module use /soft/modulefiles
-module load frameworks/.2023.08.15.002
 
 # Fix for EVP_* symbols issue:
 # export LD_LIBRARY_PATH=/home/rramer/test-lib:$LD_LIBRARY_PATH
 
 
-export NUMEXPR_MAX_THREADS=1
+export OMP_NUM_THREADS=16
+export NUMEXPR_MAX_THREADS=16
 
 
 #####################################################################
@@ -123,7 +122,7 @@ run_id=aurora-a21-single-tile-hvd-n${NRANKS}-df${DATA_FORMAT}-p${PRECISION}-mb${
 #####################################################################
 
 export CCL_LOG_LEVEL="WARN"
-export CPU_AFFINITY="verbose,list:0-7,104-111:8-15,112-119:16-23,120-127:24-31,128-135:32-39,136-143:40-47,144-151:52-59,156-163:60-67,164-171:68-75,172-179:76-83,180-187:84-91,188-195:92-99,196-203"
+export CPU_AFFINITY="list:0-7,104-111:8-15,112-119:16-23,120-127:24-31,128-135:32-39,136-143:40-47,144-151:52-59,156-163:60-67,164-171:68-75,172-179:76-83,180-187:84-91,188-195:92-99,196-203"
 
 ulimit -c 0
 
@@ -133,6 +132,7 @@ date
 # Launch the script
 mpiexec -np ${NRANKS} -ppn ${NRANKS_PER_NODE} \
 --cpu-bind ${CPU_AFFINITY} \
+${WORKDIR}/interposer.sh \
 python bin/exec.py \
 --config-name a21 \
 framework=torch \
