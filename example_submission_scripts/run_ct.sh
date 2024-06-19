@@ -1,16 +1,22 @@
 #!/bin/bash -l
-#PBS -l select=16:system=polaris
-#PBS -l place=scatter
-#PBS -l walltime=3:00:00
-#PBS -q workq
-#PBS -A datascience
+
+# What's the cosmic tagger work directory?
+if [[ -z "$WORK_DIR" ]]; then
+    WORK_DIR=/home/cadams/Polaris/CosmicTagger
+fi
+cd ${WORK_DIR}
+
+if [[ -z "$OUTPUT_DIR" ]]; then
+    OUTPUT_DIR=/lus/eagle/projects/datascience/cadams/test_ct_output_junk
+fi
+
 
 # Set parameters.  Check if they are already set, if not use defaults.  You can always change defaults, too
 if [[ -z "$MODEL" ]]; then
     MODEL=a21 # a21 or uresnet (or maybe others)
 fi
 
-if [[ -z "FRAMEWORK" ]]; then
+if [[ -z "$FRAMEWORK" ]]; then
 	FRAMEWORK=tensorflow # torch or tensorflow
 fi
 
@@ -26,19 +32,21 @@ if [[ -z "$DOWNSAMPLE" ]]; then
 	DOWNSAMPLE=1 # 0, 1, 2, 3 ... but if you stray from 0/1/2 you will need to adjust the model depth
 fi
 
+if [[ -z "$ITERATIONS"]]; then
+    ITERATIONS=100
+fi
+
 # What to use for local batch size?
 # Depends on framework, downsampling and model.
 # Suggestions: 
 # - Tensorflow takes about 2x more memory than torch
 # - A21 model has many less layers, can fit more images per batch
 # - Uresnet model struggles to fit many places
-LOCAL_BATCH_SIZE=8
+if [[ -z "$LOCAL_BATCH_SIZE" ]]; then
+    LOCAL_BATCH_SIZE=8
+fi
 
 
-# What's the cosmic tagger work directory?
-WORK_DIR=/home/cadams/Polaris/CosmicTagger
-cd ${WORK_DIR}
-OUTPUT_DIR=/lus/eagle/projects/datascience/cadams/test_ct_output_junk
 
 # Detect the system and set up environmet and data:
 if [[ $(hostname -f) == *"polaris"* ]]; 
@@ -128,6 +136,7 @@ if [ "${FRAMEWORK}" == "torch" ]; then
     FRAMEWORK_ARGS="${FRAMEWORK_ARGS} framework.distributed_mode=${DISTRIBUTED_MODE} "
 fi
 
+echo $FRAMEWORK_ARGS
 
 let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 
@@ -151,5 +160,5 @@ run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.precision=${PRECISION} \
 run.compute_mode=${COMPUTE_MODE} \
 mode.optimizer.loss_balance_scheme=light \
-run.iterations=100 \
+run.iterations=${ITERATIONS} \
 output_dir=${OUTPUT_DIR}
