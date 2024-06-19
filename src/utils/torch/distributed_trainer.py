@@ -24,11 +24,6 @@ import logging
 logger = logging.getLogger()
 logger.propogate = False
 
-try:
-    import horovod.torch as hvd
-    hvd.init()
-except:
-    pass
 
 from .trainer import torch_trainer
 
@@ -53,6 +48,8 @@ class distributed_trainer(torch_trainer):
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
+            import horovod.torch as hvd
+            hvd.init()
             # if self.args.run.compute_mode == "GPU":
                 # os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
             self._rank            = hvd.rank()
@@ -195,7 +192,10 @@ class distributed_trainer(torch_trainer):
         torch_trainer.init_optimizer(self)
 
         if self.args.framework.distributed_mode == DistributedMode.horovod:
-            self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters(), num_groups = self.args.run.horovod_num_groups)
+            import horovod.torch as hvd
+            self._opt = hvd.DistributedOptimizer(self._opt, 
+                                                 named_parameters=self._net.named_parameters(), 
+                                                 num_groups = self.args.run.horovod_num_groups)
             # self._opt.param_groups[0]['capturable'] = True
         self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self._opt, self.lr_calculator, last_epoch=-1)
 
@@ -228,6 +228,7 @@ class distributed_trainer(torch_trainer):
 
         # Broadcast from rank 0 to sync weights
         if self.args.framework.distributed_mode == DistributedMode.horovod:
+            import horovod.torch as hvd
 
             # Broadcast the global step:
             self._global_step = hvd.broadcast_object(self._global_step, root_rank = 0)
@@ -327,6 +328,7 @@ class distributed_trainer(torch_trainer):
 
         stacked_metrics = self.stack_tensors(metrics)
         if self.args.framework.distributed_mode == DistributedMode.horovod:
+            import horovod.torch as hvd
             stacked_metrics = hvd.allreduce(stacked_metrics, name = '-'.join(metrics.keys()))
         elif self.args.framework.distributed_mode == DistributedMode.DDP:
             torch.distributed.all_reduce(stacked_metrics)
