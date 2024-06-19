@@ -1,8 +1,4 @@
 import os
-import sys
-import time
-import tempfile
-from collections import OrderedDict
 
 import logging
 logger = logging.getLogger()
@@ -17,9 +13,6 @@ try:
     import intel_extension_for_pytorch as ipex
 except:
     pass
-
-
-
 
 # torch.manual_seed(0)
 
@@ -81,7 +74,7 @@ class torch_trainer(trainercore):
         if self.is_training():
              self._raw_net.train(True)
 
-
+        # self._raw_net = torch.compile(self._raw_net, backend="inductor")
 
         self._log_keys = ['Average/Non_Bkg_Accuracy', 'Average/mIoU']
         if self.is_training():
