@@ -90,7 +90,7 @@ class tf_trainer(trainercore):
         minibatch_data = self.larcv_fetcher.fetch_next_batch("train",force_pop=False)
         image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
-        self.forward_pass(image, label, training=False)
+        self.forward_pass(image, label)
 
 
 
@@ -403,13 +403,13 @@ class tf_trainer(trainercore):
         return image, label
 
     @tf.function
-    def forward_pass(self, image, label, training):
+    def forward_pass(self, image, label):
 
         if self.args.run.precision == Precision.bfloat16:
             image = tf.cast(image, tf.bfloat16)
 
         # Run a forward pass of the model on the input image:
-        logits = self._net(image, training=training)
+        logits = self._net(image)
 
         if self.args.run.precision == Precision.mixed:
             logits = [ tf.cast(l, tf.float32) for l in logits ]
@@ -475,7 +475,7 @@ class tf_trainer(trainercore):
 
             image, label = self.cast_input(minibatch_data['image'], minibatch_data['label'])
 
-            labels, logits, prediction = self.forward_pass(image, label, training=False)
+            labels, logits, prediction = self.forward_pass(image, label)
 
             loss, current_reg_loss = self.loss_calculator(labels, logits)
 
