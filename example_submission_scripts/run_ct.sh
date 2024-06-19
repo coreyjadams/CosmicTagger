@@ -26,11 +26,6 @@ if [[ -z "$DOWNSAMPLE" ]]; then
 	DOWNSAMPLE=1 # 0, 1, 2, 3 ... but if you stray from 0/1/2 you will need to adjust the model depth
 fi
 
-echo "FRAMEWORK: ${FRAMEWORK}"
-echo "PRECISION: ${PRECISION}"
-echo "DOWNSAMPLE: ${DOWNSAMPLE}"
-
-return 
 # What to use for local batch size?
 # Depends on framework, downsampling and model.
 # Suggestions: 
@@ -61,17 +56,50 @@ then
     # Add-ons from conda:
     source /home/cadams/Polaris/polaris_conda_2024-04-29-venv/bin/activate
 
+    CPU_AFFINITY="numa"
+    COMPUTE_MODE="GPU"
+
 elif [[ $(hostname -f) == *"aurora"* ]];
 then
     echo "Set up for Aurora";
     NRANKS_PER_NODE=12
     DATA_DIR=MISSING
 
+    COMPUTE_MODE="XPU"
+
+    # Performance variables:
+    unset ITEX_LAYOUT_OPT
+    unset IPEX_XPU_ONEDNN_LAYOUT_OPT
+
+    ITEX_FP32_MATH_MODE=TF32
+    IPEX_FP32_MATH_MODE=TF32
+
+    # This is a fix for running over 16 nodes:
+    export FI_CXI_DEFAULT_CQ_SIZE=131072
+    export FI_CXI_OVFLOW_BUF_SIZE=8388608
+    export FI_CXI_CQ_FILL_PERCENT=20
+    
+
 elif [[ $(hostname -f) == *"americas"* ]];
 then
     echo "Set up for Sunspot"
     NRANKS_PER_NODE=12
     DATA_DIR=MISSING
+    COMPUTE_MODE="XPU"
+
+    # Performance variables:
+    unset ITEX_LAYOUT_OPT
+    unset IPEX_XPU_ONEDNN_LAYOUT_OPT
+
+    ITEX_FP32_MATH_MODE=TF32
+    IPEX_FP32_MATH_MODE=TF32
+
+    # This is a fix for running over 16 nodes:
+    export FI_CXI_DEFAULT_CQ_SIZE=131072
+    export FI_CXI_OVFLOW_BUF_SIZE=8388608
+    export FI_CXI_CQ_FILL_PERCENT=20
+    
+
 else
     echo "Why did Corey leave? Now my code doesn't work :'("
 fi
@@ -112,7 +140,7 @@ run_id=cosmic_tagger_real_data-${MODEL}-${FRAMEWORK}-${DISTRIBUTED_MODE}-B${GLOB
 # TF Env Variables:
 TF_USE_LEGACY_KERAS=1
 
-mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind=numa \
+mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind=${CPU_AFFINITY} \
 python bin/exec.py \
 --config-name ${MODEL} \
 ${DATA_ARGS} \
@@ -121,7 +149,7 @@ run.id=${run_id} \
 run.distributed=True  \
 run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.precision=${PRECISION} \
-run.compute_mode=GPU \
+run.compute_mode=${COMPUTE_MODE} \
 mode.optimizer.loss_balance_scheme=light \
 run.iterations=100 \
 output_dir=${OUTPUT_DIR}
