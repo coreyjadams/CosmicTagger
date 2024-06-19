@@ -107,6 +107,9 @@ class torch_trainer(trainercore):
         with self.default_device_context():
             self.init_network()
 
+            # If using half precision on the model, convert it now:
+            if self.args.run.precision == Precision.bfloat16:
+                self._net = self._net.bfloat16()
 
             self._net = self._net.to(self.default_device())
 
@@ -122,11 +125,6 @@ class torch_trainer(trainercore):
             self._global_step = 0
 
             self.restore_model()
-
-            # If using half precision on the model, convert it now:
-            if self.args.run.precision == Precision.bfloat16:
-                self._net = self._net.bfloat16()
-
 
             if self.is_training():
                 self.loss_calculator = LossCalculator.LossCalculator(self.args.mode.optimizer.loss_balance_scheme)
@@ -212,6 +210,10 @@ class torch_trainer(trainercore):
 
     def init_saver(self):
 
+        if not self.args.run.saver:
+            self._saver = None
+            self._aux_saver = None
+            return
 
         # This sets up the summary saver:
         dir = self.args.output_dir
@@ -501,6 +503,8 @@ class torch_trainer(trainercore):
 
 
     def summary(self, metrics,saver=""):
+        if self._saver is None:
+            return
 
         if self._global_step % self.args.mode.summary_iteration == 0:
             for metric in metrics:
@@ -518,6 +522,8 @@ class torch_trainer(trainercore):
 
 
     def summary_images(self, logits_image, labels_image, saver=""):
+        if self._saver is None:
+            return
 
         # if self._global_step % 1 * self.args.mode.summary_iteration == 0:
         if self._global_step % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:
@@ -564,6 +570,8 @@ class torch_trainer(trainercore):
         return
 
     def graph_summary(self):
+        if self._saver is None:
+            return
 
         if self._global_step % 1 * self.args.mode.summary_iteration == 0:
         # if self._global_step % 25 * self.args.mode.summary_iteration == 0 and not self.args.mode.no_summary_images:

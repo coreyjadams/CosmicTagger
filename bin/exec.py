@@ -298,6 +298,14 @@ if __name__ == '__main__':
     #  Is this good practice?  No.  But hydra doesn't give a great alternative
     import sys
     if "--help" not in sys.argv and "--hydra-help" not in sys.argv:
-        sys.argv += ['hydra/job_logging=disabled']
+        sys.argv += [
+            'hydra/job_logging=disabled',
+            'hydra.output_subdir=null',
+            'hydra.job.chdir=False',
+            'hydra.run.dir=.',
+            'hydra/hydra_logging=disabled',
+        ]
+
+
     main()
     

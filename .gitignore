@@ -3,6 +3,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Images and data:
+*.txt
+*.png
+*.pfd
+*.csv
+*.h5
+*.npz
 
 # Cobalt files:
 *.output

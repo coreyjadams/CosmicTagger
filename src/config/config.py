@@ -40,6 +40,11 @@ class Run:
     id:                 str         = MISSING
     precision:          Precision   = Precision.float32
     profile:            bool        = False
+    saver:              bool        = True
+    ## HVD CONFIG
+    horovod_num_groups: int         = 0
+    ## DDP CONFIG
+    broadcast_buffers:  bool        = True
 
 cs = ConfigStore.instance()
 
