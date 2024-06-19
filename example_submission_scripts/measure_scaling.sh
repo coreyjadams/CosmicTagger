@@ -36,9 +36,6 @@ then
     echo "Set up for Polaris"; 
     NRANKS_PER_NODE=4
 
-    # Where is the data hosted?  v1 only on the master branch:
-    DATA_DIR=/lus/eagle/projects/datasets/CosmicTagger/v1/
-
     # Set up software deps:
     module use /soft/modulefiles/
     module load conda/2024-04-29; conda activate
