@@ -32,7 +32,7 @@ if [[ -z "$DOWNSAMPLE" ]]; then
 	DOWNSAMPLE=1 # 0, 1, 2, 3 ... but if you stray from 0/1/2 you will need to adjust the model depth
 fi
 
-if [[ -z "$ITERATIONS"]]; then
+if [[ -z "$ITERATIONS" ]]; then
     ITERATIONS=100
 fi
 
