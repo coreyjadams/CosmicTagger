@@ -231,17 +231,17 @@ class ConvolutionUpsample(nn.Module):
 
         if params.normalization == Norm.batch:
             self._do_normalization = True
-            self.norm = nn.BatchNorm2d(outplanes)
+            self.norm = nn.BatchNorm2d(inplanes)
         elif params.normalization == Norm.group:
             self._do_normalization = True
-            self.norm = nn.GroupNorm(num_groups=4, num_channels=outplanes)
+            self.norm = nn.GroupNorm(num_groups=4, num_channels=inplanes)
         elif params.normalization == Norm.layer:
             self._do_normalization = True
             self.norm = "layer"
             # Have to do something special here to avoid pre-computing all the shapes ...
         elif params.normalization == Norm.instance:
             self._do_normalization = True
-            self.norm = InstanceNorm2d(outplanes)
+            self.norm = InstanceNorm2d(inplanes)
         else:
             self._do_normalization = False
 

@@ -2,7 +2,7 @@
 
 # What's the cosmic tagger work directory?
 if [[ -z "$WORK_DIR" ]]; then
-    WORK_DIR=/home/cadams/Polaris/CosmicTagger2
+    WORK_DIR=/home/cadams/CosmicTagger-latest
 fi
 cd ${WORK_DIR}
 
@@ -70,6 +70,8 @@ then
     NRANKS_PER_NODE=12
     DATA_DIR=MISSING
 
+	module load frameworks/2024.1
+
     COMPUTE_MODE="XPU"
 
     # Performance variables:
@@ -83,7 +85,9 @@ then
     export FI_CXI_DEFAULT_CQ_SIZE=131072
     export FI_CXI_OVFLOW_BUF_SIZE=8388608
     export FI_CXI_CQ_FILL_PERCENT=20
-    
+
+    export NUMEXPR_MAX_THREADS=12
+    export OMP_NUM_THREADS=12
 
 elif [[ $(hostname -f) == *"americas"* ]];
 then
@@ -136,13 +140,21 @@ let GLOBAL_BATCH_SIZE=${LOCAL_BATCH_SIZE}*${NRANKS}
 echo "Global Batch Size: $GLOBAL_BATCH_SIZE"
 
 
+if [[ -z "$RUN_ID_BASE" ]];
+then
+	RUN_ID_BASE=cosmic_tagger_real_data
+fi
+
 # A name for this run:
-run_id=cosmic_tagger_real_data-${MODEL}-${FRAMEWORK}-${DISTRIBUTED_MODE}-B${GLOBAL_BATCH_SIZE}-R${NRANKS}
+run_id=${RUN_ID_BASE}-${MODEL}-${FRAMEWORK}-${DISTRIBUTED_MODE}-B${GLOBAL_BATCH_SIZE}-R${NRANKS}
 
 # TF Env Variables:
 TF_USE_LEGACY_KERAS=1
 
+
+
 mpiexec -n ${NRANKS} -ppn ${NRANKS_PER_NODE} --cpu-bind=${CPU_AFFINITY} \
+bin/interposer.sh \
 python bin/exec.py \
 --config-name ${MODEL} \
 ${DATA_ARGS} \
@@ -152,7 +164,6 @@ run.distributed=True  \
 run.minibatch_size=${GLOBAL_BATCH_SIZE} \
 run.precision=${PRECISION} \
 run.compute_mode=${COMPUTE_MODE} \
-mode.optimizer.loss_balance_scheme=light \
 run.run_units=epoch \
 run.run_length=${EPOCHS} \
-output_dir=${OUTPUT_DIR}
+output_dir=${OUTPUT_DIR} ${CT_OVERRIDES}

@@ -21,7 +21,8 @@ for test_path in [
     "/data/datasets/SBND/cosmic_tagging_2",
     "/lus/grand/projects/datascience/cadams/datasets/SBND/cosmic_tagging_2/",
     "/lus/gila/projects/Aurora_deployment/cadams/cosmic_tagger_2/",
-    "/lus/gecko/projects/Aurora_deployment/cadams/cosmic_tagging_2/",
+    # "/lus/gecko/projects/Aurora_deployment/cadams/cosmic_tagging_2/",
+    "/flare/Aurora_deployment/cadams/cosmic_tagging_2/",
 ]:
     if os.path.isdir(test_path):
         data_top = test_path

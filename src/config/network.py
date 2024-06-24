@@ -108,8 +108,8 @@ class ConvNetwork(Backbone):
 @dataclass
 class UResNet(ConvNetwork):
     name:                 str          = "uresnet"
-    normalization:        Norm         = Norm.layer
-
+    normalization:        Norm         = Norm.batch 
+    
 @dataclass
 class A21(ConvNetwork):
     """

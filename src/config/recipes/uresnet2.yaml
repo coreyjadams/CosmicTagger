@@ -2,8 +2,9 @@ defaults:
   - base_config
   - override framework: torch
   - _self_
+  
 data:
-  downsample: 2
+  downsample: 0
   version: 2
   paths:
     active:
@@ -11,18 +12,20 @@ data:
       - val
 
 network:
-  n_initial_filters: 24
+  n_initial_filters: 8
   classification:
-    active: True
+    active: False
     detach: True
   vertex:
     active: True
     detach: True
   blocks_deepest_layer: 3
   blocks_final: 2
-  depth: 5
-  normalization: group
+  block_style: residual
+  depth: 7
+  normalization: instance
   # upsampling: convolutional
+  
 run:
   run_length: 20000
   run_units: iteration
