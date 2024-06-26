@@ -1,12 +1,12 @@
 #!/bin/bash -l
-#PBS -l select=128
+#PBS -l select=22
 #PBS -l place=scatter
 #PBS -l walltime=2:30:00
 #PBS -q lustre_scaling
 #PBS -l filesystems=home:eagle
 #PBS -A Aurora_deployment
 
-
+module load hdf5
 
 export WORK_DIR=/home/cadams/CosmicTagger-latest/
 export OUTPUT_DIR=/flare/Aurora_deployment/cadams/ct-output-convergence/
