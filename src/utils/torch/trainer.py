@@ -33,10 +33,10 @@ def dummycontext():
 
 import datetime
 
-try:
-    from torch.utils.tensorboard import SummaryWriter
-except:
-    from tensorboardX import SummaryWriter
+#try:
+#    from torch.utils.tensorboard import SummaryWriter
+#except:
+from tensorboardX import SummaryWriter
 
 from src.config import ComputeMode, Precision, ConvMode, ModeKind, DataFormatKind
 
